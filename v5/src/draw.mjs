@@ -194,7 +194,7 @@ export class Renderer {
       else {
         const working = this.tall(row.session)
         const somaX = somaX0 + Math.min(row.depth, 4) * u(44)
-        G.rows.push({ row, key: row.key, sid: row.session.id, y, h, somaX, r: working ? u(13) : u(8), axonY: y + h - u(18), textX: somaX + u(32), textRight: G.termX - u(18), live: working && h >= u(110) })
+        G.rows.push({ row, key: row.key, sid: row.session.id, y, h, somaX, r: working ? u(13) : u(8), axonY: y + h - u(18), textX: somaX + u(38), textRight: G.termX - u(18), live: working && h >= u(110) })
       }
       y += h
     }

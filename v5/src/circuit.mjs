@@ -296,14 +296,15 @@ export const circuit = {
       edge -= w + u(6)
     }
 
-    // index, fold caret and title
+    // One grid for every row. The cell body's column: the thread's number stands over its cell
+    // body on the title's baseline, tied to it by a stem. Then a gutter that holds the fold
+    // caret when the thread has subagents. Then the text column: title, meta line and live
+    // line all start at the same x, with or without a caret.
     const index = String(row.index + 1).padStart(2, "0")
-    this.text(c, index, g.textX, titleY, { size: 13, color: focused ? INK.live : INK.faint })
-    let titleX = g.textX + u(30)
-    if (row.kids) {
-      this.caret(c, titleX + u(4), titleY - u(8), !row.closed, focused ? INK.live : INK.dim)
-      titleX += u(18)
-    }
+    this.text(c, index, somaX, titleY, { size: 13, family: FAMILY.monoMedium, color: focused ? INK.live : working || waiting ? INK.soft : INK.dim, align: "center" })
+    if (axonY - g.r - u(5) > titleY + u(8)) this.line(c, somaX, titleY + u(8), somaX, axonY - g.r - u(5), focused ? rgba(INK.live, 0.5) : INK.faint)
+    const titleX = g.textX
+    if (row.kids) this.caret(c, somaX + u(23), titleY - u(8), !row.closed, focused ? INK.live : INK.dim)
     const titleStyle = { size: 25, family: FAMILY.label, weight: "600", color: working || waiting || focused ? INK.text : INK.soft }
     this.text(c, this.fit(c, session.title, edge - titleX - u(8), titleStyle), titleX, titleY, titleStyle)
 
