@@ -10,6 +10,7 @@
 // projects, threads, equipment) and hud.mjs (header, phase, footer, card, help).
 
 import { createCanvas } from "@napi-rs/canvas"
+import { card } from "./card.mjs"
 import { circuit } from "./circuit.mjs"
 import { Flock } from "./flock.mjs"
 import { hud } from "./hud.mjs"
@@ -322,6 +323,8 @@ export class Renderer {
   // What is under a point: an overlay first, then a mark on the instrument or an axon, then the
   // smallest target that holds the point.
   hitTest(x, y, scene, now) {
+    const onCard = this.cardHit(x, y)
+    if (onCard) return onCard
     for (const overlay of this.overlays) {
       if (!inside(overlay.rect, x, y)) continue
       for (const target of this.hits.get(overlay.name) ?? []) if (inside(target.rect, x, y)) return target
@@ -772,10 +775,10 @@ export class Renderer {
         this.moons.push({ sid: child.id, x: mx, y: my })
         slot += 1
       }
-      const pinned = ui.pinned?.target
-      if (pinned?.kind === "dot" && pinned.sid === session.id && pinned.index < flock.count && flock.level[pinned.index]) out.push({ key: "pin-dot", kind: `ring|${INK.live}`, x: flock.sx[pinned.index], y: flock.sy[pinned.index], top: true })
     }
     this.terrainSprites(scene, now, out)
+    // the inspection card follows its mark, tied to it by a leader
+    this.layCard(scene, ui, now)
     // explain mode: a ring on the one mark each tag is about
     if (ui.explain && !ui.help) (this.explainAnchors ?? []).forEach((anchor, index) => out.push({ key: `ex${index}`, kind: `ring|${INK.live}`, x: anchor.x, y: anchor.y, top: true }))
     // the reticles: focus (cyan) and pointer (white) ease from one target to the next
@@ -810,6 +813,17 @@ export class Renderer {
         out[keep++] = sprite
       }
       out.length = keep
+    }
+    if (this.card) {
+      // nothing rides over the card except its own leader
+      const rect = { x: this.card.left, y: this.card.top, w: this.card.w, h: this.card.h }
+      let keep = 0
+      for (const sprite of out) {
+        if (sprite.top && inside(rect, sprite.x, sprite.y)) continue
+        out[keep++] = sprite
+      }
+      out.length = keep
+      this.leadSprites(out)
     }
   }
 
@@ -947,9 +961,11 @@ export class Renderer {
     const stacked = sprites.map((sprite, order) => ({ sprite, order, z: sprite.top ? 99 : sprite.under ? (sprite.z ?? 0) - 50 : (sprite.z ?? 0) })).sort((a, b) => a.z - b.z || a.order - b.order)
     for (const { sprite } of stacked) if (sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
     context.drawImage(this.canvas, 0, 0)
-    for (const { sprite } of stacked) if (!sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
+    for (const { sprite } of stacked) if (!sprite.under && !sprite.top) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
+    if (this.card) context.drawImage(this.card.canvas, this.card.padX, this.card.padY, this.card.w, this.card.h, this.card.left, this.card.top, this.card.w, this.card.h)
+    for (const { sprite } of stacked) if (sprite.top) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
     return canvas
   }
 }
 
-Object.assign(Renderer.prototype, stage, circuit, hud, terrain)
+Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card)

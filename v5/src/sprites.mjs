@@ -99,6 +99,16 @@ const SHAPES = {
     c.arc(10, 10, 8, 0, Math.PI * 2)
     c.stroke()
   }],
+  // a wider ring, around a cell body
+  ring2: [38, 38, (c, hex) => {
+    c.strokeStyle = hex
+    c.lineWidth = 1.5
+    c.beginPath()
+    c.arc(19, 19, 17, 0, Math.PI * 2)
+    c.stroke()
+  }],
+  // one dot of a leader line, from a mark to its card
+  lead: [4, 4, (c, hex) => disc(c, 2, 2, 1.5, hex, 0.95)],
   // the head of a chart line: where the newest reading is
   head: [10, 10, (c, hex) => {
     halo(c, 5, 5, 5, hex, 0.5)

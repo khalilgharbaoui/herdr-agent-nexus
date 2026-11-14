@@ -304,9 +304,9 @@ async function runTerminal() {
       let outcome
       if (painted) {
         const { context, bands } = paintSprites(sprites, changed ? renderer.marks : null)
-        outcome = terminal.send(context, bands, [], atlas)
+        outcome = terminal.send(context, bands, [], atlas, null, renderer.card)
       } else {
-        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas, readAll ? null : renderer.spans)
+        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas, readAll ? null : renderer.spans, renderer.card)
       }
       if (outcome === "sent") {
         total.sent += 1

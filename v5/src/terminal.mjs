@@ -221,7 +221,7 @@ export class Terminal {
       // Three layers: sprites behind the still layer (z 1 to 15), the still layer itself (z 20, see
       // the encoder), sprites in front of it (z 21 to 59) and what must never be covered (z 60).
       // Within a layer a nearer dot is drawn over a farther one.
-      const z = sprite.top ? 60 : sprite.under ? 1 + Math.min(14, sprite.z ?? 0) : 21 + Math.min(38, sprite.z ?? 0)
+      const z = sprite.top ? 60 : sprite.under ? 1 + Math.min(14, sprite.z ?? 0) : 21 + Math.min(29, sprite.z ?? 0)
       if (entry.col === spot.col && entry.row === spot.row && entry.sx === spot.sx && entry.sy === spot.sy && entry.z === z) continue
       entry.z = z
       entry.col = spot.col
@@ -242,7 +242,9 @@ export class Terminal {
   // One frame: the tiles that changed and the sprites that moved, handed to the worker as one
   // message so they reach the screen inside one synchronized update.
   // Returns "busy" when two frames are already on their way, "still" when nothing changed.
-  send(context, marks, sprites, atlas, spans = null) {
+  // `card` is the inspection card as its own image: { key, left, top, w, h, padX, padY, winW,
+  // winH, width, height, pixels() }, or null when none is open.
+  send(context, marks, sprites, atlas, spans = null, card = null) {
     if (this.inflight >= 2 || !this.worker) return "busy"
     const reset = this.reset
     if (reset) {
@@ -251,11 +253,37 @@ export class Terminal {
       this.free = []
       for (let slot = MAX_SPRITES; slot >= 1; slot -= 1) this.free.push(slot)
       this.atlasSent = false
+      this.cardShown = null
+    }
+    let cardMessage = null
+    const transfer = []
+    if (card) {
+      // herdr hands the host a whole-cell box, so the card is placed like a sprite: a window of
+      // whole cells slid over a padded image
+      const left = Math.min(Math.max(0, card.left), this.width - card.winW)
+      const top = Math.min(Math.max(0, card.top), this.height - card.winH)
+      const col = Math.floor(left / this.cell.width)
+      const row = Math.floor(top / this.cell.height)
+      const place = { col, row, sx: card.padX - (left - col * this.cell.width), sy: card.padY - (top - row * this.cell.height), w: card.winW, h: card.winH }
+      const was = this.cardShown
+      const fresh = !was || was.key !== card.key
+      if (fresh || was.col !== place.col || was.row !== place.row || was.sx !== place.sx || was.sy !== place.sy) {
+        cardMessage = { place, width: card.width, height: card.height }
+        if (fresh) {
+          const pixels = card.pixels()
+          cardMessage.pixels = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.length)
+          transfer.push(cardMessage.pixels)
+        }
+      }
+      this.cardShown = { key: card.key, ...place }
+    } else if (this.cardShown) {
+      cardMessage = { remove: true }
+      this.cardShown = null
     }
     const { payload, dirty, across, down } = this.diffTiles(context, marks, spans)
     const { places, deletes } = this.diffSprites(sprites, atlas)
     const needAtlas = !this.atlasSent && (places.length > 0 || reset)
-    if (!reset && !dirty.length && !places.length && !deletes.length) return "still"
+    if (!reset && !dirty.length && !places.length && !deletes.length && !cardMessage) return "still"
     let atlasMessage = null
     if (needAtlas) {
       const pixels = atlas.pixels()
@@ -263,10 +291,10 @@ export class Terminal {
       this.atlasSent = true
     }
     this.inflight += 1
-    const transfer = [payload]
+    transfer.push(payload)
     if (atlasMessage) transfer.push(atlasMessage.pixels)
     this.worker.postMessage(
-      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, atlas: atlasMessage, places, deletes },
+      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, atlas: atlasMessage, places, deletes, card: cardMessage },
       transfer,
     )
     this.reset = false

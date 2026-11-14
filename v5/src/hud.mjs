@@ -411,17 +411,7 @@ export const hud = {
   overlaysFor(scene, ui, now) {
     const u = (value) => this.u(value)
     const list = []
-    const subject = ui.help ? null : (ui.pinned ?? ui.card)
-    if (subject) {
-      const content = this.inspect(subject.target, scene, now)
-      if (content) {
-        const w = u(500)
-        const h = u(74) + content.lines.length * u(25) + (content.foot ? u(28) : 0)
-        const rect = this.placeCard(subject.target.rect, subject.anchor, w, h)
-        const pinned = Boolean(ui.pinned)
-        list.push({ name: "over:card", rect, signature: `${pinned}|${JSON.stringify(content)}`, draw: (c) => this.drawCard(c, rect, content, pinned) })
-      }
-    }
+    // (the inspection card is not one of these: it is its own image, see card.mjs)
     if (ui.explain && !ui.help) for (const tag of this.explainTags(scene, now)) list.push(tag)
     if (ui.help) {
       const w = Math.min(this.W - u(80), u(1180))
@@ -432,26 +422,6 @@ export const hud = {
     return list
   },
 
-  placeCard(rect, anchor, w, h) {
-    const u = (value) => this.u(value)
-    const M = this.G.M
-    const top = this.G.header.h + u(6)
-    const bottom = this.H - u(44)
-    let x
-    let y
-    if (rect.w > u(520)) {
-      // a wide target (a thread, a project): under it, near the pointer, or over it when there is no room
-      x = clamp((anchor?.x ?? rect.x) + u(26), M, this.W - w - M)
-      y = rect.y + rect.h + u(8)
-      if (y + h > bottom) y = rect.y - h - u(8)
-    } else {
-      x = rect.x + rect.w + u(18)
-      if (x + w > this.W - M) x = rect.x - w - u(18)
-      if (x < M) x = clamp((anchor?.x ?? rect.x) - w / 2, M, this.W - w - M)
-      y = rect.y - u(12)
-    }
-    return { x: Math.round(x), y: Math.round(clamp(y, top, Math.max(top, bottom - h))), w, h }
-  },
 
   drawCard(c, rect, content, pinned) {
     const u = (value) => this.u(value)

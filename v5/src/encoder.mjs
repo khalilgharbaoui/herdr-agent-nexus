@@ -18,6 +18,8 @@ const ESC = "\x1b"
 const ID_BASE = 7300
 const ATLAS_ID = 7200
 const TILE_Z = 20 // the still layer sits between the sprites behind it (z under 20) and those in front
+const CARD_ID = 7100 // the inspection card: its own image (two ids, flipped on every new content)
+const CARD_Z = 55 // over every sprite except the ones that must never be covered
 const sleeper = new Int32Array(new SharedArrayBuffer(4))
 
 function writeAll(buffer) {
@@ -42,6 +44,8 @@ function chunked(parts, keys, base64) {
 
 let flips = new Uint8Array(0)
 let shown = new Uint8Array(0) // 1 while a tile has an image on screen
+let cardFlip = 0
+let cardShown = false
 
 parentPort.on("message", (message) => {
   const started = performance.now()
@@ -51,6 +55,7 @@ parentPort.on("message", (message) => {
     flips = new Uint8Array(total)
     shown = new Uint8Array(total)
     parts.push(`${ESC}[2J${ESC}_Ga=d,d=A,q=2${ESC}\\`)
+    cardShown = false
   }
   let tileBytes = 0
   let spriteBytes = 0
@@ -82,6 +87,23 @@ parentPort.on("message", (message) => {
     parts.push(
       `${ESC}[${places[at + 2] + 1};${places[at + 1] + 1}H${ESC}_Ga=p,i=${ATLAS_ID},p=${places[at]},x=${places[at + 3]},y=${places[at + 4]},w=${places[at + 5]},h=${places[at + 6]},z=${places[at + 7]},C=1,q=2${ESC}\\`,
     )
+  }
+  // The inspection card rides on its own image, so following a moving mark is one placement.
+  // New content goes up under the other id and is placed before the old one is deleted.
+  const card = message.card
+  if (card?.remove) {
+    if (cardShown) parts.push(`${ESC}_Ga=d,d=I,i=${CARD_ID + cardFlip},q=2${ESC}\\`)
+    cardShown = false
+  } else if (card) {
+    const old = CARD_ID + cardFlip
+    if (card.pixels) {
+      cardFlip ^= 1
+      chunked(parts, `a=t,f=32,o=z,s=${card.width},v=${card.height},i=${CARD_ID + cardFlip},q=2`, zlib.deflateSync(Buffer.from(card.pixels), { level: 1 }).toString("base64"))
+    }
+    const place = card.place
+    parts.push(`${ESC}[${place.row + 1};${place.col + 1}H${ESC}_Ga=p,i=${CARD_ID + cardFlip},p=1,x=${place.sx},y=${place.sy},w=${place.w},h=${place.h},z=${CARD_Z},C=1,q=2${ESC}\\`)
+    if (card.pixels && cardShown) parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
+    cardShown = true
   }
   for (let index = before; index < parts.length; index += 1) spriteBytes += parts[index].length
   const encoded = performance.now()
