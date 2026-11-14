@@ -1,6 +1,8 @@
 // The head-up parts: the header with the phase, the footer (comms, sector map, log, key hints),
 // and the two overlays (the inspection card and the help sheet).
 
+import { explain } from "./explain.mjs"
+import { FLOCK_CAP, KIND_WORD } from "./flock.mjs"
 import { portOf } from "./model.mjs"
 import { LEVEL_COLOR, PANEL, PORT_COLOR, bare, clean, homed, wrap } from "./theme.mjs"
 import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, modelColor, moneyOf, shortModel, spanOf, timerOf } from "./util.mjs"
@@ -18,6 +20,10 @@ export const KEYMAP = [
   ["a", "follow the action again"],
   ["f", "list: active, all open, needs you"],
   ["z", "zoom the focus stage"],
+  ["w", "time terrain: last 1, 5 or 30 minutes"],
+  ["e", "explain: label what every kind of mark means, in place"],
+  ["[  ]", "walk every inspectable mark of a region, one by one"],
+  ["{  }", "walk: previous or next region"],
   ["pgup  pgdn", "scroll the live tail"],
   ["i", "input monitor: last event, what it hit"],
   ["d", "live data or the simulation"],
@@ -32,13 +38,15 @@ export const MOUSEMAP = [
   ["click a pane id", "go to that pane in herdr (also middle click on a thread)"],
   ["click a project", "fold or open it"],
   ["click equipment, a rail, a mark", "pin its card; click it again or press esc to let go"],
+  ["hover or click a dot of the flock", "which output it is, when, how many tokens; the flock slows under the pointer"],
+  ["click a ridge of the terrain", "focus that thread; on the focused ridge, pin the point"],
   ["click a blip on the map", "focus its thread; middle click goes to the pane"],
   ["click a call or a flag", "focus that thread; ANSWER goes to its pane"],
   ["click a key hint", "does what the key does"],
   ["wheel", "scrolls the threads, or the live tail when over it"],
 ]
-const HINTS = [["?", "help"], ["j k", "move"], ["← →", "fold"], ["enter", "go to pane"], ["tab", "next flag"], ["c", "answer"], ["x", "mute"], ["space", "pin"], ["f", "filter"], ["a", "follow"], ["z", "zoom"], ["i", "input"], ["d", "demo"], ["q", "quit"]]
-const HINT_KEY = { "?": "?", "j k": "j", "← →": "right", enter: "enter", tab: "tab", c: "c", x: "x", space: "space", f: "f", a: "a", z: "z", i: "i", d: "d", q: "q" }
+const HINTS = [["?", "help"], ["j k", "move"], ["← →", "fold"], ["enter", "go to pane"], ["tab", "next flag"], ["c", "answer"], ["x", "mute"], ["space", "pin"], ["f", "filter"], ["a", "follow"], ["z", "zoom"], ["w", "window"], ["e", "explain"], ["[ ]", "walk"], ["i", "input"], ["d", "demo"], ["q", "quit"]]
+const HINT_KEY = { "?": "?", "j k": "j", "← →": "right", enter: "enter", tab: "tab", c: "c", x: "x", space: "space", f: "f", a: "a", z: "z", w: "w", e: "e", "[ ]": "]", i: "i", d: "d", q: "q" }
 
 export const hud = {
   // ---------------------------------------------------------------- header
@@ -414,6 +422,7 @@ export const hud = {
         list.push({ name: "over:card", rect, signature: `${pinned}|${JSON.stringify(content)}`, draw: (c) => this.drawCard(c, rect, content, pinned) })
       }
     }
+    if (ui.explain && !ui.help) for (const tag of this.explainTags(scene, now)) list.push(tag)
     if (ui.help) {
       const w = Math.min(this.W - u(80), u(1180))
       const h = Math.min(this.H - u(120), u(96) + (KEYMAP.length + 3) * u(29))
@@ -544,6 +553,66 @@ export const hud = {
       lines.push(["SESSION", session.id, INK.dim])
       return { tone: modelColor(session.model, session.provider), kicker: `${session.parentId ? "SUBAGENT" : "THREAD"} ${index(session.id)}`, title: session.title, lines, pin: true, foot: `click: focus${pane ? "  ·  middle click: go to pane" : ""}  ·  space: pin` }
     }
+    if (target.kind === "dot") {
+      const flock = this.flock
+      const meta = flock.sid === target.sid ? flock.meta[target.index] : null
+      const session = scene.byId.get(target.sid)
+      if (!meta || !session) return null
+      const out = flock.squad[target.index] ? flock.squads.get(flock.squad[target.index]) : null
+      const tone = meta.kind === "say" ? INK.text : meta.kind === "tool" && meta.tool ? PORT_COLOR[portOf(meta.tool.name)] : modelColor(session.model, session.provider)
+      return {
+        tone,
+        kicker: "OUTPUT DOT",
+        title: `dot ${target.index + 1} of ${flock.count}  ·  ${KIND_WORD[meta.kind]}`,
+        lines: [
+          ["THREAD", threadOf(target.sid)],
+          ["STANDS FOR", `${compactOf(meta.to - meta.from)} tok: ${compactOf(meta.from)} to ${compactOf(meta.to)} of the turn's ${compactOf(flock.out)}`],
+          ["PART", `${KIND_WORD[meta.kind]}${meta.tool ? ` for ${bare(meta.tool.name)}` : ""}`, tone],
+          ["MODEL CALL", meta.seq === null ? "not known: the call has not reported yet" : `call ${meta.seq}`],
+          ["WRITTEN", meta.seq === null ? "n/a" : `${clockOf(meta.at)}  ·  ${agoOf(now - meta.at)} ago`],
+          ["DEPTH", `layer ${flock.level[target.index]} of 6, nearer is newer`],
+          ["DOING", out ? `out with ${bare(out.tool.name)}, waiting at its spoke` : flock.state, out ? PORT_COLOR[portOf(out.tool.name)] : undefined],
+        ],
+        pin: true,
+        foot: "the split inside a call is by the length of its reasoning, reply and tool input",
+      }
+    }
+    if (target.kind === "flock" || target.kind === "lean") {
+      const flock = this.flock
+      const session = scene.byId.get(target.id)
+      if (!session || flock.sid !== session.id) return null
+      const rate = scene.rateOf(session.id, now)
+      const squads = [...flock.squads.values()].map((squad) => bare(squad.tool.name))
+      const lean = Math.round((flock.tilt * 180) / Math.PI)
+      const lines = [
+        ["SIZE", flock.out ? `${flock.count} dots × ${compactOf(flock.unit)} tok = ${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}` : "no output reported"],
+        ["MADE OF", `${flock.mix.think} reasoning  ·  ${flock.mix.say} reply  ·  ${flock.mix.tool} tool input${flock.mix.unknown ? `  ·  ${flock.mix.unknown} not split yet` : ""}`],
+        ["FORMATION", flock.state, session.state === "working" ? INK.live : INK.soft],
+        ["SPEED", session.state === "working" ? `${Math.round(flock.speed)} px/s round the clock${rate ? `, from ${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s` : ", no rate reported"}` : "at rest"],
+        ["PACKING", flock.fill ? `context ${Math.round(flock.fill * 100)}% full: the inner wall stands ${Math.round(flock.fill * 72)}% of the way to the rim` : "context not reported: the whole lane is free"],
+        ["LEAN", `${lean}°${session.expect && session.turn ? `  ·  the turn is at ×${((now - session.turn.start) / session.expect.p50).toFixed(1)} its usual length` : "  ·  20° on pace, 38° at twice the usual length"}`],
+        ["OUT WITH TOOLS", squads.length ? squads.join(", ") : "none"],
+        ["CAP", `${FLOCK_CAP} dots; past that one dot stands for more tokens`],
+      ]
+      return { tone: modelColor(session.model, session.provider), kicker: target.kind === "lean" ? "THE DISC" : "FLOCK", title: threadOf(session.id), lines, pin: true, foot: "white reply, the model's colour reasoning, an equipment colour tool input" }
+    }
+    if (target.kind === "ridge") {
+      const session = scene.byId.get(target.sid)
+      if (!session) return null
+      return {
+        tone: modelColor(session.model, session.provider),
+        kicker: "RIDGE POINT",
+        title: `${target.value >= 10 ? Math.round(target.value) : target.value.toFixed(1)} tok/s at ${clockOf(target.at)}`,
+        lines: [["THREAD", threadOf(target.sid)], ["WHEN", `${clockOf(target.at)}  ·  ${agoOf(now - target.at)} ago`], ["OUTPUT", `${target.value.toFixed(1)} tok/s, averaged over ${spanOf(target.slice)}`], ["WINDOW", `the last ${spanOf(target.span)}`], ["HOW", "a call's tokens are spread evenly over the time it took"], ["NOTE", "estimated from text length where a call reports no tokens", INK.dim]],
+        pin: true,
+        foot: target.sid === scene.focus.id ? "click: pin this point  ·  w: change the window" : "click: focus this thread  ·  w: change the window",
+      }
+    }
+    if (target.kind === "terrain") {
+      const geo = this.terrainGeo
+      if (!geo) return null
+      return { tone: INK.soft, kicker: "TIME TERRAIN", title: `the last ${spanOf(geo.span)}`, lines: [["RIDGES", `${geo.ridges.length} threads, the focused one in front`], ["HEIGHT", `tokens a second; full height is ${geo.top} tok/s`], ["STEP", `one slice is ${spanOf(geo.slice)}`], ["MARKS", "diamond: tool call  ·  red: failed  ·  flag: alert  ·  ring: dispatched"], ["HEAD", "the dot at now is the newest reading of a working thread"], ["CHARGE", "one mote per 5 s a call runs before its first word"]], foot: "w or the buttons: 1, 5 or 30 minutes" }
+    }
     if (target.kind === "project") {
       const project = scene.projects.find((entry) => entry.key === target.id)
       if (!project) return null
@@ -628,6 +697,8 @@ export const hud = {
     return null
   },
 }
+
+Object.assign(hud, explain)
 
 export const shortTarget = (target, scene) => {
   if (!target) return "nothing"

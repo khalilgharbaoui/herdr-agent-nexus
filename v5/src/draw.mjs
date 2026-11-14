@@ -763,6 +763,8 @@ export class Renderer {
       if (pinned?.kind === "dot" && pinned.sid === session.id && pinned.index < flock.count && flock.level[pinned.index]) out.push({ key: "pin-dot", kind: `ring|${INK.live}`, x: flock.sx[pinned.index], y: flock.sy[pinned.index], top: true })
     }
     this.terrainSprites(scene, now, out)
+    // explain mode: a ring on the one mark each tag is about
+    if (ui.explain && !ui.help) (this.explainAnchors ?? []).forEach((anchor, index) => out.push({ key: `ex${index}`, kind: `ring|${INK.live}`, x: anchor.x, y: anchor.y, top: true }))
     // the reticles: focus (cyan) and pointer (white) ease from one target to the next
     const g = G.rowOf.get(scene.focus.id)
     this.track("focus", g ? { x: g.somaX - g.r - u(11), y: g.axonY - g.r - u(11), w: (g.r + u(11)) * 2, h: (g.r + u(11)) * 2 } : null, INK.live, 14, out)

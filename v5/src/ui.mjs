@@ -8,6 +8,7 @@
 
 import { execFile } from "node:child_process"
 import fs from "node:fs"
+import { REGION_ORDER, REGION_WORD } from "./explain.mjs"
 import { shortTarget } from "./hud.mjs"
 import { inside } from "./theme.mjs"
 import { WINDOWS } from "./terrain.mjs"
@@ -25,7 +26,7 @@ export class Controller {
     this.getScene = scene
     this.actions = actions
     this.logFile = logFile
-    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, help: false, monitor: false, zoom: false, window: WINDOWS[1], tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
+    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, help: false, explain: false, walk: null, monitor: false, zoom: false, window: WINDOWS[1], tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
     this.counts = { keys: 0, moves: 0, clicks: 0, wheels: 0 }
     this.events = []
     this.dirty = false // the scene has to be rebuilt (a fold, a filter)
@@ -56,6 +57,17 @@ export class Controller {
       ui.hover = null
       ui.card = null
       ui.tip = ""
+    }
+    if (ui.walk && !ui.pointer) {
+      // the keyboard is on a mark: stay on it, and follow it when it is a dot in flight
+      const target = ui.walk.target
+      const flock = this.renderer.flock
+      if (target.kind === "dot" && flock.level[target.index]) {
+        target.rect.x = flock.sx[target.index] - target.rect.w / 2
+        target.rect.y = flock.sy[target.index] - target.rect.h / 2
+      }
+      ui.hover = target
+      return
     }
     if (!ui.pointer || !this.scene.world) return
     const target = this.renderer.hitTest(ui.pointer.x, ui.pointer.y, this.scene, now)
@@ -97,6 +109,7 @@ export class Controller {
     const ui = this.ui
     const scene = this.scene
     ui.pointer = { x: event.x, y: event.y, at: now }
+    ui.walk = null
     if (event.kind === "move" || event.kind === "drag") {
       this.counts.moves += 1
       this.refresh(now)
@@ -193,6 +206,28 @@ export class Controller {
     }
   }
 
+  // The keyboard's way to every mark: step through the inspectable things of one region, or
+  // change region. The mark gets the pointer's brackets and its card, as if hovered.
+  walk(step, regionStep, now) {
+    const ui = this.ui
+    const groups = this.renderer.walkTargets(this.scene)
+    const names = REGION_ORDER.filter((name) => groups.get(name)?.length)
+    if (!names.length) return "nothing to walk yet"
+    let region = ui.walk && names.includes(ui.walk.region) ? ui.walk.region : names[0]
+    let index = 0
+    if (regionStep && ui.walk) region = names[(names.indexOf(region) + regionStep + names.length) % names.length]
+    const list = groups.get(region)
+    if (ui.walk && !regionStep && ui.walk.region === region) index = (ui.walk.index + step + list.length) % list.length
+    const target = { ...list[index], rect: { ...list[index].rect } }
+    ui.walk = { region, index, target }
+    ui.pointer = null
+    ui.hover = target
+    ui.hoverAt = now
+    ui.card = { target, anchor: { x: target.rect.x, y: target.rect.y } }
+    ui.tip = `walking ${REGION_WORD[region]}: ${index + 1} of ${list.length}  ·  [ ] step  ·  { } region  ·  enter acts  ·  esc leaves`
+    return `walk ${region} ${index + 1}/${list.length}: ${shortTarget(target, this.scene)}`
+  }
+
   pin(target) {
     const ui = this.ui
     if (ui.pinned && ui.pinned.target.kind === target.kind && ui.pinned.target.id === target.id) {
@@ -261,6 +296,12 @@ export class Controller {
     }
     if (key === "escape") {
       if (ui.help) ui.help = false
+      else if (ui.walk) {
+        ui.walk = null
+        ui.hover = null
+        ui.card = null
+        ui.tip = ""
+      } else if (ui.explain) ui.explain = false
       else if (ui.pinned) ui.pinned = null
       else if (ui.tailScroll) ui.tailScroll = 0
       else return "nothing to close"
@@ -277,6 +318,14 @@ export class Controller {
       ui.monitor = !ui.monitor
       return ui.monitor ? "input monitor on" : "input monitor off"
     }
+    if (key === "e") {
+      ui.explain = !ui.explain
+      return ui.explain ? "explaining every kind of mark in place" : "explanations off"
+    }
+    if (!scene.world) return ""
+    if (key === "]" || key === "[") return this.walk(key === "]" ? 1 : -1, 0, now)
+    if (key === "}" || key === "{") return this.walk(0, key === "}" ? 1 : -1, now)
+    if (key === "enter" && ui.walk) return this.click(ui.walk.target, { button: "left" }, now)
     if (key === "w") return this.action(`window:${WINDOWS[(WINDOWS.indexOf(ui.window) + 1) % WINDOWS.length]}`, now)
     if (key === "z") {
       ui.zoom = !ui.zoom
