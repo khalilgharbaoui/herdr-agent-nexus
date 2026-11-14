@@ -383,6 +383,13 @@ export class Terminal {
     // pages that were dropped to make room leave the terminal too, and their placements with them
     const dropPages = atlas.retired.map((id) => PAGE_BASE + id)
     atlas.retired = []
+    if (this.sabotage) {
+      // a test (SIGUSR2): one page is deleted on the terminal behind this side's back, as the
+      // terminal does when its store is full. The heartbeat has to notice and send it again.
+      this.sabotage = false
+      const page = [...atlas.pages.values()].find((entry) => entry.sent && entry.held)
+      if (page) dropPages.push(PAGE_BASE + page.id)
+    }
     // the heartbeat: every sprite page is asked whether it is still there
     const now = Date.now()
     const probes = []

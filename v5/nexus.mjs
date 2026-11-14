@@ -183,6 +183,7 @@ async function runTerminal() {
   let scene = new Scene()
   let painted = OPTIONS.painted
   let fallback = null // why the moving layer is painted when nobody asked for that
+  let fallbackAt = 0
   let error = null
   let quitting = false
   let wantShot = null
@@ -314,10 +315,20 @@ async function runTerminal() {
         if (why) {
           painted = true
           fallback = why
+          fallbackAt = now
           atlas.clear()
           readAll = true
           lastSpriteBands = null
         }
+      } else if (fallback && now - fallbackAt > 60e3 && terminal.tilesHeld + atlas.budget + 6e6 <= STORE_LIMIT) {
+        // a minute later, and with room in the store: sprites get another try
+        painted = false
+        fallback = null
+        terminal.gfx.lost = []
+        terminal.gfx.refused = 0
+        atlas.clear()
+        readAll = true
+        lastSpriteBands = null
       }
       let outcome
       if (painted) {
@@ -460,6 +471,9 @@ async function runTerminal() {
   })
   process.on("SIGUSR1", () => {
     wantShot = "latest.png"
+  })
+  process.on("SIGUSR2", () => {
+    terminal.sabotage = true // see Terminal.send: proves the heartbeat against the real terminal
   })
   process.on("SIGINT", quit)
   process.on("SIGTERM", quit)
