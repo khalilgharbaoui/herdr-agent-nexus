@@ -1,0 +1,127 @@
+{
+ "started": "2026-11-14T18:01:33.171Z",
+ "cols": 125,
+ "rows": 82,
+ "tests": {
+  "featureT": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=31;EINVAL: dimensions requiredESC\\"
+  },
+  "featureP": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=32;EINVAL: dimensions requiredESC\\"
+  },
+  "featureF": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=33;EINVAL: dimensions requiredESC\\"
+  },
+  "featureA": {
+   "ms": 0.2,
+   "reply": "ESC_Gi=34;EINVAL: dimensions requiredESC\\"
+  },
+  "atlasKb": 1.6,
+  "atlasUpload": {
+   "ms": 0.7,
+   "reply": "ESC_Gi=6001;OKESC\\"
+  },
+  "placeWindow": {
+   "ms": 1.4,
+   "reply": "ESC_Gi=6001,p=1;OKESC\\"
+  },
+  "moveSame": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6001,p=1;OKESC\\"
+  },
+  "placeOutOfBounds": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6001,p=2;OKESC\\"
+  },
+  "placeUnknownImage": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6999,p=1;ENOENT: image not foundESC\\"
+  },
+  "placeAfterDelete": {
+   "ms": 1.2,
+   "reply": "ESC_Gi=6001,p=3;OKESC\\"
+  },
+  "tileUnder": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6100,p=1;OKESC\\"
+  },
+  "spriteOver": {
+   "ms": 1.2,
+   "reply": "ESC_Gi=6001,p=4;OKESC\\"
+  },
+  "move50": {
+   "bytesPerFrame": 3084,
+   "ms": {
+    "median": 1.3,
+    "min": 0.1,
+    "max": 1.5
+   }
+  },
+  "move150": {
+   "bytesPerFrame": 9239,
+   "ms": {
+    "median": 1.5,
+    "min": 0.3,
+    "max": 1.9
+   }
+  },
+  "move300": {
+   "bytesPerFrame": 18469,
+   "ms": {
+    "median": 2,
+    "min": 1,
+    "max": 5.6
+   }
+  },
+  "move600": {
+   "bytesPerFrame": 36917,
+   "ms": {
+    "median": 2.5,
+    "min": 1.3,
+    "max": 3.2
+   }
+  },
+  "burst300x60": {
+   "totalMs": 43.6,
+   "lastAnswerMs": 1.3
+  },
+  "delete600": {
+   "ms": 2.3,
+   "reply": ""
+  },
+  "placeAfterMassDelete": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6001,p=5;OKESC\\"
+  },
+  "animBase": {
+   "ms": 1.3,
+   "reply": "ESC_Gi=6200,p=1;OKESC\\"
+  },
+  "animFrame": {
+   "ms": 1.5,
+   "reply": "ESC_Gi=6200,r=2;OKESC\\"
+  },
+  "animPlay": {
+   "ms": 0.1,
+   "reply": ""
+  },
+  "animSetFrame": {
+   "ms": 1.4,
+   "reply": ""
+  },
+  "mouseMode": {
+   "ms": 1.3,
+   "reply": "ESC[?1000;1$y"
+  }
+ },
+ "native": {
+  "cw": 15,
+  "ch": 30,
+  "W": 1890,
+  "H": 2460
+ },
+ "finished": "2026-11-14T18:01:33.602Z"
+}
