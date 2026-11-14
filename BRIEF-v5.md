@@ -83,3 +83,18 @@ Stay in v4's class: 30 fps where there is motion, 5 to 7% of a core live with th
 ## Report back
 
 What was added and why, how each sentence of the operator's is answered, the table of marks (or a pointer to it), what each motion means, the interaction additions, what was tested really versus synthetically, measurements, what is not verified, how to run v1 to v5, and the commits. Keep it tight.
+
+## Addendum: the operator's second message, same evening (verbatim)
+
+> "no do it and a thouch of 3D
+> bring it to life"
+
+### 7. A touch of 3D
+
+- Give the screen real depth where it adds meaning and wonder. The flock moves in three dimensions: a dot's size, brightness and overlap follow its depth, and the swarm turns in space, not on a plane. The round element becomes a body with volume (a sphere, a tilted ring system, an orbit seen in perspective) rather than a flat dial. Layers shift against each other (parallax) when the focus changes or the pointer moves. Light and shadow agree across the screen.
+- A touch, not an engine. Project points and simple shapes yourself, cheaply. The circuit, the rails and all text stay flat and sharp; nothing that has to be read may tilt out of legibility.
+- Depth means something, like every other motion. For example: nearer is newer and output recedes as it ages; or depth separates reasoning, reply and tool input; or the view turns toward the thread that needs the operator. Put the mapping in the table of marks.
+- Interaction survives it: a dot at depth is still a hover and click target (hit-test in screen space, nearest first).
+- Hold the performance class, and measure the 3D flock at its densest.
+
+"bring it to life" is the measure for all of v5: when the operator looks at the pane, it should feel like a living thing that is also an exact instrument.

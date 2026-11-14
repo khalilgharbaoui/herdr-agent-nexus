@@ -5,12 +5,12 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-14 22:26: v5, asked for by the operator (words verbatim in `BRIEF-v5.md`). Not started
-  yet: `default` is at 85% of its five-hour window (resets 02:20) and `appical` is out until
-  23:30. Plan: at 23:31 the directing session dispatches a fresh `designer` subagent on appical
-  (`claude-code-appical/claude-fable-5-2@appical#xhigh`) with `BRIEF-v5.md` as its brief, in the
-  background. If no `v5/` exists and nobody is building it, that dispatch did not happen: do it.
-  Remove this entry when v5 is running in pane `wE:pQ1`.
+- 2026-11-14 22:36: v5 (operator: words verbatim in `BRIEF-v5.md`, with the addendum "a thouch of
+  3D, bring it to life"). The operator reset usage on `default` (1% used, window to 03:30), so a
+  fresh `designer` subagent was dispatched at once on `claude-code-default/claude-fable-5-2#xhigh`,
+  in the background, with `BRIEF-v5.md` as its brief. The 23:31 wake-up planned earlier is moot.
+  If no `v5/` exists and nobody is building it, that dispatch failed: dispatch again.
+  The designer removes this entry when v5 is running in pane `wE:pQ1`.
 
 ## Open from the operator
 
