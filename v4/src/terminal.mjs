@@ -78,6 +78,7 @@ export class Terminal {
     for (const match of modes.matchAll(/\x1b\[\?(\d+);(\d)\$y/g)) this.mouseModes[match[1]] = Number(match[2])
     this.input.pixels = this.mouseModes[1016] === 1 || this.mouseModes[1016] === 3
     this.input.cell = this.cell
+    this.input.origin = process.env.HERDR_ENV === "1" ? 1 : 0
     this.worker = new Worker(path.join(HERE, "encoder.mjs"))
     this.worker.on("message", (result) => {
       this.inflight = Math.max(0, this.inflight - 1)

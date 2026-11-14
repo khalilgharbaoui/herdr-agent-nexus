@@ -1,8 +1,9 @@
 // Input: turns the bytes the terminal sends into key and mouse events.
 //
 // Mouse reports arrive in SGR form, ESC [ < b ; x ; y M (press, motion) or m (release). With
-// mode 1016 on, x and y are pixels inside the pane (0-based); without it they are 1-based cells
-// and are mapped to the middle of the cell. Everything else that starts with ESC and is not a
+// mode 1016 on, x and y are pixels inside the pane (herdr counts them from 1, Ghostty on its own
+// from 0: `origin` says which); without it they are 1-based cells and are mapped to the middle
+// of the cell. Everything else that starts with ESC and is not a
 // key (answers to queries, graphics acknowledgements) is swallowed.
 
 const KEYS = {
@@ -36,6 +37,7 @@ const STRING = /^\x1b[_P\]^][^\x1b\x07]*(?:\x1b\\|\x07)/
 export class Input {
   constructor() {
     this.pixels = false // set once the terminal confirmed mode 1016
+    this.origin = 0 // what the terminal calls the first pixel: 1 inside herdr
     this.cell = { width: 15, height: 30 }
     this.listeners = []
     this.pending = ""
@@ -113,8 +115,8 @@ export class Input {
     } else if (motion) event.kind = event.button ? "drag" : "move"
     else event.kind = release ? "up" : "down"
     if (this.pixels) {
-      event.x = x
-      event.y = y
+      event.x = x - this.origin
+      event.y = y - this.origin
     } else {
       event.x = Math.round((x - 0.5) * this.cell.width)
       event.y = Math.round((y - 0.5) * this.cell.height)
@@ -126,13 +128,13 @@ export class Input {
 }
 
 // The same report the terminal would send, for tests: tools/poke.mjs writes these into the pane.
-export function sgr(kind, x, y, { button = "left", pixels = true, cell = { width: 15, height: 30 } } = {}) {
+export function sgr(kind, x, y, { button = "left", pixels = true, origin = 0, cell = { width: 15, height: 30 } } = {}) {
   let code = { left: 0, middle: 1, right: 2 }[button] ?? 0
   if (kind === "move") code = 35
   else if (kind === "drag") code += 32
   else if (kind === "wheel-up") code = 64
   else if (kind === "wheel-down") code = 65
-  const px = pixels ? Math.round(x) : Math.floor(x / cell.width) + 1
-  const py = pixels ? Math.round(y) : Math.floor(y / cell.height) + 1
+  const px = pixels ? Math.round(x) + origin : Math.floor(x / cell.width) + 1
+  const py = pixels ? Math.round(y) + origin : Math.floor(y / cell.height) + 1
   return `\x1b[<${code};${px};${py}${kind === "up" ? "m" : "M"}`
 }
