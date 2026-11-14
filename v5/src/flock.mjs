@@ -21,7 +21,7 @@ import { portOf } from "./model.mjs"
 import { GOLDEN, PORT_COLOR, spriteHex } from "./theme.mjs"
 import { INK, TAU, clamp, modelColor } from "./util.mjs"
 
-export const FLOCK_CAP = 240 // dots; past this one dot stands for more tokens
+export const FLOCK_CAP = 300 // dots; past this one dot stands for more tokens
 export const FLOCK_UNITS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000]
 const LEVELS = 6
 const FOCAL = 620 // perspective: the eye is this many pixels in front of the screen (at scale 1)
@@ -213,8 +213,13 @@ export class Flock {
       const stagger = fresh ? 0 : clamp(2400 / added, 24, 380)
       for (let index = this.count; index < count; index += 1) {
         if (fresh) {
-          this.lattice(index, count, rIn, r1, zSpan, this.notch, spot)
-          this.wake[index] = 0
+          // a change of focus: the new thread's flock gathers from all around and forms up
+          const angle = this.random() * TAU
+          const far = core.frame * (1.1 + this.random() * 0.5)
+          spot[0] = Math.cos(angle) * far
+          spot[1] = Math.sin(angle) * far
+          spot[2] = (this.random() - 0.5) * u(160)
+          this.wake[index] = now + this.random() * 260
         } else {
           this.toDisc(entry.x - core.cx + (this.random() - 0.5) * u(10), entry.y - core.cy, focal, spot)
           this.wake[index] = now + (index - this.count) * stagger
@@ -323,6 +328,18 @@ export class Flock {
     }
     const inner = rIn + u(6)
     const outer = r1 - u(4)
+    // where the body of the flock is on its way round: the mean bearing of the free dots
+    let meanX = 0
+    let meanY = 0
+    for (let i = 0; i < count; i += 1) {
+      if (wake[i] > now || squad[i]) continue
+      const rho = Math.hypot(x[i], y[i]) || 1
+      meanX += x[i] / rho
+      meanY += y[i] / rho
+    }
+    const meanLength = Math.hypot(meanX, meanY) || 1
+    meanX /= meanLength
+    meanY /= meanLength
     const cruise = Math.max(windSpeed * 2, u(64)) + (scattering ? u(300) : 0)
     for (let i = 0; i < count; i += 1) {
       if (wake[i] > now) continue
@@ -384,13 +401,17 @@ export class Flock {
           const rho = Math.hypot(px, py) || 1
           const nx = px / rho
           const ny = py / rho
-          // the stream: around the clock, clockwise, at the speed the tokens set
+          // the stream: around the clock, clockwise, at the speed the tokens set. Newer output
+          // flies a little faster than older, so the head of the flock is the newest and the
+          // tail the oldest, and the body holds together on its way round.
           const along = vx[i] * -ny + vy[i] * nx
-          fx += -ny * (windSpeed - along) * 2.1
-          fy += nx * (windSpeed - along) * 2.1
-          // the lanes: the context wall inside, the rim outside
+          const want = windSpeed * (0.84 + (0.32 * (i + 0.5)) / count)
+          const gather = u(52) * (nx * meanY - ny * meanX)
+          fx += -ny * ((want - along) * 2.1 + gather)
+          fy += nx * ((want - along) * 2.1 + gather)
+          // the lanes: the context wall inside, the rim outside; a faster dot swings wider
           const across = vx[i] * nx + vy[i] * ny
-          let push = -across * 1.4
+          let push = -across * 1.4 + (along * along) / rho
           if (rho < inner) push += (inner - rho) * 26
           else if (rho > outer) push -= (rho - outer) * 26
           fx += nx * push

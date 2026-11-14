@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-// Agent Nexus v4: every opencode session, subagent and herdr agent on this machine as a living
+// Agent Nexus v5: every opencode session, subagent and herdr agent on this machine as a living
 // circuit you can point at. Each thread is a neuron: quota runs in from its account, its own
 // words ride on the axon, every tool call is a pulse out to the equipment it acts with and a
 // pulse back. Threads are grouped by project, a phase strip says whether anything needs you, a
 // call rings in the comms panel when a thread is waiting on you, and everything on screen
 // answers to the pointer and the keyboard.
 //
-//   node --no-warnings v4/nexus.mjs                 live, in the current terminal
-//   node --no-warnings v4/nexus.mjs --demo          simulated data
-//   node --no-warnings v4/nexus.mjs --frames 2 --size 1890x2460 [--demo] [--poke "move:900,1300;key:?"]
+//   node --no-warnings v5/nexus.mjs                 live, in the current terminal
+//   node --no-warnings v5/nexus.mjs --demo          simulated data
+//   node --no-warnings v5/nexus.mjs --frames 2 --size 1890x2460 [--demo] [--poke "move:900,1300;key:?"]
 //
-// Press ? for the keys and what the mouse does. SIGUSR1 writes v4/shots/latest.png. It reads
+// Press ? for the keys and what the mouse does. SIGUSR1 writes v5/shots/latest.png. It reads
 // opencode's database, the plugin's state files and herdr, writes nothing outside this folder,
 // and the only thing it ever asks of herdr is to bring a pane to the front when you say so.
 
@@ -48,6 +48,7 @@ const OPTIONS = {
   painted: process.argv.includes("--painted"), // moving parts painted into the tiles instead of sprites
   poke: argument("poke", ""), // headless only: a script of input events, to look at hover, click and key handling
   name: argument("name", ""),
+  every: Number(argument("every", 1500)), // headless: milliseconds of real time between saved frames
 }
 const POLL_MS = 250
 const QUIET_FPS = 10
@@ -136,7 +137,7 @@ async function runHeadless() {
     // run in real time for a moment so pulses are caught in flight, as on the screen
     let result = null
     let worst = 0
-    const until = Date.now() + (frame === 0 ? 2600 : 1500)
+    const until = Date.now() + (frame === 0 ? 2600 : OPTIONS.every)
     let pokeAt = Date.now() + 1200
     while (Date.now() < until || (frame === 0 && pokes.length)) {
       const now = Date.now()
@@ -222,7 +223,7 @@ async function runTerminal() {
       },
       snapshot: () => {
         wantShot = `live-${Date.now()}.png`
-        return "saved a snapshot to v4/shots"
+        return "saved a snapshot to v5/shots"
       },
       transport: () => {
         painted = !painted

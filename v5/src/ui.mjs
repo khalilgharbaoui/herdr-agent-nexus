@@ -1,6 +1,6 @@
 // The controller: turns key and mouse events into what the operator meant. It owns the interface
 // state the renderer reads (pointer, hover, inspection card, pin, help, monitor, zoom) and keeps
-// a short log of the events it received in v4/input.json, so input can be checked without
+// a short log of the events it received in v5/input.json, so input can be checked without
 // seeing the screen.
 //
 // The only thing it ever does outside this program is ask herdr to focus a pane, and only when

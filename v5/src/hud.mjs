@@ -22,7 +22,7 @@ export const KEYMAP = [
   ["i", "input monitor: last event, what it hit"],
   ["d", "live data or the simulation"],
   ["p", "moving layer: sprites or painted tiles"],
-  ["s", "save a snapshot to v4/shots"],
+  ["s", "save a snapshot to v5/shots"],
   ["?  esc", "this sheet, and closing things"],
   ["q", "quit"],
 ]
@@ -57,7 +57,7 @@ export const hud = {
     const demo = scene.world?.mode === "DEMO"
     let x = this.run(c, M, u(50), [
       ["AGENT NEXUS", { size: 22, family: FAMILY.label, weight: "600", color: INK.text, spacing: 7 }],
-      ["  4", { size: 22, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2 }],
+      ["  5", { size: 22, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2 }],
     ])
     x += u(24)
     this.dot(c, x + u(4), u(43), u(4), demo ? INK.warn : INK.live)

@@ -83,19 +83,22 @@ export class Renderer {
       G.footer = { x: 0, y: H - footerH, w: left, h: footerH }
       G.stage = { x: left, y: G.header.h, w: W - left, h: H - G.header.h }
     } else {
-      G.stage = { x: 0, y: G.header.h, w: W, h: u(650) + extra }
+      G.stage = { x: 0, y: G.header.h, w: W, h: u(840) + extra }
       G.circuit = { x: 0, y: G.stage.y + G.stage.h, w: W, h: H - G.stage.y - G.stage.h - footerH }
       G.footer = { x: 0, y: H - footerH, w: W, h: footerH }
     }
     // the focus instrument
-    const core = { RA: u(206), RB: u(170), r0: u(86), r1: u(152), frame: u(250) }
-    core.cx = G.stage.x + M + u(262)
-    core.cy = G.stage.y + u(312)
+    // the living core: the centrepiece, a third larger than v4's dial
+    const core = { RA: u(276), RB: u(232), r0: u(104), r1: u(208), frame: u(330) }
+    core.cx = G.stage.x + M + u(346)
+    core.cy = G.stage.y + u(404)
     G.core = core
     const headX = core.cx + core.frame + u(44)
     G.head = { x: headX, y: G.stage.y + u(34), w: G.stage.x + G.stage.w - M - headX }
     if (wide) G.tail = { x: G.stage.x + M + u(20), y: core.cy + core.frame + u(96), w: G.stage.w - 2 * M - u(20), h: G.stage.y + G.stage.h - u(40) - (core.cy + core.frame + u(96)) }
-    else G.tail = { x: G.head.x, y: G.stage.y + u(296), w: G.head.w, h: G.stage.h - u(296) - u(24) }
+    else G.tail = { x: G.head.x, y: G.stage.y + u(560), w: G.head.w, h: G.stage.h - u(560) - u(24) }
+    // the time terrain: every thread's output over the last minutes, between the numbers and the tail
+    G.terrain = { x: G.head.x, y: G.stage.y + u(262), w: G.head.w, h: u(250) }
     // the circuit
     const C = G.circuit
     G.rowsTop = C.y + u(62)
@@ -322,6 +325,10 @@ export class Renderer {
       if (!inside(overlay.rect, x, y)) continue
       for (const target of this.hits.get(overlay.name) ?? []) if (inside(target.rect, x, y)) return target
       return { kind: "overlay", id: overlay.name, rect: overlay.rect }
+    }
+    for (const moon of this.moons ?? []) {
+      const r = this.u(13)
+      if (Math.abs(x - moon.x) <= r && Math.abs(y - moon.y) <= r) return { kind: "thread", id: moon.sid, moon: true, moving: true, rect: { x: moon.x - r, y: moon.y - r, w: r * 2, h: r * 2 } }
     }
     const dot = this.dotAt(x, y, scene)
     if (dot) return dot
@@ -732,6 +739,23 @@ export class Renderer {
       flock.step({ session, turn, scale: turn ? this.turnScale(session, turn.end - turn.start) : 0, now, dt: this.dt, core, S: this.S, rate: scene.rateOf(session.id, now), entry: G.wide || !G.busX ? { x: core.cx, y: core.cy + core.frame } : { x: G.busX, y: core.cy + reach }, pointer: ui.pointer && !ui.help ? ui.pointer : null, focusSince: scene.focus.since })
       flock.emit(out, { core, S: this.S, session, now })
       this.flockMs = performance.now() - started
+      // moons: the focused thread's subagents ride the instrument's outer circle, each a comet
+      // that turns as fast as its own tokens stream; one that rests sits still
+      this.moons = []
+      let slot = 0
+      for (const row of scene.threads) {
+        if (row.parent?.session.id !== session.id) continue
+        const child = row.session
+        const tone = spriteHex(child.state === "waiting" ? INK.warn : modelColor(child.model, child.provider))
+        const busy = child.state === "working"
+        const theta = busy ? (this.theta.get(child.id) ?? 0) * 0.35 + slot * 2.4 : Math.PI * 0.75 + slot * 0.22
+        const mx = core.cx + Math.cos(theta) * core.frame
+        const my = core.cy + Math.sin(theta) * core.frame
+        if (busy) this.comet(out, `moon:${child.id}`, core.cx, core.cy, core.frame, theta, tone, 5, 0.03, true)
+        else out.push({ key: `moon:${child.id}`, kind: `dot|${tone}`, x: mx, y: my })
+        this.moons.push({ sid: child.id, x: mx, y: my })
+        slot += 1
+      }
       const pinned = ui.pinned?.target
       if (pinned?.kind === "dot" && pinned.sid === session.id && pinned.index < flock.count && flock.level[pinned.index]) out.push({ key: "pin-dot", kind: `ring|${INK.live}`, x: flock.sx[pinned.index], y: flock.sy[pinned.index], top: true })
     }
