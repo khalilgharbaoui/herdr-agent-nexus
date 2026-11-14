@@ -268,9 +268,16 @@ async function runTerminal() {
       if (!bands[band]) continue
       const top = band * bandHeight
       context.clearRect(0, top, terminal.width, bandHeight)
-      context.drawImage(renderer.canvas, 0, top, terminal.width, bandHeight, 0, top, terminal.width, bandHeight)
     }
-    for (const sprite of sprites) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
+    // the same three layers as the sprite transport: behind the still layer, the still layer, in front
+    context.save()
+    context.beginPath()
+    for (let band = 0; band < bands.length; band += 1) if (bands[band]) context.rect(0, band * bandHeight, terminal.width, bandHeight)
+    context.clip()
+    for (const sprite of sprites) if (sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
+    context.drawImage(renderer.canvas, 0, 0)
+    context.restore()
+    for (const sprite of sprites) if (!sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
     lastSpriteBands = now
     return { context, bands }
   }
@@ -299,7 +306,7 @@ async function runTerminal() {
         const { context, bands } = paintSprites(sprites, changed ? renderer.marks : null)
         outcome = terminal.send(context, bands, [], atlas)
       } else {
-        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas)
+        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas, readAll ? null : renderer.spans)
       }
       if (outcome === "sent") {
         total.sent += 1

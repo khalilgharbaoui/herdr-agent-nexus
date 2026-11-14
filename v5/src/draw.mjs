@@ -417,6 +417,9 @@ export class Renderer {
     this.advance(scene, now, this.dt)
     const bands = Math.ceil(this.H / this.bandHeight)
     this.marks = new Uint8Array(bands)
+    // per tile row, the columns that were painted: x0 and x1
+    this.spans = new Int32Array(bands * 2)
+    for (let band = 0; band < bands; band += 1) this.spans[band * 2] = this.W
     const wires = this.signWires(scene, now)
     const rewire = wires !== this.wiresSignature || rearranged
     if (rewire) {
@@ -454,7 +457,13 @@ export class Renderer {
     }
     this.overlays = overlays
     this.occluders = overlays.map((overlay) => overlay.rect)
-    if (rearranged) this.marks.fill(1)
+    if (rearranged) {
+      this.marks.fill(1)
+      for (let band = 0; band < bands; band += 1) {
+        this.spans[band * 2] = 0
+        this.spans[band * 2 + 1] = this.W
+      }
+    }
     return any
   }
 
@@ -475,7 +484,11 @@ export class Renderer {
     this.sink = null
     const first = Math.max(0, Math.floor(y / this.bandHeight))
     const last = Math.min(this.marks.length - 1, Math.floor((y + h - 1) / this.bandHeight))
-    for (let band = first; band <= last; band += 1) this.marks[band] = 1
+    for (let band = first; band <= last; band += 1) {
+      this.marks[band] = 1
+      if (x < this.spans[band * 2]) this.spans[band * 2] = Math.max(0, Math.floor(x))
+      if (x + w > this.spans[band * 2 + 1]) this.spans[band * 2 + 1] = Math.min(this.W, Math.ceil(x + w))
+    }
   }
 
   // Things that ease or type themselves: text reveal, comet angles, the reticles.
@@ -930,9 +943,11 @@ export class Renderer {
     const context = canvas.getContext("2d")
     context.fillStyle = background
     context.fillRect(0, 0, this.W, this.H)
+    // as on screen: sprites behind the still layer, the still layer, sprites in front of it
+    const stacked = sprites.map((sprite, order) => ({ sprite, order, z: sprite.top ? 99 : sprite.under ? (sprite.z ?? 0) - 50 : (sprite.z ?? 0) })).sort((a, b) => a.z - b.z || a.order - b.order)
+    for (const { sprite } of stacked) if (sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
     context.drawImage(this.canvas, 0, 0)
-    const stacked = sprites.map((sprite, order) => ({ sprite, order, z: sprite.top ? 99 : (sprite.z ?? 0) })).sort((a, b) => a.z - b.z || a.order - b.order)
-    for (const { sprite } of stacked) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
+    for (const { sprite } of stacked) if (!sprite.under) atlas.draw(context, sprite.kind, sprite.x, sprite.y)
     return canvas
   }
 }

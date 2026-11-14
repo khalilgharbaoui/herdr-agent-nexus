@@ -129,7 +129,9 @@ export class Terminal {
 
   // Finds the tiles that differ from what the terminal is showing. `marks` flags the tile rows
   // worth reading back (one per tile row); null means none, and a reset reads all of them.
-  diffTiles(context, marks) {
+  // `spans` narrows a row to the columns that were painted (x0, x1 per row), so a small region
+  // costs a small read.
+  diffTiles(context, marks, spans) {
     const { width, height } = this
     const tileWidth = TILE_COLS * this.cell.width
     const bandHeight = this.bandHeight
@@ -149,23 +151,34 @@ export class Terminal {
         if (!all && !marks[band]) continue
         const top = band * bandHeight
         const rows = Math.min(bandHeight, height - top)
-        const from = top * stride
-        const image = context.getImageData(0, top, width, rows).data
+        let first = 0
+        let end = across
+        if (!all && spans) {
+          if (spans[band * 2 + 1] <= spans[band * 2]) continue
+          first = Math.min(across - 1, Math.max(0, Math.floor(spans[band * 2] / tileWidth)))
+          end = Math.min(across, Math.max(first + 1, Math.ceil(spans[band * 2 + 1] / tileWidth)))
+        }
+        const x0 = first * tileWidth
+        const span = Math.min(width, end * tileWidth) - x0
+        const local = span * 4
+        const image = context.getImageData(x0, top, span, rows).data
         const bytes = Buffer.from(image.buffer, image.byteOffset, image.length)
-        if (bytes.compare(shadow, from, from + bytes.length) === 0) continue
-        for (let column = 0; column < across; column += 1) {
-          const left = column * tileWidth
-          const wide = Math.min(tileWidth, width - left)
+        let changed = false
+        for (let column = first; column < end; column += 1) {
+          const left = column * tileWidth - x0
+          const wide = Math.min(tileWidth, width - column * tileWidth)
           let same = true
           for (let row = 0; row < rows && same; row += 1) {
-            const at = row * stride + left * 4
-            same = bytes.compare(shadow, from + at, from + at + wide * 4, at, at + wide * 4) === 0
+            const at = row * local + left * 4
+            const was = (top + row) * stride + (x0 + left) * 4
+            same = bytes.compare(shadow, was, was + wide * 4, at, at + wide * 4) === 0
           }
           if (same) continue
-          dirty.push({ index: band * across + column, width: wide, height: rows, offset: need, length: wide * rows * 4, bytes, left })
+          changed = true
+          dirty.push({ index: band * across + column, width: wide, height: rows, offset: need, length: wide * rows * 4, bytes, left, local })
           need += wide * rows * 4
         }
-        shadow.set(bytes, from)
+        if (changed) for (let row = 0; row < rows; row += 1) shadow.set(bytes.subarray(row * local, (row + 1) * local), (top + row) * stride + x0 * 4)
       }
     }
     const payload = new ArrayBuffer(need)
@@ -173,7 +186,7 @@ export class Terminal {
     const words = new Uint32Array(payload)
     for (const tile of dirty) {
       for (let row = 0; row < tile.height; row += 1) {
-        const at = row * stride + tile.left * 4
+        const at = row * tile.local + tile.left * 4
         target.set(tile.bytes.subarray(at, at + tile.width * 4), tile.offset + row * tile.width * 4)
       }
       let any = 0
@@ -205,7 +218,10 @@ export class Terminal {
         this.slots.set(sprite.key, entry)
       }
       wanted.add(sprite.key)
-      const z = sprite.top ? 9 : 1 + (sprite.z ?? 0) // the flock stacks by depth: a nearer dot is drawn over a farther one
+      // Three layers: sprites behind the still layer (z 1 to 15), the still layer itself (z 20, see
+      // the encoder), sprites in front of it (z 21 to 59) and what must never be covered (z 60).
+      // Within a layer a nearer dot is drawn over a farther one.
+      const z = sprite.top ? 60 : sprite.under ? 1 + Math.min(14, sprite.z ?? 0) : 21 + Math.min(38, sprite.z ?? 0)
       if (entry.col === spot.col && entry.row === spot.row && entry.sx === spot.sx && entry.sy === spot.sy && entry.z === z) continue
       entry.z = z
       entry.col = spot.col
@@ -226,7 +242,7 @@ export class Terminal {
   // One frame: the tiles that changed and the sprites that moved, handed to the worker as one
   // message so they reach the screen inside one synchronized update.
   // Returns "busy" when two frames are already on their way, "still" when nothing changed.
-  send(context, marks, sprites, atlas) {
+  send(context, marks, sprites, atlas, spans = null) {
     if (this.inflight >= 2 || !this.worker) return "busy"
     const reset = this.reset
     if (reset) {
@@ -236,7 +252,7 @@ export class Terminal {
       for (let slot = MAX_SPRITES; slot >= 1; slot -= 1) this.free.push(slot)
       this.atlasSent = false
     }
-    const { payload, dirty, across, down } = this.diffTiles(context, marks)
+    const { payload, dirty, across, down } = this.diffTiles(context, marks, spans)
     const { places, deletes } = this.diffSprites(sprites, atlas)
     const needAtlas = !this.atlasSent && (places.length > 0 || reset)
     if (!reset && !dirty.length && !places.length && !deletes.length) return "still"

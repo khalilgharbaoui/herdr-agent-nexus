@@ -17,6 +17,7 @@ import zlib from "node:zlib"
 const ESC = "\x1b"
 const ID_BASE = 7300
 const ATLAS_ID = 7200
+const TILE_Z = 20 // the still layer sits between the sprites behind it (z under 20) and those in front
 const sleeper = new Int32Array(new SharedArrayBuffer(4))
 
 function writeAll(buffer) {
@@ -65,7 +66,7 @@ parentPort.on("message", (message) => {
     if (tile.length) {
       const base64 = zlib.deflateSync(Buffer.from(message.pixels, tile.offset, tile.length), { level: 1 }).toString("base64")
       parts.push(`${ESC}[${Math.floor(tile.index / across) * tileRows + 1};${(tile.index % across) * tileCols + 1}H`)
-      chunked(parts, `a=T,f=32,o=z,s=${tile.width},v=${tile.height},i=${id},p=1,c=${Math.round(tile.width / cellWidth)},r=${Math.round(tile.height / cellHeight)},C=1,q=2`, base64)
+      chunked(parts, `a=T,f=32,o=z,s=${tile.width},v=${tile.height},i=${id},p=1,c=${Math.round(tile.width / cellWidth)},r=${Math.round(tile.height / cellHeight)},z=${TILE_Z},C=1,q=2`, base64)
       if (shown[tile.index]) parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
       flips[tile.index] ^= 1
       shown[tile.index] = 1
