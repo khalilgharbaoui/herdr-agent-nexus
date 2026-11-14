@@ -2,6 +2,8 @@
 // (the event log and the pulses), and the numbers the header shows.
 
 const STALL_AFTER = 5 * 60e3
+const QUIET_LANES = 8
+const RATE_WINDOW = 5 * 60e3
 
 export function lastActivity(session) {
   let last = Math.max(session.busySince || 0, session.idleSince || 0)
@@ -125,7 +127,7 @@ export class Scene {
     }
     for (const id of this.seen.keys()) if (!byId.has(id)) this.seen.delete(id)
     this.pulses = this.pulses.filter((pulse) => now - pulse.born < 2600)
-    this.outSamples = this.outSamples.filter((sample) => now - sample.at < 60e3)
+    this.outSamples = this.outSamples.filter((sample) => now - sample.at < RATE_WINDOW)
   }
 
   choose(world, byId, now) {
@@ -151,6 +153,16 @@ export class Scene {
       for (const id of chain) chosen.add(id)
     }
     this.hidden = candidates.filter((session) => !chosen.has(session.id)).length
+    // A quiet hour still shows the threads you were last in: open panes first, then the newest.
+    if (chosen.size < Math.min(QUIET_LANES, this.capacity)) {
+      const recent = world.sessions
+        .filter((session) => !session.parentId && !chosen.has(session.id))
+        .sort((a, b) => (b.pane ? 1 : 0) - (a.pane ? 1 : 0) || b.updated - a.updated)
+      for (const session of recent) {
+        if (chosen.size >= Math.min(QUIET_LANES, this.capacity)) break
+        chosen.add(session.id)
+      }
+    }
     const roots = []
     const kids = new Map()
     for (const id of chosen) {
@@ -213,6 +225,9 @@ export class Scene {
       }
     }
     this.tools = [...stats.values()].sort((a, b) => b.count - a.count)
-    this.outPerMinute = this.outSamples.reduce((sum, sample) => sum + sample.tokens, 0)
+    // output tokens a minute, averaged over the last five (or over the time watched, when shorter)
+    this.since ??= now
+    const watched = Math.max(30e3, Math.min(RATE_WINDOW, now - this.since))
+    this.outPerMinute = (this.outSamples.reduce((sum, sample) => sum + sample.tokens, 0) / watched) * 60e3
   }
 }

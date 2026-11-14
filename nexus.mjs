@@ -101,7 +101,11 @@ async function runTerminal() {
   let wantShot = null
   let lastPoll = 0
   let waiting = false
-  const total = { sent: 0, late: 0, draw: 0, read: 0, bytes: 0, tiles: 0, of: 0, encode: 0, write: 0, done: 0 }
+  let lastKey = ""
+  let lastSecond = 0
+  let previousMarks = null
+  let readAll = true
+  const total = { sent: 0, still: 0, late: 0, draw: 0, read: 0, bytes: 0, tiles: 0, of: 0, encode: 0, write: 0, done: 0 }
   let mark = { ...total, at: performance.now() }
   let peak = 0
   const meta = { line: "", line2: "" }
@@ -120,7 +124,7 @@ async function runTerminal() {
   }
 
   const frame = () => {
-    if (quitting || terminal.busy) return
+    if (quitting || terminal.inflight >= 2) return
     waiting = false
     const started = performance.now()
     const now = Date.now()
@@ -129,16 +133,38 @@ async function runTerminal() {
         lastPoll = now
         ingest(source, scene, renderer, now)
       }
+      // a frame that would come out identical to the last one is not drawn, read back or sent
+      const key = renderer.fastKey(scene, now, meta)
+      const slow = renderer.slowDue(scene, now)
+      if (!slow && key === lastKey && !wantShot && !terminal.reset && !readAll) {
+        total.still += 1
+        return
+      }
+      lastKey = key
+      renderer.bandHeight = terminal.bandHeight
       renderer.draw(scene, now, meta)
       error = null
+      // Read back only the tile rows where something moved, this frame or the last. Everything
+      // is read when the slow layer was redrawn, and once a second regardless (clock, timers).
+      const second = Math.floor(now / 1000)
+      let marks = null
+      if (!slow && second === lastSecond && !readAll && previousMarks && previousMarks.length === renderer.marks.length) {
+        marks = new Uint8Array(renderer.marks.length)
+        for (let band = 0; band < marks.length; band += 1) marks[band] = renderer.marks[band] | previousMarks[band]
+      }
+      previousMarks = renderer.marks
+      lastSecond = second
+      const drawn = performance.now()
+      total.draw += drawn - started
+      if (terminal.send(renderer.context, marks)) {
+        total.sent += 1
+        readAll = false
+      } else readAll = true
+      total.read += performance.now() - drawn
     } catch (caught) {
       error = String(caught?.stack ?? caught).slice(0, 600)
+      readAll = true
     }
-    const drawn = performance.now()
-    const pixels = renderer.canvas.data()
-    total.draw += drawn - started
-    total.read += performance.now() - drawn
-    if (terminal.send(pixels)) total.sent += 1
     if (wantShot) {
       try {
         snapshot(renderer, wantShot)
@@ -162,7 +188,7 @@ async function runTerminal() {
   let next = performance.now()
   const tick = () => {
     if (quitting) return
-    if (terminal.busy) {
+    if (terminal.inflight >= 2) {
       waiting = true
       total.late += 1
     } else frame()
@@ -180,7 +206,9 @@ async function runTerminal() {
     const frames = Math.max(1, total.done - mark.done)
     const sent = Math.max(1, total.sent - mark.sent)
     const stats = {
-      fps: Number(((total.done - mark.done) / seconds).toFixed(1)),
+      // frames the loop finished on time: changed ones that were sent, and still ones that needed nothing
+      fps: Number(((total.done - mark.done + total.still - mark.still) / seconds).toFixed(1)),
+      changed: Number(((total.done - mark.done) / seconds).toFixed(1)),
       size: `${terminal.width}x${terminal.height}`,
       cols: terminal.cols,
       rows: terminal.rows,
@@ -200,7 +228,8 @@ async function runTerminal() {
     }
     mark = { ...total, at: now }
     peak = 0
-    meta.line = `${terminal.width}×${terminal.height} px native · ${stats.fps.toFixed(0)} fps · ${stats.kb} kB a frame`
+    meta.line = `${terminal.width}×${terminal.height} px native · ${stats.fps.toFixed(0)} fps · ${stats.changed.toFixed(0)} changed · ${stats.kb} kB each`
+    readAll = true
     meta.line2 = `draw ${stats.drawMs.toFixed(1)} · encode ${stats.encodeMs.toFixed(1)} · write ${stats.writeMs.toFixed(1)} ms · ${stats.tiles} tiles`
     try {
       fs.writeFileSync(path.join(HERE, "stats.json"), JSON.stringify(stats))
@@ -208,7 +237,10 @@ async function runTerminal() {
   }, 2000)
   report.unref()
 
-  terminal.on("resize", () => renderer.resize(terminal.width, terminal.height, terminal.cell.height))
+  terminal.on("resize", () => {
+    renderer.resize(terminal.width, terminal.height, terminal.cell.height)
+    readAll = true
+  })
   terminal.on("key", async (key) => {
     if (key === "q" || key === "\x03") quit()
     else if (key === "s") wantShot = `live-${Date.now()}.png`

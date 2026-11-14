@@ -26,6 +26,8 @@ export class Renderer {
     this.lastStep = -1
     this.lastWorld = null
     this.spots = this.emptySpots()
+    this.marks = new Uint8Array(0)
+    this.bandHeight = 90
   }
 
   emptySpots() {
@@ -172,11 +174,43 @@ export class Renderer {
 
   // ---------------------------------------------------------------- frame
 
+  stepOf(now) {
+    return Math.floor((now * this.L.pps) / 1000 / this.L.stepPx) * this.L.stepPx
+  }
+
+  // True when the slow layer has to be drawn again: the tape advanced or new data arrived.
+  slowDue(scene, now) {
+    return this.stepOf(now) !== this.lastStep || scene.world !== this.lastWorld
+  }
+
+  // Waiting things breathe, in six plain levels so a breath costs a dozen updates, not seventy.
+  breath(now) {
+    const phase = (now % 2400) / 2400
+    return Math.round((phase < 0.5 ? phase * 2 : 2 - phase * 2) * 5) / 5
+  }
+
+  // Everything the fast layer would draw differently, as one string. When it matches the last
+  // frame's and the slow layer is not due, the frame would be identical and is not produced.
+  fastKey(scene, now, meta) {
+    for (const pulse of scene.pulses) if (now - pulse.born < 2600) return `moving ${now}`
+    for (const row of this.spots.logRows) if (now - Math.max(row.born, row.settled) < 1400) return `moving ${now}`
+    const waiting = this.spots.tiles.length > 0 || this.spots.glyphs.some((glyph) => glyph.state === "waiting")
+    let cursors = ""
+    for (const head of this.spots.heads) cursors += this.cursorOn(head, now) ? "1" : "0"
+    return `${Math.floor(now / 1000)}|${waiting ? this.breath(now) : 0}|${cursors}|${meta?.line ?? ""}|${meta?.line2 ?? ""}`
+  }
+
+  // A working thread's write head blinks like the cursor it is. Threads sit in four phases so
+  // they do not all blink together.
+  cursorOn(head, now) {
+    return (now + head.phase * 170) % 680 < 400
+  }
+
   draw(scene, now, meta) {
     const L = this.L
     scene.capacity = L.capacity
     scene.windowMs = L.windowMs
-    const step = Math.floor((now * L.pps) / 1000 / L.stepPx) * L.stepPx
+    const step = this.stepOf(now)
     if (step !== this.lastStep || scene.world !== this.lastWorld) {
       this.lastStep = step
       this.lastWorld = scene.world
@@ -187,6 +221,7 @@ export class Renderer {
     const c = this.context
     c.clearRect(0, 0, this.W, this.H)
     c.drawImage(this.slowCanvas, 0, 0)
+    this.marks = new Uint8Array(Math.ceil(this.H / (this.bandHeight || 90)))
     if (scene.world) this.drawFast(c, scene, now, meta)
   }
 
@@ -243,7 +278,7 @@ export class Renderer {
     this.micro(c, "24 H SPEND", x + u(190), base - u(84))
     this.text(c, moneyOf(world.cost24h?.cost ?? 0), x + u(190), base - u(50), value)
     this.text(c, `${world.cost24h?.sessions ?? 0} sessions`, x + u(190), base - u(24), { size: 14, color: INK.dim })
-    this.text(c, "tokens, all threads", x, base - u(24), { size: 14, color: INK.dim })
+    this.text(c, "tokens, 5 min mean", x, base - u(24), { size: 14, color: INK.dim })
     this.text(c, dayOf(now), box.x + box.w, box.y + u(16), { size: 15, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6, align: "right" })
     this.rect(c, M, box.y + box.h + u(6), this.W - 2 * M, 1, INK.faint)
   }
@@ -536,7 +571,7 @@ export class Renderer {
         this.rect(c, x - u(5), toolTop + toolH - Math.max(1, u(2)), u(5), Math.max(1, u(2)), tone)
       }
     }
-    if (state === "working") this.spots.heads.push(liveRow ?? { y: wavBase - u(6), h: u(6), color: INK.live, pending: true })
+    if (state === "working") this.spots.heads.push({ ...(liveRow ?? { y: wavBase - u(6), h: u(6), color: INK.live, pending: true }), id: session.id, phase: index % 4 })
 
     // ---- the future: where this turn usually ends
     const elapsed = session.turn ? now - session.turn.start : 0
@@ -666,7 +701,7 @@ export class Renderer {
         this.rect(c, x, y + barsH - bh, binPx - 1, bh, INK.soft)
       }
       if (active[bin] > 0) {
-        const ah = Math.max(2, Math.round((active[bin] / Math.max(most, 1)) * lineH))
+        const ah = Math.max(2, Math.round((active[bin] / Math.max(most, 4)) * lineH))
         this.rect(c, x, y + h - ah, binPx, ah, rgba(INK.live, 0.28))
         this.rect(c, x, y + h - ah, binPx, Math.max(1, u(2)), INK.live)
       }
@@ -956,10 +991,15 @@ export class Renderer {
 
   // ---------------------------------------------------------------- the fast layer
 
+  // Notes that something moving was drawn between these rows, so the frame loop reads them back.
+  mark(top, bottom) {
+    const size = this.bandHeight || 90
+    for (let band = Math.max(0, Math.floor(top / size)); band <= Math.floor(bottom / size) && band < this.marks.length; band += 1) this.marks[band] = 1
+  }
+
   drawFast(c, scene, now, meta) {
     const u = (value) => this.u(value)
     const L = this.L
-    const seconds = now / 1000
     const spots = this.spots
 
     // rails: each account is a wire the lanes tap into
@@ -978,14 +1018,17 @@ export class Renderer {
     const pinged = new Map()
     for (const pulse of scene.pulses) if (pulse.kind === "rail") pinged.set(pulse.sessionId, Math.max(pinged.get(pulse.sessionId) ?? 0, pulse.born))
 
-    // write heads on the NOW edge
-    spots.heads.forEach((head, index) => {
-      const beat = 0.62 + 0.38 * Math.sin(seconds * 5.2 + index * 1.7)
+    // write heads on the NOW edge: still while a thread works, flaring when one of its calls lands
+    for (const head of spots.heads) {
       const hx = L.nowX
-      this.rect(c, hx - u(7), head.y, u(15), head.h, rgba(INK.live, 0.1 * beat))
-      this.rect(c, hx - u(3), head.y, u(7), head.h, rgba(INK.live, 0.26 * beat))
-      this.rect(c, hx - 1, head.y - u(3), Math.max(2, u(3)), head.h + u(6), head.pending ? rgba(INK.live, 0.5 + 0.5 * beat) : INK.text)
-    })
+      const age = now - (pinged.get(head.id) ?? 0)
+      const flare = age >= 0 && age < 600 ? 1 - age / 600 : 0
+      const on = this.cursorOn(head, now)
+      this.mark(head.y - u(4), head.y + head.h + u(4))
+      this.rect(c, hx - u(7) - flare * u(10), head.y, u(15) + flare * u(20), head.h, rgba(INK.live, 0.1 + 0.3 * flare))
+      this.rect(c, hx - u(3), head.y, u(7), head.h, rgba(INK.live, (on ? 0.3 : 0.12) + 0.4 * flare))
+      this.rect(c, hx - 1, head.y - u(3), Math.max(2, u(3)), head.h + u(6), on || flare ? (head.pending ? INK.live : INK.text) : rgba(INK.live, 0.55))
+    }
 
     // state glyphs
     for (const glyph of spots.glyphs) {
@@ -994,6 +1037,7 @@ export class Renderer {
         const age = now - (pinged.get(glyph.id) ?? 0)
         if (age >= 0 && age < 900) {
           const phase = age / 900
+          this.mark(glyph.y - u(20), glyph.y + u(20))
           c.strokeStyle = rgba(INK.text, 0.9 * (1 - phase))
           c.lineWidth = Math.max(1, u(2))
           c.beginPath()
@@ -1001,7 +1045,8 @@ export class Renderer {
           c.stroke()
         }
       } else if (glyph.state === "waiting") {
-        const breath = 0.5 + 0.5 * Math.sin(seconds * 2.6)
+        const breath = this.breath(now)
+        this.mark(glyph.y - u(16), glyph.y + u(16))
         c.strokeStyle = rgba(INK.warn, 0.25 + 0.6 * breath)
         c.lineWidth = Math.max(1, u(1.5))
         const r = u(10) + breath * u(2)
@@ -1015,7 +1060,8 @@ export class Renderer {
       }
     }
     for (const tile of spots.tiles) {
-      const breath = 0.5 + 0.5 * Math.sin(seconds * 2.6)
+      const breath = this.breath(now)
+      this.mark(tile.y - u(4), tile.y + tile.size + u(4))
       this.frame(c, tile.x - u(3), tile.y - u(3), tile.size + u(6), tile.size + u(6), rgba(INK.warn, 0.2 + 0.7 * breath), 1)
     }
 
@@ -1055,6 +1101,7 @@ export class Renderer {
           }
         }
         const midpoint = (head + tail) / 2
+        this.mark(tap.y + tail - 2, Math.min(tap.y + head, rail.wireY) + 2)
         segment(tail, midpoint, 0.4)
         segment(midpoint, head, 1)
       } else {
@@ -1065,6 +1112,7 @@ export class Renderer {
         const from = pulse.kind === "fork" ? trace.top : trace.bottom
         const to = pulse.kind === "fork" ? trace.bottom : trace.top
         const y = from + (to - from) * eased
+        this.mark(y - u(10), y + u(10))
         this.rect(c, trace.x - u(3), y - u(9), u(6), u(18), rgba(INK.text, 1 - k * 0.5))
         this.rect(c, trace.x - u(7), y - u(4), u(14), u(8), rgba(INK.text, 0.3 * (1 - k)))
       }
@@ -1075,6 +1123,7 @@ export class Renderer {
       const age = now - Math.max(row.born, row.settled)
       if (age < 0 || age > 1400) continue
       const box = L.panels.log
+      this.mark(row.y, row.y + row.h)
       this.rect(c, box.x - u(12), row.y, u(4), row.h, rgba(INK.live, 1 - age / 1400))
     }
 

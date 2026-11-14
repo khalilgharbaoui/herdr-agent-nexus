@@ -1,15 +1,16 @@
 {
   "name": "agent-nexus",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "A flight recorder for opencode sessions, subagents and herdr agents, drawn in the terminal.",
+  "main": "nexus.mjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node --no-warnings nexus.mjs",
+    "demo": "node --no-warnings nexus.mjs --demo",
+    "edge": "node --no-warnings tools/edge.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0"
   }

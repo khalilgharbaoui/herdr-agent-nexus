@@ -8,32 +8,6 @@ const ESC = "\x1b"
 const TILE_COLS = 16
 const TILE_ROWS = 3
 
-// UNPRE[alpha << 8 | channel] = channel * 255 / alpha
-const UNPRE = new Uint8Array(65536)
-for (let alpha = 1; alpha < 256; alpha += 1) {
-  for (let channel = 0; channel < 256; channel += 1) UNPRE[(alpha << 8) | channel] = Math.min(255, Math.round((channel * 255) / alpha))
-}
-
-// Copies one tile out of the frame as straight-alpha pixels. Returns false when it is empty.
-function lift(words, width, left, top, tileWidth, rows, target, out) {
-  let any = 0
-  for (let row = 0; row < rows; row += 1) {
-    let index = (top + row) * width + left
-    for (const end = index + tileWidth; index < end; index += 1) {
-      const pixel = words[index]
-      const alpha = pixel >>> 24
-      if (alpha === 255) target[out] = pixel
-      else if (alpha !== 0) {
-        const base = alpha << 8
-        target[out] = ((alpha << 24) | (UNPRE[base | ((pixel >>> 16) & 255)] << 16) | (UNPRE[base | ((pixel >>> 8) & 255)] << 8) | UNPRE[base | (pixel & 255)]) >>> 0
-      }
-      any |= alpha
-      out += 1
-    }
-  }
-  return any !== 0
-}
-
 const HERE = path.dirname(path.dirname(new URL(import.meta.url).pathname))
 
 export class Terminal {
@@ -42,8 +16,8 @@ export class Terminal {
     this.pixels = null
     this.inbox = ""
     this.listeners = { key: [], resize: [] }
-    this.busy = false
-    this.previous = null
+    this.inflight = 0
+    this.shadow = null
     this.reset = true
     this.last = { bytes: 0, tiles: 0, of: 0, encodeMs: 0, writeMs: 0 }
     this.onFrameDone = () => {}
@@ -86,13 +60,13 @@ export class Terminal {
     this.write(`${ESC}[?1049h${ESC}[?25l${ESC}[2J${ESC}[H`)
     this.worker = new Worker(path.join(HERE, "encoder.mjs"))
     this.worker.on("message", (result) => {
-      this.busy = false
+      this.inflight = Math.max(0, this.inflight - 1)
       this.last = result
       this.onFrameDone(result)
     })
     this.worker.on("error", (error) => {
       this.error = String(error?.message ?? error)
-      this.busy = false
+      this.inflight = 0
     })
     process.stdout.on("resize", () => {
       this.measure().then(() => {
@@ -124,48 +98,70 @@ export class Terminal {
     for (const key of keys) for (const listener of this.listeners.key) listener(key)
   }
 
-  // Takes one frame (premultiplied RGBA, width x height), finds the tiles that differ from
-  // the frame before, converts those to straight alpha and hands them to the worker.
-  // Returns false while the previous frame is still being written.
-  send(pixels) {
-    if (this.busy || !this.worker) return false
+  // Rows of the frame per tile row.
+  get bandHeight() {
+    return TILE_ROWS * this.cell.height
+  }
+
+  get bandCount() {
+    return Math.ceil(this.height / this.bandHeight)
+  }
+
+  // Reads the canvas back (straight alpha), finds the tiles that differ from what the terminal
+  // is showing, and hands those to the worker. `marks` limits the read to the tile rows where
+  // something moved (one flag per tile row); without it the whole frame is read.
+  // Returns false when two frames are already on their way.
+  send(context, marks) {
+    if (this.inflight >= 2 || !this.worker) return false
     const { width, height } = this
     const tileWidth = TILE_COLS * this.cell.width
-    const tileHeight = TILE_ROWS * this.cell.height
+    const bandHeight = this.bandHeight
     const across = Math.ceil(width / tileWidth)
-    const down = Math.ceil(height / tileHeight)
-    const previous = this.previous && this.previous.length === pixels.length && !this.reset ? this.previous : null
-    const words = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length >> 2)
+    const down = this.bandCount
     const stride = width * 4
+    if (!this.shadow || this.shadow.length !== stride * height || this.reset) {
+      this.shadow = Buffer.alloc(stride * height) // what the terminal shows: nothing yet
+      marks = null
+    }
+    const shadow = this.shadow
     const dirty = []
     let need = 0
     for (let band = 0; band < down; band += 1) {
-      const top = band * tileHeight
-      const rows = Math.min(tileHeight, height - top)
+      if (marks && !marks[band]) continue
+      const top = band * bandHeight
+      const rows = Math.min(bandHeight, height - top)
       const from = top * stride
-      if (previous && pixels.compare(previous, from, from + rows * stride, from, from + rows * stride) === 0) continue
+      const image = context.getImageData(0, top, width, rows).data
+      const bytes = Buffer.from(image.buffer, image.byteOffset, image.length)
+      if (bytes.compare(shadow, from, from + bytes.length) === 0) continue
       for (let column = 0; column < across; column += 1) {
         const left = column * tileWidth
         const wide = Math.min(tileWidth, width - left)
-        if (previous) {
-          let same = true
-          for (let row = 0; row < rows && same; row += 1) {
-            const at = from + row * stride + left * 4
-            same = pixels.compare(previous, at, at + wide * 4, at, at + wide * 4) === 0
-          }
-          if (same) continue
+        let same = true
+        for (let row = 0; row < rows && same; row += 1) {
+          const at = row * stride + left * 4
+          same = bytes.compare(shadow, from + at, from + at + wide * 4, at, at + wide * 4) === 0
         }
-        dirty.push({ index: band * across + column, left, top, width: wide, height: rows, offset: need, length: wide * rows * 4 })
+        if (same) continue
+        dirty.push({ index: band * across + column, width: wide, height: rows, offset: need, length: wide * rows * 4, bytes, left })
         need += wide * rows * 4
       }
+      shadow.set(bytes, from)
     }
     const payload = new ArrayBuffer(need)
-    const target = new Uint32Array(payload)
+    const target = new Uint8Array(payload)
+    const words = new Uint32Array(payload)
     for (const tile of dirty) {
-      if (!lift(words, width, tile.left, tile.top, tile.width, tile.height, target, tile.offset >> 2)) tile.length = 0
+      for (let row = 0; row < tile.height; row += 1) {
+        const at = row * stride + tile.left * 4
+        target.set(tile.bytes.subarray(at, at + tile.width * 4), tile.offset + row * tile.width * 4)
+      }
+      let any = 0
+      for (let index = tile.offset >> 2, end = (tile.offset + tile.length) >> 2; index < end; index += 1) any |= words[index]
+      if (!any) tile.length = 0
+      tile.bytes = undefined
     }
-    this.previous = pixels
-    this.busy = true
+    this.inflight += 1
     this.worker.postMessage(
       { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset: this.reset },
       [payload],
