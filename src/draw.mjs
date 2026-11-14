@@ -4,7 +4,7 @@
 // every pixel that is not ink stays transparent, so the terminal's own dark shows through.
 
 import { createCanvas } from "@napi-rs/canvas"
-import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, dayOf, fontOf, hashUnit, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, dayOf, fontOf, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
 
 const DARK = "#05080c"
 const TOOL_TONE = { write: INK.text, exec: "#9db2c9", web: "#7fa6c9", read: "#5c7087", search: "#5c7087", meta: "#5c7087", other: "#71869e", agent: INK.soft, ask: INK.warn }
@@ -29,14 +29,16 @@ export class Renderer {
   }
 
   emptySpots() {
-    return { heads: [], live: [], timers: [], glyphs: [], tiles: [], logRows: [], lanes: new Map(), rails: new Map(), forks: new Map() }
+    return { heads: [], timers: [], glyphs: [], tiles: [], logRows: [], lanes: new Map(), rails: new Map(), forks: new Map() }
   }
 
   resize(width, height, cellHeight) {
     if (width === this.W && height === this.H) return
     this.W = width
     this.H = height
-    this.S = clamp(cellHeight / 30, 0.4, 3)
+    // The instrument is designed on a 1590 x 2460 field. A pane too small for its layout gets
+    // the whole thing scaled down instead of a broken one.
+    this.S = Math.max(0.2, Math.min(clamp(cellHeight / 30, 0.4, 3), width / 1340, height / 1560))
     this.canvas = createCanvas(width, height)
     this.context = this.canvas.getContext("2d")
     this.slowCanvas = createCanvas(width, height)
@@ -84,6 +86,7 @@ export class Renderer {
     L.masterY = L.score.y + L.score.h - L.masterH
     L.lanesBottom = L.masterY - u(22)
     L.pps = (wide ? 3 : 1.5) * this.S
+    L.stepPx = Math.max(1, Math.round(2 * this.S)) // the timeline advances in whole pixels, this many at a time
     L.windowMs = (L.pastW / L.pps) * 1000
     L.capacity = Math.max(3, Math.floor((L.lanesBottom - L.lanesTop) / u(60)))
     this.L = L
@@ -173,7 +176,7 @@ export class Renderer {
     const L = this.L
     scene.capacity = L.capacity
     scene.windowMs = L.windowMs
-    const step = Math.floor((now * L.pps) / 1000)
+    const step = Math.floor((now * L.pps) / 1000 / L.stepPx) * L.stepPx
     if (step !== this.lastStep || scene.world !== this.lastWorld) {
       this.lastStep = step
       this.lastWorld = scene.world
@@ -277,7 +280,7 @@ export class Renderer {
     c.closePath()
     c.fill()
     this.micro(c, "NOW", L.nowX - u(12), y - u(14), INK.live, "right")
-    this.rect(c, L.nowX, y, 1, L.masterY + L.masterH - y, rgba(INK.live, 0.5))
+    this.rect(c, L.nowX, y, Math.max(1, u(2)), L.masterY + L.masterH - y, rgba(INK.live, 0.42))
     this.micro(c, "TURN", L.futureEnd + u(14), y - u(14), INK.dim)
     this.micro(c, "COST", this.W - L.M - u(8) - Math.max(1, scene.world.accounts.length) * u(16) - u(4), y - u(14), INK.dim, "right")
   }
@@ -290,16 +293,16 @@ export class Renderer {
       this.text(c, "no sessions in the last day", L.pastX, L.lanesTop + u(60), { size: 20, color: INK.dim })
       return
     }
-    const LH = clamp(Math.floor((L.lanesBottom - L.lanesTop) / lanes.length), u(60), u(102))
-    const roomy = LH >= u(66)
+    const LH = clamp(Math.floor((L.lanesBottom - L.lanesTop) / lanes.length), u(60), u(134))
+    const roomy = LH >= u(58)
     const rails = [...new Set(scene.world.accounts.map((account) => account.name))]
     rails.forEach((name, index) => this.spots.rails.set(name, { x: this.W - L.M - u(8) - index * u(16), taps: [] }))
     const boxes = lanes.map((lane, index) => {
       const y = L.lanesTop + index * LH
       const wavTop = y + Math.round(LH * 0.15)
-      const wavH = Math.round(LH * 0.3)
-      const toolTop = wavTop + wavH + Math.round(LH * 0.09)
-      const toolH = Math.round(LH * 0.27)
+      const wavH = Math.min(u(40), Math.round(LH * 0.3))
+      const toolTop = wavTop + wavH + Math.min(u(10), Math.round(LH * 0.09))
+      const toolH = Math.min(u(32), Math.round(LH * 0.27))
       return { y, LH, wavTop, wavH, wavBase: wavTop + wavH, toolTop, toolH, mid: y + Math.round(LH / 2) }
     })
     lanes.forEach((lane, index) => this.spots.lanes.set(lane.session.id, boxes[index]))
@@ -360,7 +363,7 @@ export class Renderer {
     // ---- gutter: who this is
     const indent = lane.depth * u(22)
     const gx = L.M + u(34) + indent
-    const titleY = roomy ? y + Math.round(LH * 0.42) : y + Math.round(LH * 0.5) + u(7)
+    const titleY = roomy ? y + Math.min(u(42), Math.round(LH * 0.42)) : y + Math.round(LH * 0.5) + u(7)
     this.text(c, String(index + 1).padStart(2, "0"), L.M, titleY, { size: 15, color: INK.dim })
     if (lane.parent) {
       const from = this.spots.lanes.get(lane.parent.session.id)
@@ -374,8 +377,14 @@ export class Renderer {
     if (state === "working") {
       c.fillStyle = INK.live
       c.beginPath()
-      c.arc(gx, gy, u(5), 0, TAU)
+      c.arc(gx, gy, u(4.5), 0, TAU)
       c.fill()
+      c.strokeStyle = rgba(INK.live, 0.5)
+      c.lineWidth = Math.max(1, u(1.5))
+      c.beginPath()
+      c.arc(gx, gy, u(8.5), 0, TAU)
+      c.stroke()
+      c.lineWidth = Math.max(1, u(2))
     } else if (state === "waiting") {
       c.fillStyle = INK.warn
       c.beginPath()
@@ -415,6 +424,10 @@ export class Renderer {
       const restText = this.fit(c, rest ? ` · ${rest}` : "", gutterEnd - mx - paneW, meta)
       this.text(c, restText, mx, metaY, { ...meta, color: INK.dim })
       if (pane) this.text(c, pane, gutterEnd, metaY, { ...meta, color: INK.dim, align: "right" })
+      if (LH >= u(100)) {
+        const [doing, tone] = this.doing(session, state, now)
+        if (doing) this.text(c, this.fit(c, doing, gutterEnd - titleX, meta), titleX, metaY + u(25), { ...meta, color: tone })
+      }
     } else {
       const meta = { size: 15 }
       const modelW = this.width(c, model, meta)
@@ -466,11 +479,32 @@ export class Renderer {
         const ty = toolTop + tool.row * (each + u(2))
         const meta = toolMeta(tool.name)
         const running = tool.end === null
-        const name = tool.name.replace(/^mcp__[^_]+__/, "")
+        const name = tool.name.replace(/^mcp__.+?__/, "")
         let ink = DARK
+        const labelled = w >= u(86) && each >= u(17)
+        const style = { size: 14, family: FAMILY.monoBold }
+        const caption = labelled ? this.fit(c, `${name}${running ? "" : ` ${spanOf(tool.end - tool.start)}`}`, w - u(12), style) : ""
         if (running) {
           this.frame(c, t0, ty, w, each, INK.live, Math.max(1, u(2)))
-          this.spots.live.push({ x: t0, y: ty, w, h: each })
+          // a hatch says the call is still in flight; it is anchored to time, so it travels with the tape
+          const clear = caption ? this.width(c, caption, style) + u(14) : 0
+          if (w - clear > u(8) && each > u(8)) {
+            const pitch = u(8)
+            const anchor = ((time.x(0) % pitch) + pitch) % pitch
+            c.save()
+            c.beginPath()
+            c.rect(t0 + clear + 2, ty + 3, w - clear - 4, each - 6)
+            c.clip()
+            c.strokeStyle = rgba(INK.live, 0.55)
+            c.lineWidth = 1
+            c.beginPath()
+            for (let x = Math.floor((t0 + clear - each - anchor) / pitch) * pitch + anchor; x < t0 + w; x += pitch) {
+              c.moveTo(x + 0.5, ty + each)
+              c.lineTo(x + each + 0.5, ty)
+            }
+            c.stroke()
+            c.restore()
+          }
           liveRow = { y: ty, h: each, color: INK.live }
           ink = INK.live
         } else if (tool.status === "error") {
@@ -481,11 +515,7 @@ export class Renderer {
         } else {
           this.rect(c, t0, ty, w, each, TOOL_TONE[meta.kind] ?? TOOL_TONE.other)
         }
-        if (w >= u(86) && each >= u(17)) {
-          const style = { size: 14, family: FAMILY.monoBold }
-          const span = running ? "" : ` ${spanOf(tool.end - tool.start)}`
-          this.text(c, this.fit(c, `${name}${span}`, w - u(12), style), t0 + u(6), ty + Math.round(each / 2) + u(5), { ...style, color: ink })
-        }
+        if (caption) this.text(c, caption, t0 + u(6), ty + Math.round(each / 2) + u(5), { ...style, color: ink })
       }
     }
     for (const mark of session.marks) {
@@ -556,8 +586,6 @@ export class Renderer {
         this.rect(c, rx, rowB - u(9), bw, u(7), INK.ghost)
         this.rect(c, rx, rowB - u(9), Math.max(2, Math.round(bw * share)), u(7), share > 0.9 ? INK.bad : INK.soft)
         this.text(c, `${Math.round(share * 100)}%`, rx + bw + u(8), rowB, { size: 15, color: share > 0.9 ? INK.bad : INK.dim })
-      } else {
-        this.text(c, "ctx n/a", rx, rowB, { size: 15, color: INK.faint })
       }
       const out = session.turn?.out ? `${compactOf(session.turn.out)} out` : state === "stalled" ? "silent" : ""
       if (out) this.text(c, out, rEnd, rowB, { size: 15, color: INK.dim, align: "right" })
@@ -569,6 +597,28 @@ export class Renderer {
     }
   }
 
+  // One line on what a thread is doing right now, or what it did last.
+  doing(session, state, now) {
+    const newest = session.steps[session.steps.length - 1]
+    if (state === "waiting") return ["waiting for your answer", INK.warn]
+    if (state === "working") {
+      const running = newest?.tools.find((tool) => tool.end === null)
+      if (running) return [`${running.name.replace(/^mcp__.+?__/, "")} ${running.label}`.trim(), INK.soft]
+      if (!newest || newest.end !== null) return ["waiting for the model", INK.dim]
+      const thought = newest.reasoning[newest.reasoning.length - 1]
+      return [thought && thought[1] === null ? "thinking" : newest.reasoning.length ? "writing" : "generating", INK.soft]
+    }
+    if (state === "stalled") return ["marked busy, nothing has moved", INK.dim]
+    for (let index = session.steps.length - 1; index >= 0; index -= 1) {
+      const tools = session.steps[index].tools
+      if (tools.length) {
+        const last = tools[tools.length - 1]
+        return [`last: ${last.name.replace(/^mcp__.+?__/, "")} ${last.label}`.trim(), INK.dim]
+      }
+    }
+    return ["", INK.faint]
+  }
+
   master(c, scene, now, time) {
     const u = (value) => this.u(value)
     const L = this.L
@@ -576,8 +626,8 @@ export class Renderer {
     const h = L.masterH
     this.rect(c, L.M, y - u(11), L.futureEnd - L.M, 1, INK.faint)
     this.micro(c, "ALL THREADS", L.M, y + u(22), INK.soft)
-    const binPx = u(6)
-    const bins = Math.floor(L.pastW / binPx)
+    const binPx = Math.max(2, u(6))
+    const bins = Math.max(1, Math.floor(L.pastW / binPx))
     const binMs = (binPx / L.pps) * 1000
     const start = now - bins * binMs
     const chars = new Float64Array(bins)
@@ -819,7 +869,7 @@ export class Renderer {
           const emptyAt = now + ((100 - used) / used) * (elapsed * window.span)
           if (pace > 1.02 && emptyAt < window.resetsAt) {
             note += ` · pace ×${pace.toFixed(1)}, empty ${hourMinuteOf(emptyAt)}`
-            tone = pace > 1.3 ? INK.bad : INK.soft
+            tone = pace > 1.3 && used > 25 ? INK.bad : INK.soft
           } else note += ` · pace ×${pace.toFixed(1)}`
         }
         this.text(c, this.fit(c, note, box.w - u(44) - u(30), { size: 14 }), bx, y + u(28), { size: 14, color: tone })
@@ -893,7 +943,7 @@ export class Renderer {
       this.text(c, clockOf(entry.at), box.x, y, { ...style, color: rgba(INK.dim, fade) })
       const lane = laneOf.get(entry.sessionId)
       this.text(c, lane === undefined ? "··" : String(lane + 1).padStart(2, "0"), box.x + u(112), y, { ...style, color: rgba(INK.dim, fade) })
-      const name = entry.name.replace(/^mcp__[^_]+__/, "")
+      const name = entry.name.replace(/^mcp__.+?__/, "")
       this.text(c, this.fit(c, name, u(104), { size: 16, family: FAMILY.monoMedium }), box.x + u(150), y, { size: 16, family: FAMILY.monoMedium, color: rgba(tones[entry.tone] ?? INK.soft, fade) })
       const span = entry.span === null ? (entry.tone === "run" ? "running" : "") : spanOf(entry.span)
       const spanW = span ? this.width(c, span, style) + u(14) : 0
@@ -924,26 +974,9 @@ export class Renderer {
       }
     }
 
-    // running tools: a hatch that walks, because the call is in flight
-    if (spots.live.length) {
-      c.save()
-      c.beginPath()
-      for (const box of spots.live) c.rect(box.x + 2, box.y + 2, box.w - 4, box.h - 4)
-      c.clip()
-      c.strokeStyle = rgba(INK.live, 0.5)
-      c.lineWidth = Math.max(1, u(2))
-      const pitch = u(9)
-      const shift = (seconds * u(18)) % pitch
-      c.beginPath()
-      for (const box of spots.live) {
-        for (let x = box.x - box.h + shift - pitch; x < box.x + box.w; x += pitch) {
-          c.moveTo(x, box.y + box.h)
-          c.lineTo(x + box.h, box.y)
-        }
-      }
-      c.stroke()
-      c.restore()
-    }
+    // the newest billed call of each thread, for the ring that answers it
+    const pinged = new Map()
+    for (const pulse of scene.pulses) if (pulse.kind === "rail") pinged.set(pulse.sessionId, Math.max(pinged.get(pulse.sessionId) ?? 0, pulse.born))
 
     // write heads on the NOW edge
     spots.heads.forEach((head, index) => {
@@ -957,12 +990,16 @@ export class Renderer {
     // state glyphs
     for (const glyph of spots.glyphs) {
       if (glyph.state === "working") {
-        const phase = (seconds * 0.7 + hashUnit(glyph.id)) % 1
-        c.strokeStyle = rgba(INK.live, 0.8 * (1 - phase))
-        c.lineWidth = Math.max(1, u(1.5))
-        c.beginPath()
-        c.arc(glyph.x, glyph.y, u(5) + phase * u(8), 0, TAU)
-        c.stroke()
+        // a ring leaves the dot each time one of this thread's model calls lands
+        const age = now - (pinged.get(glyph.id) ?? 0)
+        if (age >= 0 && age < 900) {
+          const phase = age / 900
+          c.strokeStyle = rgba(INK.text, 0.9 * (1 - phase))
+          c.lineWidth = Math.max(1, u(2))
+          c.beginPath()
+          c.arc(glyph.x, glyph.y, u(8.5) + phase * u(9), 0, TAU)
+          c.stroke()
+        }
       } else if (glyph.state === "waiting") {
         const breath = 0.5 + 0.5 * Math.sin(seconds * 2.6)
         c.strokeStyle = rgba(INK.warn, 0.25 + 0.6 * breath)

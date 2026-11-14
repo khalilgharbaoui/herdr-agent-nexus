@@ -1,11 +1,11 @@
 // Encoder worker. It owns the terminal's output while Agent Nexus runs.
 //
-// The frame is cut into horizontal bands of whole cell rows. A band whose pixels did not
-// change since the last frame is not sent at all. A band that changed is converted from
-// Skia's premultiplied alpha to the straight alpha the Kitty protocol expects, deflated, and
-// sent as its own image under one of two alternating ids: the new image is placed first and
-// the old one deleted after, and the whole frame goes out inside one synchronized-output
-// bracket (DEC mode 2026), so the terminal never shows a half-updated or empty band.
+// The main thread cuts each frame into a grid of tiles (whole terminal cells) and sends here
+// only the tiles whose pixels changed. Each one is deflated and sent as its own image under one
+// of two alternating ids: the new image is placed first and the old one deleted after, and the
+// whole frame goes out inside one synchronized-output bracket (DEC mode 2026), so the terminal
+// never shows a half-updated or empty tile. A tile with nothing in it has no image at all.
+// What a frame costs follows what moved in it.
 
 import fs from "node:fs"
 import { parentPort } from "node:worker_threads"
@@ -27,85 +27,41 @@ function writeAll(buffer) {
   }
 }
 
-// UNPRE[alpha << 8 | channel] = channel * 255 / alpha
-const UNPRE = new Uint8Array(65536)
-for (let alpha = 1; alpha < 256; alpha += 1) {
-  for (let channel = 0; channel < 256; channel += 1) UNPRE[(alpha << 8) | channel] = Math.min(255, Math.round((channel * 255) / alpha))
-}
-
-function straighten(source, target, count) {
-  for (let index = 0; index < count; index += 1) {
-    const pixel = source[index]
-    const alpha = pixel >>> 24
-    if (alpha === 255 || pixel === 0) {
-      target[index] = pixel
-      continue
-    }
-    if (alpha === 0) {
-      target[index] = 0
-      continue
-    }
-    const base = alpha << 8
-    target[index] = ((alpha << 24) | (UNPRE[base | ((pixel >>> 16) & 255)] << 16) | (UNPRE[base | ((pixel >>> 8) & 255)] << 8) | UNPRE[base | (pixel & 255)]) >>> 0
-  }
-}
-
-let buffers = [] // two SharedArrayBuffers the main thread fills in turn
-let geometry = ""
 let flips = new Uint8Array(0)
-let scratch = new Uint32Array(0)
-let havePrevious = false
+let shown = new Uint8Array(0) // 1 while a tile has an image on screen
 
 parentPort.on("message", (message) => {
-  if (message.buffers) {
-    buffers = message.buffers.map((shared) => ({ bytes: Buffer.from(shared), words: new Uint32Array(shared) }))
-    havePrevious = false
-    return
-  }
   const started = performance.now()
-  const { index, width, height, cols, cellHeight, bandRows } = message
-  const current = buffers[index]
-  const previous = buffers[1 - index]
-  const bandHeight = bandRows * cellHeight
-  const bandCount = Math.ceil(height / bandHeight)
-  const key = `${width}x${height}x${bandHeight}x${cols}`
+  const { tiles, total, cellWidth, cellHeight, tileCols, tileRows, across } = message
   const parts = []
-  let fresh = message.reset || !havePrevious || key !== geometry
-  if (fresh) {
-    geometry = key
-    flips = new Uint8Array(bandCount)
-    if (scratch.length < width * bandHeight) scratch = new Uint32Array(width * bandHeight)
+  if (message.reset || flips.length !== total) {
+    flips = new Uint8Array(total)
+    shown = new Uint8Array(total)
     parts.push(`${ESC}[2J${ESC}_Ga=d,d=A,q=2${ESC}\\`)
   }
-  let sent = 0
   let bytes = 0
-  const stride = width * 4
-  for (let band = 0; band < bandCount; band += 1) {
-    const top = band * bandHeight
-    const rows = Math.min(bandHeight, height - top)
-    const from = top * stride
-    const to = from + rows * stride
-    if (!fresh && current.bytes.compare(previous.bytes, from, to, from, to) === 0) continue
-    const count = width * rows
-    straighten(current.words.subarray(top * width, top * width + count), scratch, count)
-    const packed = zlib.deflateSync(Buffer.from(scratch.buffer, 0, count * 4), { level: 1 })
-    const base64 = packed.toString("base64")
-    const id = ID_BASE + band * 2 + flips[band]
-    const old = ID_BASE + band * 2 + (1 - flips[band])
-    flips[band] ^= 1
-    const keys = `a=T,f=32,o=z,s=${width},v=${rows},i=${id},p=1,c=${cols},r=${Math.round(rows / cellHeight)},C=1,q=2`
-    parts.push(`${ESC}[${band * bandRows + 1};1H`)
-    for (let offset = 0; offset < base64.length; offset += 4096) {
-      const chunk = base64.slice(offset, offset + 4096)
-      const more = offset + 4096 < base64.length ? 1 : 0
-      parts.push(offset === 0 ? `${ESC}_G${keys},m=${more};${chunk}${ESC}\\` : `${ESC}_Gm=${more};${chunk}${ESC}\\`)
+  for (const tile of tiles) {
+    const id = ID_BASE + tile.index * 2 + flips[tile.index]
+    const old = ID_BASE + tile.index * 2 + (1 - flips[tile.index])
+    if (tile.length) {
+      const base64 = zlib.deflateSync(Buffer.from(message.pixels, tile.offset, tile.length), { level: 1 }).toString("base64")
+      const keys = `a=T,f=32,o=z,s=${tile.width},v=${tile.height},i=${id},p=1,c=${Math.round(tile.width / cellWidth)},r=${Math.round(tile.height / cellHeight)},C=1,q=2`
+      parts.push(`${ESC}[${Math.floor(tile.index / across) * tileRows + 1};${(tile.index % across) * tileCols + 1}H`)
+      for (let offset = 0; offset < base64.length; offset += 4096) {
+        const chunk = base64.slice(offset, offset + 4096)
+        const more = offset + 4096 < base64.length ? 1 : 0
+        parts.push(offset === 0 ? `${ESC}_G${keys},m=${more};${chunk}${ESC}\\` : `${ESC}_Gm=${more};${chunk}${ESC}\\`)
+      }
+      if (shown[tile.index]) parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
+      flips[tile.index] ^= 1
+      shown[tile.index] = 1
+      bytes += base64.length
+    } else if (shown[tile.index]) {
+      parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
+      shown[tile.index] = 0
     }
-    parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
-    sent += 1
-    bytes += base64.length
   }
   const encoded = performance.now()
   if (parts.length) writeAll(Buffer.from(`${ESC}[?2026h${parts.join("")}${ESC}[?2026l`, "latin1"))
-  havePrevious = true
-  parentPort.postMessage({ bytes, bands: sent, of: bandCount, encodeMs: encoded - started, writeMs: performance.now() - encoded })
+  parentPort.postMessage({ bytes, tiles: tiles.length, of: total, encodeMs: encoded - started, writeMs: performance.now() - encoded })
 })

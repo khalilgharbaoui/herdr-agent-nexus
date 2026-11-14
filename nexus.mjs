@@ -32,7 +32,7 @@ const OPTIONS = {
   size: argument("size", "1590x2460"),
   cell: Number(argument("cell", 30)),
   fps: Number(argument("fps", 30)),
-  background: argument("bg", "#000000"),
+  background: argument("bg", "#15191e"), // the pane's own background, so snapshots look like the screen
   db: argument("db", path.join(os.homedir(), ".local/share/opencode/opencode.db")),
   state: argument("state", path.join(os.homedir(), ".local/state/opencode-claude-code-plugin")),
   hours: Number(argument("hours", 24)),
@@ -101,8 +101,9 @@ async function runTerminal() {
   let wantShot = null
   let lastPoll = 0
   let waiting = false
-  const total = { sent: 0, late: 0, draw: 0, read: 0, bytes: 0, bands: 0, of: 0, encode: 0, write: 0, done: 0 }
+  const total = { sent: 0, late: 0, draw: 0, read: 0, bytes: 0, tiles: 0, of: 0, encode: 0, write: 0, done: 0 }
   let mark = { ...total, at: performance.now() }
+  let peak = 0
   const meta = { line: "", line2: "" }
 
   const quit = async () => {
@@ -149,10 +150,11 @@ async function runTerminal() {
   terminal.onFrameDone = (result) => {
     total.done += 1
     total.bytes += result.bytes
-    total.bands += result.bands
+    total.tiles += result.tiles
     total.of += result.of
     total.encode += result.encodeMs
     total.write += result.writeMs
+    peak = Math.max(peak, result.encodeMs + result.writeMs)
     if (waiting) frame()
   }
 
@@ -184,20 +186,22 @@ async function runTerminal() {
       rows: terminal.rows,
       cell: terminal.cell,
       kb: Math.round((total.bytes - mark.bytes) / frames / 1024),
-      bands: `${((total.bands - mark.bands) / frames).toFixed(1)}/${Math.round((total.of - mark.of) / frames)}`,
+      tiles: `${((total.tiles - mark.tiles) / frames).toFixed(1)}/${Math.round((total.of - mark.of) / frames)}`,
       drawMs: Number(((total.draw - mark.draw) / sent).toFixed(1)),
       readMs: Number(((total.read - mark.read) / sent).toFixed(1)),
       encodeMs: Number(((total.encode - mark.encode) / frames).toFixed(1)),
       writeMs: Number(((total.write - mark.write) / frames).toFixed(1)),
       late: total.late - mark.late,
+      peakMs: Number(peak.toFixed(0)),
       lanes: scene.lanes.length,
       mode: demo ? "DEMO" : "LIVE",
       rssMb: Math.round(process.memoryUsage().rss / 1048576),
       error: error ?? terminal.error ?? null,
     }
     mark = { ...total, at: now }
+    peak = 0
     meta.line = `${terminal.width}×${terminal.height} px native · ${stats.fps.toFixed(0)} fps · ${stats.kb} kB a frame`
-    meta.line2 = `draw ${stats.drawMs.toFixed(1)} · encode ${stats.encodeMs.toFixed(1)} · write ${stats.writeMs.toFixed(1)} ms · ${stats.bands} bands`
+    meta.line2 = `draw ${stats.drawMs.toFixed(1)} · encode ${stats.encodeMs.toFixed(1)} · write ${stats.writeMs.toFixed(1)} ms · ${stats.tiles} tiles`
     try {
       fs.writeFileSync(path.join(HERE, "stats.json"), JSON.stringify(stats))
     } catch {}

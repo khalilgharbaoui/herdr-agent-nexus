@@ -5,6 +5,35 @@ import path from "node:path"
 import { Worker } from "node:worker_threads"
 
 const ESC = "\x1b"
+const TILE_COLS = 16
+const TILE_ROWS = 3
+
+// UNPRE[alpha << 8 | channel] = channel * 255 / alpha
+const UNPRE = new Uint8Array(65536)
+for (let alpha = 1; alpha < 256; alpha += 1) {
+  for (let channel = 0; channel < 256; channel += 1) UNPRE[(alpha << 8) | channel] = Math.min(255, Math.round((channel * 255) / alpha))
+}
+
+// Copies one tile out of the frame as straight-alpha pixels. Returns false when it is empty.
+function lift(words, width, left, top, tileWidth, rows, target, out) {
+  let any = 0
+  for (let row = 0; row < rows; row += 1) {
+    let index = (top + row) * width + left
+    for (const end = index + tileWidth; index < end; index += 1) {
+      const pixel = words[index]
+      const alpha = pixel >>> 24
+      if (alpha === 255) target[out] = pixel
+      else if (alpha !== 0) {
+        const base = alpha << 8
+        target[out] = ((alpha << 24) | (UNPRE[base | ((pixel >>> 16) & 255)] << 16) | (UNPRE[base | ((pixel >>> 8) & 255)] << 8) | UNPRE[base | (pixel & 255)]) >>> 0
+      }
+      any |= alpha
+      out += 1
+    }
+  }
+  return any !== 0
+}
+
 const HERE = path.dirname(path.dirname(new URL(import.meta.url).pathname))
 
 export class Terminal {
@@ -14,11 +43,9 @@ export class Terminal {
     this.inbox = ""
     this.listeners = { key: [], resize: [] }
     this.busy = false
-    this.flip = 0
-    this.shared = null
-    this.sharedBytes = 0
+    this.previous = null
     this.reset = true
-    this.last = { bytes: 0, bands: 0, of: 0, encodeMs: 0, writeMs: 0 }
+    this.last = { bytes: 0, tiles: 0, of: 0, encodeMs: 0, writeMs: 0 }
     this.onFrameDone = () => {}
   }
 
@@ -97,29 +124,52 @@ export class Terminal {
     for (const key of keys) for (const listener of this.listeners.key) listener(key)
   }
 
-  // Hands one frame (premultiplied RGBA, width x height) to the worker. Returns false while
-  // the previous frame is still being written.
+  // Takes one frame (premultiplied RGBA, width x height), finds the tiles that differ from
+  // the frame before, converts those to straight alpha and hands them to the worker.
+  // Returns false while the previous frame is still being written.
   send(pixels) {
     if (this.busy || !this.worker) return false
-    if (this.sharedBytes !== pixels.length) {
-      this.shared = [new SharedArrayBuffer(pixels.length), new SharedArrayBuffer(pixels.length)]
-      this.views = this.shared.map((buffer) => new Uint8Array(buffer))
-      this.sharedBytes = pixels.length
-      this.worker.postMessage({ buffers: this.shared })
-      this.reset = true
+    const { width, height } = this
+    const tileWidth = TILE_COLS * this.cell.width
+    const tileHeight = TILE_ROWS * this.cell.height
+    const across = Math.ceil(width / tileWidth)
+    const down = Math.ceil(height / tileHeight)
+    const previous = this.previous && this.previous.length === pixels.length && !this.reset ? this.previous : null
+    const words = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length >> 2)
+    const stride = width * 4
+    const dirty = []
+    let need = 0
+    for (let band = 0; band < down; band += 1) {
+      const top = band * tileHeight
+      const rows = Math.min(tileHeight, height - top)
+      const from = top * stride
+      if (previous && pixels.compare(previous, from, from + rows * stride, from, from + rows * stride) === 0) continue
+      for (let column = 0; column < across; column += 1) {
+        const left = column * tileWidth
+        const wide = Math.min(tileWidth, width - left)
+        if (previous) {
+          let same = true
+          for (let row = 0; row < rows && same; row += 1) {
+            const at = from + row * stride + left * 4
+            same = pixels.compare(previous, at, at + wide * 4, at, at + wide * 4) === 0
+          }
+          if (same) continue
+        }
+        dirty.push({ index: band * across + column, left, top, width: wide, height: rows, offset: need, length: wide * rows * 4 })
+        need += wide * rows * 4
+      }
     }
-    this.views[this.flip].set(pixels)
+    const payload = new ArrayBuffer(need)
+    const target = new Uint32Array(payload)
+    for (const tile of dirty) {
+      if (!lift(words, width, tile.left, tile.top, tile.width, tile.height, target, tile.offset >> 2)) tile.length = 0
+    }
+    this.previous = pixels
     this.busy = true
-    this.worker.postMessage({
-      index: this.flip,
-      width: this.width,
-      height: this.height,
-      cols: this.cols,
-      cellHeight: this.cell.height,
-      bandRows: 3,
-      reset: this.reset,
-    })
-    this.flip = 1 - this.flip
+    this.worker.postMessage(
+      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset: this.reset },
+      [payload],
+    )
     this.reset = false
     return true
   }

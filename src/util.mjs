@@ -39,9 +39,9 @@ export const fontOf = (size, family, weight = "") => `${weight ? `${weight} ` : 
 export const INK = {
   text: "#e9f1fa", // primary type
   soft: "#a8b9cd", // secondary type
-  dim: "#6d8098", // tertiary type, labels
-  faint: "#3b4a5e", // rules and ticks
-  ghost: "#222d3b", // the quietest rules
+  dim: "#7f93ab", // tertiary type, labels
+  faint: "#435469", // rules and ticks
+  ghost: "#27323f", // the quietest rules
   live: "#4fe3ff", // one meaning: happening now
   warn: "#ffb224", // one meaning: waiting for you
   bad: "#ff4d5e", // one meaning: failed
@@ -140,7 +140,7 @@ const TOOL_KIND = {
   question: "ask",
 }
 export function toolMeta(name = "") {
-  const bare = name.replace(/^mcp__[^_]+__/, "").toLowerCase()
+  const bare = name.replace(/^mcp__.+?__/, "").toLowerCase()
   const kind = TOOL_KIND[bare] ?? "other"
   return { kind, ...TOOL_FAMILY[kind] }
 }

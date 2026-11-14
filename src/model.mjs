@@ -200,7 +200,7 @@ export class Scene {
       for (const step of session.steps) {
         for (const tool of step.tools) {
           if ((tool.end ?? now) < now - this.windowMs) continue
-          const name = tool.name.replace(/^mcp__[^_]+__/, "")
+          const name = tool.name.replace(/^mcp__.+?__/, "")
           const entry = stats.get(name) ?? { name, count: 0, errors: 0, running: 0, spans: [] }
           entry.count += 1
           if (tool.status === "error") entry.errors += 1

@@ -15,9 +15,8 @@ const MESSAGE_COLUMNS = `
   json_extract(m.data, '$.tokens.output') as tout,
   coalesce(json_extract(m.data, '$.tokens.input'), 0) + coalesce(json_extract(m.data, '$.tokens.cache.read'), 0)
     + coalesce(json_extract(m.data, '$.tokens.cache.write'), 0) as tctx,
-  (select coalesce(sum(length(json_extract(j.value, '$.text'))), 0)
-     from json_each(m.data, '$.content') j
-    where json_extract(j.value, '$.type') = 'text') as chars,
+  (select coalesce(sum(coalesce(length(json_extract(j.value, '$.text')), 0) + coalesce(length(json_extract(j.value, '$.state.input')), 0)), 0)
+     from json_each(m.data, '$.content') j) as chars,
   (select json_group_array(json_array(json_extract(j.value, '$.time.created'), json_extract(j.value, '$.time.completed')))
      from json_each(m.data, '$.content') j
     where json_extract(j.value, '$.type') = 'reasoning') as reasoning,
@@ -55,6 +54,15 @@ function readJson(file) {
   } catch {
     return null
   }
+}
+
+// Paths lose the home prefix and commands their leading "cd somewhere &&".
+function tidy(label) {
+  return String(label ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/^cd \S+ && /, "")
+    .replace(/\/Users\/[^/ ]+\//g, "~/")
+    .trim()
 }
 
 function parseList(text) {
@@ -232,20 +240,22 @@ export class LiveSource {
     }
   }
 
-  merge(track, rows) {
+  merge(track, rows, limit) {
+    const plausible = (tokens) => tokens > 0 && (!limit || tokens <= limit * 1.05)
     for (const row of rows) {
       if (row.type !== "assistant") {
         track.marks.set(row.seq, { at: row.created, kind: row.type, outcome: row.outcome ?? "" })
         continue
       }
-      if (row.tctx > 0) track.context = row.tctx
+      // a child session can report a whole turn's sum here; only a figure that fits the window is a reading
+      if (plausible(row.tctx)) track.context = row.tctx
       const tools = []
       for (const [id, name, status, label, created, completed] of parseList(row.tools)) {
         if (!id) continue
         tools.push({
           id,
           name: String(name ?? "tool"),
-          label: String(label ?? "").replace(/\s+/g, " "),
+          label: tidy(label),
           status: status ?? "completed",
           start: created ?? row.streamed ?? row.created,
           end: status === "running" || status === "pending" ? null : (completed ?? row.completed ?? null),
@@ -270,17 +280,17 @@ export class LiveSource {
     if (!track) {
       track = { steps: new Map(), marks: new Map(), context: 0, refreshed: 0, wasBusy: false }
       this.tracks.set(session.id, track)
-      this.merge(track, this.historyQuery.all(session.id, now - this.options.historyMs))
+      this.merge(track, this.historyQuery.all(session.id, now - this.options.historyMs), session.context.limit)
       if (!track.context) {
         for (const row of this.contextQuery.all(session.id)) {
-          if (row.tctx > 0) {
+          if (row.tctx > 0 && (!session.context.limit || row.tctx <= session.context.limit * 1.05)) {
             track.context = row.tctx
             break
           }
         }
       }
     } else if (session.busy || track.wasBusy || session.updated > track.refreshed - 3000) {
-      this.merge(track, this.tailQuery.all(session.id))
+      this.merge(track, this.tailQuery.all(session.id), session.context.limit)
     }
     track.refreshed = now
     track.wasBusy = session.busy
