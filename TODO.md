@@ -1,0 +1,17 @@
+# Agent Nexus: open items
+
+Kept by the directing session so open questions survive a lost context. Remove an entry when it
+is done or dropped.
+
+## Open from the operator
+
+v4, raised 2026-11-14 by the designer's report. Answer now, later or drop for each.
+
+1. Demo data has no project directories, so `--demo` shows one "NO PROJECT" group instead of the
+   account, project, thread hierarchy.
+2. A long comms line truncates mid-word ("Here First Message Convers: marked busy").
+3. Not verified with a real hand: go to pane (`herdr agent focus <pane>`, reached by `enter`, a
+   click on a pane id, a middle click or alt + click), the real wheel and real typed keys. Real
+   hover and one real left click were seen.
+4. Not looked at in v4: landscape layout, pane resize, `z` zoom, the `p` painted transport, and
+   the numbers for a quiet machine.
