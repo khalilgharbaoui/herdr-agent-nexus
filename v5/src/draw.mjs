@@ -15,6 +15,7 @@ import { Flock } from "./flock.mjs"
 import { hud } from "./hud.mjs"
 import { PORTS, portOf } from "./model.mjs"
 import { stage } from "./stage.mjs"
+import { terrain } from "./terrain.mjs"
 import { LEVEL_COLOR, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
 import { FAMILY, INK, TAU, clamp, fontOf, modelColor } from "./util.mjs"
 
@@ -341,6 +342,8 @@ export class Renderer {
         if (!best || target.rect.w * target.rect.h < best.rect.w * best.rect.h) best = target
       }
     }
+    // on the terrain a point of a ridge, unless a mark on it (a tool call, a flag, a name) is under the pointer
+    if (best?.kind === "terrain") return this.terrainAt(x, y) ?? best
     return best
   }
 
@@ -759,6 +762,7 @@ export class Renderer {
       const pinned = ui.pinned?.target
       if (pinned?.kind === "dot" && pinned.sid === session.id && pinned.index < flock.count && flock.level[pinned.index]) out.push({ key: "pin-dot", kind: `ring|${INK.live}`, x: flock.sx[pinned.index], y: flock.sy[pinned.index], top: true })
     }
+    this.terrainSprites(scene, now, out)
     // the reticles: focus (cyan) and pointer (white) ease from one target to the next
     const g = G.rowOf.get(scene.focus.id)
     this.track("focus", g ? { x: g.somaX - g.r - u(11), y: g.axonY - g.r - u(11), w: (g.r + u(11)) * 2, h: (g.r + u(11)) * 2 } : null, INK.live, 14, out)
@@ -908,4 +912,4 @@ export class Renderer {
   }
 }
 
-Object.assign(Renderer.prototype, stage, circuit, hud)
+Object.assign(Renderer.prototype, stage, circuit, hud, terrain)

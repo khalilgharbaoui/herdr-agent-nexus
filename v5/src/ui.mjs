@@ -10,9 +10,10 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import { shortTarget } from "./hud.mjs"
 import { inside } from "./theme.mjs"
+import { WINDOWS } from "./terrain.mjs"
 import { clockOf } from "./util.mjs"
 
-const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane"])
+const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain"])
 const DWELL_MS = 140 // how long the pointer rests on something before its card opens
 const GONE_MS = 8000 // no mouse report for this long: the pointer is taken to have left the pane
 const MODE = { 0: "not known", 1: "on", 2: "off", 3: "always on", 4: "always off" }
@@ -24,7 +25,7 @@ export class Controller {
     this.getScene = scene
     this.actions = actions
     this.logFile = logFile
-    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, help: false, monitor: false, zoom: false, tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
+    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, help: false, monitor: false, zoom: false, window: WINDOWS[1], tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
     this.counts = { keys: 0, moves: 0, clicks: 0, wheels: 0 }
     this.events = []
     this.dirty = false // the scene has to be rebuilt (a fold, a filter)
@@ -83,6 +84,11 @@ export class Controller {
         alert: "click: focus the flagged thread",
         tail: "wheel: scroll the live tail",
         clock: "the turn clock: a bar is a model call, a spoke a tool call",
+        dot: "one dot of the flock  ·  click: pin it",
+        flock: "the flock: this turn's output  ·  click: pin its card",
+        lean: "how far the disc leans is how far the turn is past its usual length",
+        ridge: "a point on a thread's ridge  ·  click: focus the thread, or pin the point",
+        terrain: "the time terrain  ·  w: change the window",
       }[target.kind] ?? ""
     )
   }
@@ -168,6 +174,13 @@ export class Controller {
         if (alert?.sid && scene.lock(alert.sid, now)) return "focused the flagged thread"
         return this.pin(target)
       }
+      case "ridge":
+        if (target.sid !== scene.focus.id && scene.lock(target.sid, now)) return "focused the thread of that ridge"
+        return this.pin(target)
+      case "dot":
+      case "flock":
+      case "lean":
+      case "terrain":
       case "port":
       case "account":
       case "tool":
@@ -222,6 +235,10 @@ export class Controller {
       this.dirty = true
       return `listing ${scene.filter}`
     }
+    if (id.startsWith("window:")) {
+      ui.window = Number(id.slice(7))
+      return `terrain shows the last ${Math.round(ui.window / 60e3)} min`
+    }
     if (id === "next-flag") return scene.nextAlert(1, now) ? "focused the next flagged thread" : "nothing is flagged"
     if (id === "unpin") {
       ui.pinned = null
@@ -260,6 +277,7 @@ export class Controller {
       ui.monitor = !ui.monitor
       return ui.monitor ? "input monitor on" : "input monitor off"
     }
+    if (key === "w") return this.action(`window:${WINDOWS[(WINDOWS.indexOf(ui.window) + 1) % WINDOWS.length]}`, now)
     if (key === "z") {
       ui.zoom = !ui.zoom
       return ui.zoom ? "stage zoomed" : "stage at its usual size"

@@ -35,6 +35,16 @@ export function lastActivity(session) {
   return last
 }
 
+// What one model call wrote, in tokens. A provider that reports nothing for a call that ended in
+// tool calls, or reports the whole turn's sum on the last call, is read from the length of what
+// the call wrote instead (3.6 characters to a token), so the figure is an estimate there.
+export function wroteOf(step) {
+  const guess = step.chars / 3.6
+  if (!step.out) return guess
+  if (step.chars && step.out > guess * 3 + 200) return guess
+  return step.out
+}
+
 export function stateOf(session, now) {
   if (session.blocked) return "waiting"
   if (session.busy) {

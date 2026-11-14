@@ -39,6 +39,7 @@ export const stage = {
     }
     const flock = this.flock
     if (flock.sid === session.id) parts.push(flock.state, flock.count, Math.round(flock.tilt * 90))
+    parts.push(this.signTerrain(scene, ui, now))
     return parts.join("|")
   },
 
@@ -270,6 +271,7 @@ export const stage = {
       ])
       x += u(34)
     }
+    this.drawTerrain(c, scene, ui, now)
     this.drawTail(c, session, color, ui, now)
   },
 

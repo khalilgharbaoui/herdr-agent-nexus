@@ -17,7 +17,7 @@
 // the turn runs past its usual length), newer output rides above the disc and older output sinks
 // under it, and a dot's size, brightness and stacking follow how near it is.
 
-import { portOf } from "./model.mjs"
+import { portOf, wroteOf } from "./model.mjs"
 import { GOLDEN, PORT_COLOR, spriteHex } from "./theme.mjs"
 import { INK, TAU, clamp, modelColor } from "./util.mjs"
 
@@ -94,7 +94,7 @@ export class Flock {
     let total = 0
     for (const step of session.steps) {
       if (!turn || step.start < turn.start - 500 || step.start > turn.end) continue
-      const wrote = step.out || step.chars / 3.6
+      const wrote = wroteOf(step)
       if (wrote <= 0) continue
       const chars = step.items.reduce((sum, item) => sum + (item.length ?? 0), 0)
       if (!chars) {
@@ -309,8 +309,8 @@ export class Flock {
     const { x, y, z, vx, vy, vz, ax, ay, az, wake, squad } = this
     const u = (value) => value * S
     const free = 1 - lock
-    const R2 = u(30) ** 2
-    const RS = u(11)
+    const R2 = u(46) ** 2
+    const RS = u(18)
     const RS2 = RS * RS
     const spot = [0, 0, 0]
     // where each squad waits: just past the tip of its tool's spoke, which grows while it runs
@@ -372,7 +372,7 @@ export class Flock {
             if (j === i || wake[j] > now || squad[j]) continue
             const dx = x[j] - px
             const dy = y[j] - py
-            const dz = z[j] - pz
+            const dz = (z[j] - pz) * 0.35 // the disc is seen nearly face on: dots keep apart across it, not along the eye
             const d2 = dx * dx + dy * dy + dz * dz
             if (d2 >= R2) continue
             seen += 1
@@ -391,9 +391,9 @@ export class Flock {
             }
           }
           if (seen) {
-            fx += (sumX / seen) * 1.3 + (velX / seen - vx[i]) * 1.7 // cohesion, alignment
-            fy += (sumY / seen) * 1.3 + (velY / seen - vy[i]) * 1.7
-            fz += (sumZ / seen) * 1.3 + (velZ / seen - vz[i]) * 1.7
+            fx += (sumX / seen) * 0.8 + (velX / seen - vx[i]) * 2 // cohesion, alignment
+            fy += (sumY / seen) * 0.8 + (velY / seen - vy[i]) * 2
+            fz += (sumZ / seen) * 0.8 + (velZ / seen - vz[i]) * 2
           }
           fx += apartX * u(430) // separation
           fy += apartY * u(430)
@@ -406,7 +406,7 @@ export class Flock {
           // tail the oldest, and the body holds together on its way round.
           const along = vx[i] * -ny + vy[i] * nx
           const want = windSpeed * (0.84 + (0.32 * (i + 0.5)) / count)
-          const gather = u(52) * (nx * meanY - ny * meanX)
+          const gather = u(64) * (nx * meanY - ny * meanX)
           fx += -ny * ((want - along) * 2.1 + gather)
           fy += nx * ((want - along) * 2.1 + gather)
           // the lanes: the context wall inside, the rim outside; a faster dot swings wider

@@ -44,7 +44,7 @@ const OPTIONS = {
   db: argument("db", path.join(os.homedir(), ".local/share/opencode/opencode.db")),
   state: argument("state", path.join(os.homedir(), ".local/state/opencode-claude-code-plugin")),
   hours: Number(argument("hours", 24)),
-  historyMs: 16 * 60e3,
+  historyMs: 31 * 60e3, // the terrain's widest window is half an hour
   painted: process.argv.includes("--painted"), // moving parts painted into the tiles instead of sprites
   poke: argument("poke", ""), // headless only: a script of input events, to look at hover, click and key handling
   name: argument("name", ""),
