@@ -192,7 +192,7 @@ export const compactOf = (value) => {
   if (value >= 1e3) return `${(value / 1e3).toFixed(1)}k`
   return `${Math.round(value)}`
 }
-export const moneyOf = (value) => (value >= 1000 ? `$${Math.round(value)}` : value >= 100 ? `$${value.toFixed(1)}` : `$${value.toFixed(2)}`)
+export const moneyOf = (value) => (value >= 100 ? `$${Math.round(value).toLocaleString("en-US")}` : `$${value.toFixed(2)}`)
 
 export function hashUnit(text) {
   let hash = 0x811c9dc5
