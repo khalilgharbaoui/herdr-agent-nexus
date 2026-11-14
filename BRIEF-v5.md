@@ -151,3 +151,25 @@ So the leap has not happened yet. Next session, in this order:
 8. **Tests:** poke for each new interaction, and the ones never tested: hovering a ridge and a single flying dot, `enter` while walking, moon clicks.
 
 Keep v5 running in `wE:p1Q1` and restart it in place after each change so the operator sees it grow. Commit after every step that works, and keep the end of `v5/README.md` current with what is done and what is next.
+
+## Third addendum: the operator's feedback on live v5 (verbatim, 2026-11-14 about 23:45)
+
+> "if hovered on something a line is connected to it
+> if pinned also line connected to it and the hover thing moves with it as if attached to it no matter how small it is
+>
+> also the alignments  below ..of the thread name number (like 01) and the round thingy that represents the main thred should be alingined better
+>
+> the accounts part is perfect actually i like it
+>
+> alo the things rising up should collect at the tip when at cirtain energy level they should the shoot into the orb which seems to happen now but the collecting at the tip is not clear
+>
+> v5 is nice just wanted to give this feedback still
+> designer is still working lets see what it does"
+
+### What this asks
+
+1. **Leader lines.** Every hover card is tied to its mark by a visible line from the mark to the card. A pinned card has the same line. The card and its line follow the mark as it moves (a flying dot, a mote, a moon), frame by frame, however small the mark is. The line ends exactly on the mark, with a small ring on tiny marks so it is clear which one is meant.
+2. **Alignment in the circuit.** The thread number (01, 02, ...), the thread name and the round node that stands for a main thread should sit on one clear grid. Check every kind of row: main thread, subagent, resting, silent.
+3. **The accounts part is perfect. Leave it exactly as the operator saw it** (the state of `60a856e`). This overrides the Continuation section's "reservoirs become wide tubes". If it has been changed since, put it back.
+4. **Collecting at the tip.** What rises toward the orb must visibly gather at the tip before it goes in: a charge that grows with what has arrived, and at a set energy level it shoots into the orb. The shot seems to happen already; the gathering is what does not read. Make it unmistakable, and put the unit and the threshold in the table of marks.
+5. The operator likes v5 and is watching the pane. Carry on with the order of work.
