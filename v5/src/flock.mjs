@@ -30,6 +30,7 @@ const smooth = (value, low, high) => {
   return t * t * (3 - 2 * t)
 }
 
+export const CHARGE_SOCKETS = 8 // the charge at the tip fills this many sockets, then fires one dot
 export const flockUnit = (out) => FLOCK_UNITS.find((unit) => out / unit <= FLOCK_CAP) ?? 50000
 export const KIND_WORD = { think: "reasoning", say: "reply", tool: "tool input", unknown: "not split yet" }
 
@@ -74,6 +75,10 @@ export class Flock {
     this.mix = { think: 0, say: 0, tool: 0, unknown: 0 }
     this.metaKey = ""
     this.seed = 1
+    this.shown = 0 // tokens that have been taken in at the tip so far
+    this.charge = 0 // how far the tip is charged toward the next dot, 0 to 1
+    this.firedAt = 0
+    this.tip = null
   }
 
   random() {
@@ -158,9 +163,17 @@ export class Flock {
     const u = (value) => value * S
     const out = session.turn?.out ?? session.lastOut ?? 0
     const unit = flockUnit(out)
-    const count = Math.min(FLOCK_CAP, Math.floor(out / unit))
     const turnKey = session.turn?.start ?? 0
     const fresh = session.id !== this.sid || turnKey !== this.turn
+    // The charge at the tip. What the thread writes rises up its wire and gathers where the
+    // wire ends: the charge grows with every token that arrived, and each time it holds one
+    // dot's worth of tokens it fires that dot into the body. A dot takes at least 0.4 s to
+    // charge, and a backlog (a call that reports all it wrote at its end) clears in 2.4 s.
+    if (fresh || unit !== this.unit || out < this.shown) this.shown = out
+    else if (out > this.shown) this.shown = Math.min(out, this.shown + Math.max(unit / 0.4, (out - this.shown) / 2.4) * dt)
+    const count = Math.min(FLOCK_CAP, Math.floor(this.shown / unit + 1e-9))
+    this.charge = clamp(this.shown / unit - Math.floor(this.shown / unit + 1e-9), 0, 1)
+    this.tip = entry
     const fill = session.context.limit && session.context.used ? clamp(session.context.used / session.context.limit, 0, 1) : 0
     const r1 = core.r1
     const rIn = core.r0 + (core.r1 - core.r0) * 0.72 * fill
@@ -209,8 +222,7 @@ export class Flock {
 
     // dots that joined or left since the last frame
     if (count > this.count) {
-      const added = count - this.count
-      const stagger = fresh ? 0 : clamp(2400 / added, 24, 380)
+      if (!fresh) this.firedAt = now
       for (let index = this.count; index < count; index += 1) {
         if (fresh) {
           // a change of focus: the new thread's flock gathers from all around and forms up
@@ -221,14 +233,15 @@ export class Flock {
           spot[2] = (this.random() - 0.5) * u(160)
           this.wake[index] = now + this.random() * 260
         } else {
-          this.toDisc(entry.x - core.cx + (this.random() - 0.5) * u(10), entry.y - core.cy, focal, spot)
-          this.wake[index] = now + (index - this.count) * stagger
+          // fired from the tip: the charge reached one dot's worth
+          this.toDisc(entry.x - core.cx + (this.random() - 0.5) * u(6), entry.y - core.cy, focal, spot)
+          this.wake[index] = now + (index - this.count) * 60
         }
         this.x[index] = spot[0]
         this.y[index] = spot[1]
         this.z[index] = spot[2]
-        this.vx[index] = fresh ? 0 : u(40)
-        this.vy[index] = fresh ? 0 : -u(170)
+        this.vx[index] = fresh ? 0 : u(60)
+        this.vy[index] = fresh ? 0 : -u(300)
         this.vz[index] = 0
         this.squad[index] = null
       }
@@ -505,6 +518,23 @@ export class Flock {
       this.level[i] = level
       out.push({ key: `fl${i}`, kind: `f${level}|${hex}`, x: this.sx[i], y: this.sy[i], z: level })
     }
+    this.emitCharge(out, own, u, now)
+  }
+
+  // The charge where the thread's wire ends: eight sockets round the tip, lit one by one as
+  // tokens arrive (a socket is an eighth of a dot), a glow that grows with them, and a flash
+  // each time the charge is full and a dot is fired into the body.
+  emitCharge(out, hex, u, now) {
+    const tip = this.tip
+    if (!tip || !this.out) return
+    const lit = Math.floor(this.charge * CHARGE_SOCKETS + 1e-6)
+    for (let socket = 0; socket < CHARGE_SOCKETS; socket += 1) {
+      const angle = -Math.PI / 2 + (socket / CHARGE_SOCKETS) * TAU
+      out.push({ key: `ch${socket}`, kind: `${socket < lit ? "f6" : "f3"}|${hex}`, x: tip.x + Math.cos(angle) * u(19), y: tip.y + Math.sin(angle) * u(19), z: 6 })
+    }
+    const glow = this.charge > 0.66 ? 3 : this.charge > 0.33 ? 2 : this.charge > 0.04 ? 1 : 0
+    if (glow) out.push({ key: "ch-glow", kind: `breath${glow}|${hex}`, x: tip.x, y: tip.y, z: 5 })
+    if (now - this.firedAt < 240) out.push({ key: "ch-fire", kind: `${now - this.firedAt < 110 ? "glow" : "glow2"}|${INK.text}`, x: tip.x, y: tip.y, z: 7 })
   }
 
   // The dot under a point: the nearest to the eye first, then the closest. A dot that was under

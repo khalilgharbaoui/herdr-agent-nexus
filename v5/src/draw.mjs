@@ -334,6 +334,11 @@ export class Renderer {
       const r = this.u(13)
       if (Math.abs(x - moon.x) <= r && Math.abs(y - moon.y) <= r) return { kind: "thread", id: moon.sid, moon: true, moving: true, rect: { x: moon.x - r, y: moon.y - r, w: r * 2, h: r * 2 } }
     }
+    const tip = this.flock.tip
+    if (tip && scene.focused && this.flock.sid === scene.focus.id && Math.hypot(x - tip.x, y - tip.y) <= this.u(26)) {
+      const r = this.u(16)
+      return { kind: "charge", id: this.flock.sid, rect: { x: tip.x - r, y: tip.y - r, w: r * 2, h: r * 2 } }
+    }
     const dot = this.dotAt(x, y, scene)
     if (dot) return dot
     const mark = this.markAt(x, y, scene, now)

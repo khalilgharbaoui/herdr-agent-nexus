@@ -2,7 +2,7 @@
 // and the two overlays (the inspection card and the help sheet).
 
 import { explain } from "./explain.mjs"
-import { FLOCK_CAP, KIND_WORD } from "./flock.mjs"
+import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD } from "./flock.mjs"
 import { portOf } from "./model.mjs"
 import { LEVEL_COLOR, PANEL, PORT_COLOR, bare, clean, homed, wrap } from "./theme.mjs"
 import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, modelColor, moneyOf, shortModel, spanOf, timerOf } from "./util.mjs"
@@ -546,6 +546,20 @@ export const hud = {
         pin: true,
         foot: "the split inside a call is by the length of its reasoning, reply and tool input",
       }
+    }
+    if (target.kind === "charge") {
+      const flock = this.flock
+      const session = scene.byId.get(target.id)
+      if (!session || flock.sid !== session.id) return null
+      const lit = Math.floor(flock.charge * CHARGE_SOCKETS + 1e-6)
+      const lines = [
+        ["HOLDS", `${Math.round(flock.charge * flock.unit)} of ${compactOf(flock.unit)} tok toward the next dot`, session.state === "working" ? INK.live : INK.soft],
+        ["SOCKETS", `${lit} of ${CHARGE_SOCKETS} lit  ·  one socket is ${Math.round((flock.unit / CHARGE_SOCKETS) * 10) / 10} tok`],
+        ["FIRES AT", `${compactOf(flock.unit)} tok: one dot goes into the body`],
+        ["TAKEN IN", `${compactOf(Math.round(flock.shown))} of ${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}`],
+        ["FIRED", `${flock.count} dot${flock.count === 1 ? "" : "s"} so far`],
+      ]
+      return { tone: modelColor(session.model, session.provider), kicker: "CHARGE AT THE TIP", title: threadOf(session.id), lines, pin: true, foot: "what the thread writes rises up its wire and gathers here until it is one dot" }
     }
     if (target.kind === "flock" || target.kind === "lean") {
       const flock = this.flock
