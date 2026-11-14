@@ -187,3 +187,23 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 1. **The dots are flat digital dots, not balls.** No shading, no highlights, no sphere look. The touch of 3D lives in how they behave: the flock turning and banking in space, depth read from motion, overlap and parallax, organic murmuration and inorganic formations. This corrects the Continuation section where it asks for dots that look larger and rounder with depth: keep them crisp and flat, as they were before they became balls.
 2. **The charge at the tip must feel like energy building up.** The gathering is right; the feeling is missing. As the charge grows, let it show: the gathered motes circle tighter and faster, the glow and corona grow, the tip trembles, the pulse quickens, and at the threshold it releases with a flash and a short afterglow. Every part of that is driven by the real charge (what has arrived against the threshold) and by the real arrival rate.
 3. **The orb's look and feel is going the right way.** Keep going in that direction.
+
+## Fifth addendum: the sprite layer is gone in the live pane (verbatim, 2026-11-15 about 00:25)
+
+> "something is off i dont see any kind of dots anymore anywhere or moving particles on lines etc"
+
+### What the director measured (read-only, nothing in `v5/` was touched)
+
+- The app does not know. Its own snapshot (`v5/shots/latest.png`, 00:22) shows the flock, and `stats.json` reports 177 to 359 sprites placed per frame on the `sprites` transport with `droppedSprites: 0`. A snapshot is the app's own composite, so it cannot show what the terminal lost.
+- So the loss is between the app and the terminal: the atlas image (id 7200) is not there, and every placement of it draws nothing. That is every sprite at once: flock dots, motes on wires, satellites, moons.
+- `f8d0c88` tripled the atlas: 1406 x 2761 px (15.5 MB of pixels) at `5df411e`, 1406 x 7300 px (41.1 MB) at `f8d0c88` and in the working tree, at 15 x 30 cells. The same commit changed the upload to strips joined into one zlib stream.
+- The strip stream is valid: rebuilt outside the app exactly as `encoder.mjs` does it, `zlib.inflateSync` accepts it, the Adler sum checks and the bytes are equal. So the stream is not the fault by itself. The likely cause is herdr 0.9.5 or Ghostty dropping or evicting an image this large (their image store is shared with up to 30 MB of tiles, twice over during a flip), and `q=2` hides the refusal.
+- Also seen: RSS 1.1 to 1.6 GB, 40 to 62% of a core and 2.4 MB/s at 206 columns. The brief's own limits were 164 to 173 MB and v4's class of CPU.
+
+### What this asks, before anything else
+
+1. **Get the sprites back on screen first.** Prove the cause instead of guessing: upload the atlas once with `q=1` (errors only) and read the reply, or bisect by size. Then make the atlas small: it holds every shape in all 19 colours with a cell of padding on each side, and 48 streak shapes on top. Only the colours a shape is ever drawn in, tighter packing, fewer streak directions or streaks drawn another way, or several small atlases, each well under what worked before (15 MB).
+2. **Never be blind to this again.** After every atlas upload, verify the terminal has it (a `q=1` upload, or a query placement) and put the answer in `stats.json`. When the terminal refuses, fall back to the painted transport by itself and say so in the header line.
+3. **Do not trust a snapshot for what the pane shows.** The operator's eyes are the only check of the real pane today; say in the report which claims were seen in the pane and which only in a snapshot.
+4. Memory and CPU back into the brief's class is part of the same fix: a 41 MB canvas rebuilt on every resize, plus its copies, is where much of it goes.
+5. Then carry on with the fourth addendum (flat dots, the charge that builds).
