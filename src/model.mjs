@@ -229,5 +229,25 @@ export class Scene {
     this.since ??= now
     const watched = Math.max(30e3, Math.min(RATE_WINDOW, now - this.since))
     this.outPerMinute = (this.outSamples.reduce((sum, sample) => sum + sample.tokens, 0) / watched) * 60e3
+    this.sign(world, now)
+  }
+
+  // Everything the slow layer draws from, as one string. The renderer redraws that layer only
+  // when this changes or the tape advances, so a poll that brought nothing new costs nothing.
+  // The tape advances every second or so, which also repairs anything this leaves out.
+  sign(world, now) {
+    const parts = [Math.floor(now / 60e3), world.mode, this.hidden, world.panes.length, (world.cost24h?.cost ?? 0).toFixed(1), Math.round((this.outPerMinute ?? 0) / 100)]
+    if (this.waiting.length) parts.push(Math.floor(now / 1000))
+    for (const lane of this.lanes) {
+      const session = lane.session
+      const last = session.steps[session.steps.length - 1]
+      parts.push(session.id, session.state, lane.depth, session.title.length, session.cost.toFixed(2), session.context.used, session.turn?.out ?? 0, session.steps.length, session.marks.length)
+      if (last) parts.push(last.seq, last.streamed, last.end, last.chars, last.reasoning.length, last.tools.map((tool) => `${tool.status[0]}${tool.end ?? ""}`).join(","))
+    }
+    for (const pane of world.panes) parts.push(`${pane.id}${pane.status[0]}${pane.lane}`)
+    for (const account of world.accounts) parts.push(account.five?.used, account.seven?.used)
+    for (const tool of this.tools) parts.push(tool.name, tool.count, tool.running, tool.errors)
+    if (this.log.length) parts.push(this.log[0].key, this.log[0].span, this.log.length)
+    this.signature = parts.join("|")
   }
 }

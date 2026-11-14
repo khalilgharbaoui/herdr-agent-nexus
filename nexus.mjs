@@ -102,7 +102,6 @@ async function runTerminal() {
   let lastPoll = 0
   let waiting = false
   let lastKey = ""
-  let lastSecond = 0
   let previousMarks = null
   let readAll = true
   const total = { sent: 0, still: 0, late: 0, draw: 0, read: 0, bytes: 0, tiles: 0, of: 0, encode: 0, write: 0, done: 0 }
@@ -145,15 +144,13 @@ async function runTerminal() {
       renderer.draw(scene, now, meta)
       error = null
       // Read back only the tile rows where something moved, this frame or the last. Everything
-      // is read when the slow layer was redrawn, and once a second regardless (clock, timers).
-      const second = Math.floor(now / 1000)
+      // is read when the slow layer was redrawn, which the advancing tape does every second or so.
       let marks = null
-      if (!slow && second === lastSecond && !readAll && previousMarks && previousMarks.length === renderer.marks.length) {
+      if (!slow && !readAll && previousMarks && previousMarks.length === renderer.marks.length) {
         marks = new Uint8Array(renderer.marks.length)
         for (let band = 0; band < marks.length; band += 1) marks[band] = renderer.marks[band] | previousMarks[band]
       }
       previousMarks = renderer.marks
-      lastSecond = second
       const drawn = performance.now()
       total.draw += drawn - started
       if (terminal.send(renderer.context, marks)) {
@@ -229,7 +226,6 @@ async function runTerminal() {
     mark = { ...total, at: now }
     peak = 0
     meta.line = `${terminal.width}×${terminal.height} px native · ${stats.fps.toFixed(0)} fps · ${stats.changed.toFixed(0)} changed · ${stats.kb} kB each`
-    readAll = true
     meta.line2 = `draw ${stats.drawMs.toFixed(1)} · encode ${stats.encodeMs.toFixed(1)} · write ${stats.writeMs.toFixed(1)} ms · ${stats.tiles} tiles`
     try {
       fs.writeFileSync(path.join(HERE, "stats.json"), JSON.stringify(stats))

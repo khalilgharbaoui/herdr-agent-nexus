@@ -24,7 +24,7 @@ export class Renderer {
     this.S = 1
     this.fits = new Map()
     this.lastStep = -1
-    this.lastWorld = null
+    this.lastSignature = null
     this.spots = this.emptySpots()
     this.marks = new Uint8Array(0)
     this.bandHeight = 90
@@ -45,7 +45,8 @@ export class Renderer {
     this.context = this.canvas.getContext("2d")
     this.slowCanvas = createCanvas(width, height)
     this.slow = this.slowCanvas.getContext("2d")
-    this.lastWorld = null
+    this.lastSignature = null
+    this.lastStep = -1
     this.fits.clear()
     this.layout()
   }
@@ -180,7 +181,7 @@ export class Renderer {
 
   // True when the slow layer has to be drawn again: the tape advanced or new data arrived.
   slowDue(scene, now) {
-    return this.stepOf(now) !== this.lastStep || scene.world !== this.lastWorld
+    return this.stepOf(now) !== this.lastStep || scene.signature !== this.lastSignature
   }
 
   // Waiting things breathe, in six plain levels so a breath costs a dozen updates, not seventy.
@@ -211,9 +212,9 @@ export class Renderer {
     scene.capacity = L.capacity
     scene.windowMs = L.windowMs
     const step = this.stepOf(now)
-    if (step !== this.lastStep || scene.world !== this.lastWorld) {
+    if (step !== this.lastStep || scene.signature !== this.lastSignature) {
       this.lastStep = step
-      this.lastWorld = scene.world
+      this.lastSignature = scene.signature
       this.spots = this.emptySpots()
       this.slow.clearRect(0, 0, this.W, this.H)
       if (scene.world) this.drawSlow(this.slow, scene, now, step)
@@ -1069,6 +1070,7 @@ export class Renderer {
     for (const spot of spots.timers) {
       const session = spot.session
       const style = { size: 21, family: FAMILY.monoMedium }
+      if ((spot.state === "working" || spot.state === "stalled") && session.turn) this.mark(spot.y - u(24), spot.y + u(8))
       if (spot.state === "working" && session.turn) this.text(c, timerOf(now - session.turn.start), spot.x, spot.y, { ...style, color: INK.text })
       else if (spot.state === "waiting") this.text(c, "waiting", spot.x, spot.y, { size: 16, family: FAMILY.monoMedium, color: INK.warn })
       else if (spot.state === "stalled" && session.turn) this.text(c, timerOf(now - session.turn.start), spot.x, spot.y, { ...style, color: INK.dim })
@@ -1129,6 +1131,7 @@ export class Renderer {
 
     // the clock, and the instrument reading itself
     const header = L.header
+    this.mark(header.y + u(40), header.y + header.h)
     this.text(c, clockOf(now), header.x + header.w + u(3), header.y + header.h - u(58), { size: 62, family: FAMILY.monoLight, color: INK.text, align: "right" })
     if (meta?.line) this.text(c, meta.line, header.x + header.w, header.y + header.h - u(30), { size: 14, color: INK.dim, align: "right" })
     if (meta?.line2) this.text(c, meta.line2, header.x + header.w, header.y + header.h - u(10), { size: 14, color: INK.dim, align: "right" })
