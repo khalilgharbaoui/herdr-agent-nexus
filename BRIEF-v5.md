@@ -98,3 +98,32 @@ What was added and why, how each sentence of the operator's is answered, the tab
 - Hold the performance class, and measure the 3D flock at its densest.
 
 "bring it to life" is the measure for all of v5: when the operator looks at the pane, it should feel like a living thing that is also an exact instrument.
+
+## Second addendum: the operator after looking at v4 again (verbatim)
+
+> "looked at it its nice but i expect way more from v5"
+
+### What this changes
+
+v5 must not land as "v4 plus a flock and a few sparklines". The operator expects a leap that is obvious within one second of looking at the pane. Everything above still holds (additive, every mark has a function, every motion means something, accuracy first, calm when idle, the performance class). What rises is the ambition. Looking at a v4 frame, this is where the leap is:
+
+1. **The living core is the centrepiece.** In v4 the round element is a small dial, about a fifth of the stage's width. In v5 it is what the eye lands on: larger, with volume, turning in space, made of as many dots as the data supports (group them beyond the sprite budget and say so). Tools are satellites on orbit lanes that leave and return with their results. Subagents are moons with their own smaller flocks. A change of focus is an event worth watching: the old thread's flock disperses and the new one forms.
+2. **No dead space.** v4 leaves large dark areas (between the stage and the circuit, the right half of the circuit rows, the lower circuit). Fill them with living data, never decoration. One strong candidate: a ridgeline terrain, one ridge per thread receding in depth, height is tokens per second over the last minutes, time flowing toward the viewer, events marked on the ridges. That is the live chart lines and the touch of 3D in one piece.
+3. **Wires carry visible volume.** Streams of particles whose density is the token rate and whose weight is the traffic of the last minutes. A tool call is a packet with a shape per tool; a result comes back coloured by success and latency; a subagent's report merges into its parent as a stream you can follow.
+4. **Accounts are reservoirs.** A level that visibly drains at the real burn rate, a pace marker, the projected dry time on a small time axis. Readable from across the room.
+5. **Equipment and the sector map are alive.** Each tool box has a small live latency line, its calls in flight as orbiting pips, a flash on failure. Panes in the sector map rise, glow or call out with their real state.
+6. **Show signals nobody shows.** The prompt cache cooling since the last call, the wait for the first token as a charge, context fill closing a ring, a turn's age against its usual length, the usage window as pressure.
+7. **Choreography that explains change.** A phase change ripples outward from the thread that caused it. A focus change is a camera move. A dispatch, a report back, a failure and the end of a turn each have a signature the operator learns to read without the text.
+8. **Depth and light everywhere, lightly.** One light source, glow on what is active, haze on what is old, parallax under the pointer.
+9. **Interaction beyond inspection.** If the budget allows: drag along a chart to scrub the last minutes and watch the core and the wires replay them.
+
+### Order, when time or usage is short
+
+1. The 3D living core as the centrepiece.
+2. The time terrain or an equally strong living chart in the empty space.
+3. Wires with volume and the account reservoirs.
+4. Smallest-things interaction, the explain mode and the table of marks.
+5. Equipment and sector map.
+6. The rest.
+
+Put v5 in the pane as soon as its core is alive (v4 is no longer running there), commit that checkpoint, and keep improving it live so the operator can watch it grow.
