@@ -72,24 +72,24 @@ const SHAPES = {
     c.fillStyle = hex
     c.fillRect(0, 0, 14, 5)
   }],
-  // a dot of the flock at six depths: farther is smaller and dimmer, nearer is larger, brighter
-  // and lit from the upper left like everything else on screen
-  f1: [4, 4, (c, hex) => disc(c, 2, 2, 1.1, hex, 0.4)],
-  f2: [5, 5, (c, hex) => disc(c, 2.5, 2.5, 1.5, hex, 0.54)],
-  f3: [6, 6, (c, hex) => disc(c, 3, 3, 1.9, hex, 0.7)],
-  f4: [8, 8, (c, hex) => {
-    disc(c, 4, 4, 2.4, hex, 0.88)
-    disc(c, 3.4, 3.4, 0.9, mix(hex, "#ffffff", 0.4), 0.9)
+  // a satellite: one tool call in flight on its equipment's lane
+  sat: [18, 18, (c, hex) => {
+    halo(c, 9, 9, 9, hex, 0.5)
+    c.fillStyle = mix(hex, "#ffffff", 0.25)
+    c.beginPath()
+    c.moveTo(9, 3.5)
+    c.lineTo(14.5, 9)
+    c.lineTo(9, 14.5)
+    c.lineTo(3.5, 9)
+    c.closePath()
+    c.fill()
+    disc(c, 8, 8, 1.4, "#ffffff", 0.9)
   }],
-  f5: [12, 12, (c, hex) => {
-    halo(c, 6, 6, 6, hex, 0.3)
-    disc(c, 6, 6, 2.9, hex, 1)
-    disc(c, 5.2, 5.2, 1.2, mix(hex, "#ffffff", 0.6), 1)
-  }],
-  f6: [16, 16, (c, hex) => {
-    halo(c, 8, 8, 8, hex, 0.4)
-    disc(c, 8, 8, 3.5, hex, 1)
-    disc(c, 7, 7, 1.6, mix(hex, "#ffffff", 0.75), 1)
+  // a moon: a subagent of the focused thread, lit from the upper left
+  moon: [22, 22, (c, hex) => {
+    halo(c, 11, 11, 11, hex, 0.42)
+    disc(c, 11, 11, 5.2, hex, 1)
+    disc(c, 9.4, 9.4, 2.2, mix(hex, "#ffffff", 0.7), 0.95)
   }],
   // a ring around one mark that is pinned or walked to
   ring: [20, 20, (c, hex) => {
@@ -153,6 +153,53 @@ function bar(c, width, height, hex) {
   c.fillRect(1, 1, width - 2, height - 2)
 }
 
+// A dot of the flock at seven depths: farther is smaller and dimmer, nearer is larger, brighter
+// and lit from the upper left like everything else on screen. [radius, alpha, halo radius]
+const DOT_LEVELS = [[0.9, 0.38, 0], [1.3, 0.5, 0], [1.7, 0.64, 0], [2.2, 0.82, 0], [2.8, 0.94, 5.6], [3.5, 1, 7.2], [4.3, 1, 9]]
+const STREAK_TAILS = [0, 0, 0, 14, 16, 18, 19] // how long a flying dot's streak is, by depth
+const STREAK_WAYS = 12
+
+function flockDot(c, x, y, [radius, alpha, glow], hex) {
+  if (glow) halo(c, x, y, glow, hex, 0.26 + radius * 0.035)
+  disc(c, x, y, radius, hex, alpha)
+  if (radius >= 2.2) disc(c, x - radius * 0.26, y - radius * 0.26, radius * 0.42, mix(hex, "#ffffff", 0.3 + radius * 0.1), 0.95)
+}
+
+DOT_LEVELS.forEach((level, index) => {
+  const box = Math.ceil(Math.max(level[0], level[2]) * 2) + 2
+  SHAPES[`f${index + 1}`] = [box, box, (c, hex) => flockDot(c, box / 2, box / 2, level, hex)]
+  const tail = STREAK_TAILS[index]
+  if (!tail) return
+  // the same dot in flight: a streak behind it that fades, pointing one of twelve ways. The
+  // sprite is anchored on the dot itself, so the streak never shifts where the dot is.
+  const side = Math.ceil(tail + level[0] * 2) + 3
+  const bare = [level[0], level[1], 0] // in flight the streak stands in for the glow
+  for (let way = 0; way < STREAK_WAYS; way += 1) {
+    const angle = (way / STREAK_WAYS) * Math.PI * 2
+    const hx = side / 2 + (Math.cos(angle) * tail) / 2
+    const hy = side / 2 + (Math.sin(angle) * tail) / 2
+    const tx = side / 2 - (Math.cos(angle) * tail) / 2
+    const ty = side / 2 - (Math.sin(angle) * tail) / 2
+    SHAPES[`s${index + 1}d${way}`] = [side, side, (c, hex) => {
+      const [r, g, b] = hexToRgb(hex)
+      const fade = c.createLinearGradient(hx, hy, tx, ty)
+      fade.addColorStop(0, `rgba(${r},${g},${b},${0.85 * level[1]})`)
+      fade.addColorStop(0.45, `rgba(${r},${g},${b},${0.34 * level[1]})`)
+      fade.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      const nx = -Math.sin(angle) * level[0] * 0.95
+      const ny = Math.cos(angle) * level[0] * 0.95
+      c.fillStyle = fade
+      c.beginPath()
+      c.moveTo(hx + nx, hy + ny)
+      c.lineTo(tx, ty)
+      c.lineTo(hx - nx, hy - ny)
+      c.closePath()
+      c.fill()
+      flockDot(c, hx, hy, bare, hex)
+    }, hx, hy]
+  }
+})
+
 export const SPRITE_COLORS = [
   "#a78bff", "#4aa8ff", "#2ee6c0", "#ffc247", "#ff62d0", "#ff8a3d", "#8be36a", "#6f9bff", "#9fb4ff", // models
   INK.live, INK.warn, INK.bad, INK.good, INK.text, // signals
@@ -169,12 +216,12 @@ export class Atlas {
     const rows = []
     let width = 0
     let height = 0
-    for (const [shape, [bw, bh, paint]] of Object.entries(SHAPES)) {
+    for (const [shape, [bw, bh, paint, ax = bw / 2, ay = bh / 2]] of Object.entries(SHAPES)) {
       const windowW = Math.ceil((bw + padX) / cellWidth) * cellWidth
       const windowH = Math.ceil((bh + padY) / cellHeight) * cellHeight
       const tileW = padX + windowW
       const tileH = padY + windowH
-      rows.push({ shape, bw, bh, paint, windowW, windowH, tileW, tileH, y: height })
+      rows.push({ shape, bw, bh, ax, ay, paint, windowW, windowH, tileW, tileH, y: height })
       width = Math.max(width, tileW * SPRITE_COLORS.length)
       height += tileH
     }
@@ -194,6 +241,8 @@ export class Atlas {
           y: row.y + padY,
           bw: row.bw,
           bh: row.bh,
+          ax: row.ax, // the point of the box that is put on the wanted screen position
+          ay: row.ay,
           w: row.windowW,
           h: row.windowH,
           cols: row.windowW / cellWidth,
@@ -218,8 +267,8 @@ export class Atlas {
   locate(kind, x, y, cols, rows) {
     const sprite = this.sprites.get(kind)
     if (!sprite) return null
-    const left = Math.round(x - sprite.bw / 2)
-    const top = Math.round(y - sprite.bh / 2)
+    const left = Math.round(x - sprite.ax)
+    const top = Math.round(y - sprite.ay)
     if (left < 0 || top < 0) return null
     const col = Math.floor(left / this.cw)
     const row = Math.floor(top / this.ch)
@@ -231,6 +280,6 @@ export class Atlas {
   draw(context, kind, x, y) {
     const sprite = this.sprites.get(kind)
     if (!sprite) return
-    context.drawImage(this.canvas, sprite.x, sprite.y, sprite.bw, sprite.bh, Math.round(x - sprite.bw / 2), Math.round(y - sprite.bh / 2), sprite.bw, sprite.bh)
+    context.drawImage(this.canvas, sprite.x, sprite.y, sprite.bw, sprite.bh, Math.round(x - sprite.ax), Math.round(y - sprite.ay), sprite.bw, sprite.bh)
   }
 }

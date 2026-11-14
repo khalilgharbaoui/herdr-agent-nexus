@@ -95,11 +95,11 @@ export class Controller {
         step: "click: pin this call",
         alert: "click: focus the flagged thread",
         tail: "wheel: scroll the live tail",
-        clock: "the turn clock: a bar is a model call, a spoke a tool call",
+        clock: "the turn clock: a bar under the ring is a model call, a pillar on it a tool call",
         dot: "one dot of the flock  ·  click: pin it",
         charge: "the charge at the tip: tokens gather here until they are one dot  ·  click: pin it",
         flock: "the flock: this turn's output  ·  click: pin its card",
-        lean: "how far the disc leans is how far the turn is past its usual length",
+        lean: "the axis: how far the body is tipped is how far the turn is past its usual length",
         ridge: "a point on a thread's ridge  ·  click: focus the thread, or pin the point",
         terrain: "the time terrain  ·  w: change the window",
       }[target.kind] ?? ""

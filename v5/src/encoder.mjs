@@ -46,8 +46,33 @@ let flips = new Uint8Array(0)
 let shown = new Uint8Array(0) // 1 while a tile has an image on screen
 let cardFlip = 0
 let cardShown = false
+// the atlas arrives in strips and is compressed strip by strip into one zlib stream
+let atlasParts = null
+let adlerA = 1
+let adlerB = 0
 
 parentPort.on("message", (message) => {
+  if (message.atlasBegin) {
+    atlasParts = [Buffer.from([0x78, 0x01])]
+    adlerA = 1
+    adlerB = 0
+    return
+  }
+  if (message.atlasStrip) {
+    const raw = Buffer.from(message.atlasStrip)
+    for (let at = 0; at < raw.length; ) {
+      const end = Math.min(raw.length, at + 5552)
+      for (; at < end; at += 1) {
+        adlerA += raw[at]
+        adlerB += adlerA
+      }
+      adlerA %= 65521
+      adlerB %= 65521
+    }
+    // a sync flush ends on a byte boundary without closing the stream, so strips join end to end
+    atlasParts.push(zlib.deflateRawSync(raw, { level: 6, finishFlush: zlib.constants.Z_SYNC_FLUSH }))
+    return
+  }
   const started = performance.now()
   const { tiles, total, cellWidth, cellHeight, tileCols, tileRows, across, places, deletes } = message
   const parts = []
@@ -59,9 +84,13 @@ parentPort.on("message", (message) => {
   }
   let tileBytes = 0
   let spriteBytes = 0
-  if (message.atlas) {
-    const { pixels, width, height } = message.atlas
-    const base64 = zlib.deflateSync(Buffer.from(pixels), { level: 6 }).toString("base64")
+  if (message.atlas && atlasParts) {
+    const { width, height } = message.atlas
+    const sum = Buffer.alloc(4)
+    sum.writeUInt32BE(((adlerB << 16) | adlerA) >>> 0)
+    atlasParts.push(zlib.deflateRawSync(Buffer.alloc(0)), sum)
+    const base64 = Buffer.concat(atlasParts).toString("base64")
+    atlasParts = null
     chunked(parts, `a=t,f=32,o=z,s=${width},v=${height},i=${ATLAS_ID},q=2`, base64)
     spriteBytes += base64.length
   }

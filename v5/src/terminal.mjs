@@ -286,13 +286,21 @@ export class Terminal {
     if (!reset && !dirty.length && !places.length && !deletes.length && !cardMessage) return "still"
     let atlasMessage = null
     if (needAtlas) {
-      const pixels = atlas.pixels()
-      atlasMessage = { pixels: pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.length), width: atlas.width, height: atlas.height }
+      // The atlas goes to the worker in strips, each compressed as it arrives, so the whole
+      // picture is never held three times over (it is some forty megabytes of pixels).
+      const context = atlas.canvas.getContext("2d")
+      this.worker.postMessage({ atlasBegin: true })
+      for (let top = 0; top < atlas.height; top += 256) {
+        const rows = Math.min(256, atlas.height - top)
+        const image = context.getImageData(0, top, atlas.width, rows).data
+        const strip = image.buffer.slice(image.byteOffset, image.byteOffset + image.length)
+        this.worker.postMessage({ atlasStrip: strip }, [strip])
+      }
+      atlasMessage = { width: atlas.width, height: atlas.height }
       this.atlasSent = true
     }
     this.inflight += 1
     transfer.push(payload)
-    if (atlasMessage) transfer.push(atlasMessage.pixels)
     this.worker.postMessage(
       { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, atlas: atlasMessage, places, deletes, card: cardMessage },
       transfer,

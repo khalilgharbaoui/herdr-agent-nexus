@@ -2,7 +2,7 @@
 // and the two overlays (the inspection card and the help sheet).
 
 import { explain } from "./explain.mjs"
-import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD } from "./flock.mjs"
+import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD, LEVELS } from "./flock.mjs"
 import { portOf } from "./model.mjs"
 import { LEVEL_COLOR, PANEL, PORT_COLOR, bare, clean, homed, wrap } from "./theme.mjs"
 import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, modelColor, moneyOf, shortModel, spanOf, timerOf } from "./util.mjs"
@@ -540,8 +540,9 @@ export const hud = {
           ["PART", `${KIND_WORD[meta.kind]}${meta.tool ? ` for ${bare(meta.tool.name)}` : ""}`, tone],
           ["MODEL CALL", meta.seq === null ? "not known: the call has not reported yet" : `call ${meta.seq}`],
           ["WRITTEN", meta.seq === null ? "n/a" : `${clockOf(meta.at)}  ·  ${agoOf(now - meta.at)} ago`],
-          ["DEPTH", `layer ${flock.level[target.index]} of 6, nearer is newer`],
-          ["DOING", out ? `out with ${bare(out.tool.name)}, waiting at its spoke` : flock.state, out ? PORT_COLOR[portOf(out.tool.name)] : undefined],
+          ["ON THE GLOBE", `${Math.round(((target.index + 0.5) / Math.max(1, flock.count)) * 180 - 90)}° latitude: the south pole is the turn's first output, the north pole its newest`],
+          ["DEPTH", `layer ${flock.level[target.index]} of ${LEVELS}: nearer is larger and brighter${flock.under[target.index] ? ", behind the rings" : ", in front of the rings"}`],
+          ["DOING", out ? `out with ${bare(out.tool.name)}, in line behind its satellite` : flock.state, out ? PORT_COLOR[portOf(out.tool.name)] : undefined],
         ],
         pin: true,
         foot: "the split inside a call is by the length of its reasoning, reply and tool input",
@@ -567,18 +568,18 @@ export const hud = {
       if (!session || flock.sid !== session.id) return null
       const rate = scene.rateOf(session.id, now)
       const squads = [...flock.squads.values()].map((squad) => bare(squad.tool.name))
-      const lean = Math.round((flock.tilt * 180) / Math.PI)
+      const lean = Math.round((flock.pitch * 180) / Math.PI)
       const lines = [
         ["SIZE", flock.out ? `${flock.count} dots × ${compactOf(flock.unit)} tok = ${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}` : "no output reported"],
         ["MADE OF", `${flock.mix.think} reasoning  ·  ${flock.mix.say} reply  ·  ${flock.mix.tool} tool input${flock.mix.unknown ? `  ·  ${flock.mix.unknown} not split yet` : ""}`],
         ["FORMATION", flock.state, session.state === "working" ? INK.live : INK.soft],
-        ["SPEED", session.state === "working" ? `${Math.round(flock.speed)} px/s round the clock${rate ? `, from ${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s` : ", no rate reported"}` : "at rest"],
-        ["PACKING", flock.fill ? `context ${Math.round(flock.fill * 100)}% full: the inner wall stands ${Math.round(flock.fill * 72)}% of the way to the rim` : "context not reported: the whole lane is free"],
-        ["LEAN", `${lean}°${session.expect && session.turn ? `  ·  the turn is at ×${((now - session.turn.start) / session.expect.p50).toFixed(1)} its usual length` : "  ·  20° on pace, 38° at twice the usual length"}`],
-        ["OUT WITH TOOLS", squads.length ? squads.join(", ") : "none"],
+        ["SPEED", session.state === "working" ? `${Math.round(flock.speed)} px/s round the globe${rate ? `, from ${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s` : ", no rate reported"}` : "at rest"],
+        ["GLOBE", flock.fill ? `context ${Math.round(flock.fill * 100)}% full: the globe is ${Math.round(((0.66 + 0.26 * flock.fill) / 0.92) * 100)}% of the way to the context ring` : "context not reported: the globe stays at its smallest"],
+        ["VIEW", `tipped ${lean}°${session.expect && session.turn ? `  ·  the turn is at ×${((now - session.turn.start) / session.expect.p50).toFixed(1)} its usual length` : ""}  ·  54° on pace, 66° at twice the usual length`],
+        ["SATELLITES", squads.length ? `${squads.join(", ")}: one lap of a lane is that equipment's usual time` : "none in flight"],
         ["CAP", `${FLOCK_CAP} dots; past that one dot stands for more tokens`],
       ]
-      return { tone: modelColor(session.model, session.provider), kicker: target.kind === "lean" ? "THE DISC" : "FLOCK", title: threadOf(session.id), lines, pin: true, foot: "white reply, the model's colour reasoning, an equipment colour tool input" }
+      return { tone: modelColor(session.model, session.provider), kicker: target.kind === "lean" ? "THE VIEW" : "FLOCK", title: threadOf(session.id), lines, pin: true, foot: "white reply, the model's colour reasoning, an equipment colour tool input" }
     }
     if (target.kind === "ridge") {
       const session = scene.byId.get(target.sid)

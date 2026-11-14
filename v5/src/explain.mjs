@@ -26,9 +26,9 @@ export const explain = {
       ["SPOKE", "One tool call, at the moment it started. Longer when it took longer. Its colour is the equipment it used, red when it failed.", core.cx + core.RA + u(14), core.cy - u(70), "tl"],
       ["BAR", "One model call. Longer when it wrote more.", core.cx - core.RA + u(16), core.cy - u(60), "tr"],
       ["CONTEXT RING", "How full the context window is. Amber past 80%, red past 92%.", core.cx - core.RB * 0.72, core.cy + core.RB * 0.7, "tr"],
-      ["FLOCK", `One dot is ${compactOf(unit)} tokens of this turn's output. It flies while the model generates, as fast as tokens stream, and locks into a lattice while a tool runs or nothing is heard. White is reply, the model's colour reasoning, an equipment colour tool input. Nearer is newer.`, core.cx + core.r1 * 0.62, core.cy + core.r1 * 0.5, "tl"],
-      ["WALL AND RIM", "The inner ring of points moves outward as the context fills and packs the flock against the outer one. The disc leans further back the longer the turn runs past its usual length.", core.cx - u(30), core.cy + core.r0 * 0.93, "tr"],
-      ["MOON", "A subagent of this thread on the outer circle. It circles as fast as it writes and sits still when it rests. Click it to focus it.", core.cx - core.frame * 0.72, core.cy - core.frame * 0.69, "tl"],
+      ["FLOCK", `One dot is ${compactOf(unit)} tokens of this turn's output. It flies while the model generates, as fast as tokens stream, and locks into a lattice while a tool runs or nothing is heard. White is reply, the model's colour reasoning, an equipment colour tool input. Nearer is newer.`, core.cx + core.RB * 0.62, core.cy + core.RB * 0.5, "tl"],
+      ["WALL AND RIM", "The inner ring of points moves outward as the context fills and packs the flock against the outer one. The disc leans further back the longer the turn runs past its usual length.", core.cx - u(30), core.cy + core.RB * 0.93, "tr"],
+      ["MOON", "A subagent of this thread on the outer circle. It circles as fast as it writes and sits still when it rests. Click it to focus it.", core.cx - core.Rm * 0.72, core.cy - core.Rm * 0.69, "tl"],
     ]
     if (T) {
       list.push(["RIDGE", "One thread's tokens a second over the window, the focused thread in front. The dot at the right edge is its newest reading; motes above it count the seconds before a call's first word.", T.x + T.w * 0.45, T.y + u(96), "tl"])

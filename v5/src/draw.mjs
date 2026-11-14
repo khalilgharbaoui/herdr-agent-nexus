@@ -10,7 +10,9 @@
 // projects, threads, equipment) and hud.mjs (header, phase, footer, card, help).
 
 import { createCanvas } from "@napi-rs/canvas"
+import { ringPoint } from "./body.mjs"
 import { card } from "./card.mjs"
+import { charts } from "./charts.mjs"
 import { circuit } from "./circuit.mjs"
 import { Flock } from "./flock.mjs"
 import { hud } from "./hud.mjs"
@@ -85,22 +87,49 @@ export class Renderer {
       G.footer = { x: 0, y: H - footerH, w: left, h: footerH }
       G.stage = { x: left, y: G.header.h, w: W - left, h: H - G.header.h }
     } else {
-      G.stage = { x: 0, y: G.header.h, w: W, h: u(840) + extra }
-      G.circuit = { x: 0, y: G.stage.y + G.stage.h, w: W, h: H - G.stage.y - G.stage.h - footerH }
+      // the stage, then the time terrain across the whole width, then the circuit
+      const bandH = u(340)
+      G.stage = { x: 0, y: G.header.h, w: W, h: u(770) + extra }
+      G.band = { x: 0, y: G.stage.y + G.stage.h, w: W, h: bandH }
+      G.circuit = { x: 0, y: G.band.y + bandH, w: W, h: H - G.band.y - bandH - footerH }
       G.footer = { x: 0, y: H - footerH, w: W, h: footerH }
     }
-    // the focus instrument
-    // the living core: the centrepiece, a third larger than v4's dial
-    const core = { RA: u(276), RB: u(232), r0: u(104), r1: u(208), frame: u(330) }
-    core.cx = G.stage.x + M + u(346)
-    core.cy = G.stage.y + u(404)
+    // The living core, the centrepiece: a globe inside a ring system seen from above and in
+    // front. Rm is the outermost orbit (the subagents), RA the turn clock, RB the context ring.
+    const core = { Rm: u(368), RA: u(310), RB: u(252) }
+    core.cx = G.stage.x + M + u(386)
+    core.cy = G.stage.y + u(300)
+    core.top = G.stage.y + u(44)
+    core.bottom = core.cy + u(268)
+    core.left = G.stage.x + M + u(4)
+    core.right = core.cx + core.Rm + u(12)
     G.core = core
-    const headX = core.cx + core.frame + u(44)
+    const headX = core.cx + core.Rm + u(42)
+    const split = headX - u(22) // where the core's column ends and the head's begins
     G.head = { x: headX, y: G.stage.y + u(34), w: G.stage.x + G.stage.w - M - headX }
-    if (wide) G.tail = { x: G.stage.x + M + u(20), y: core.cy + core.frame + u(96), w: G.stage.w - 2 * M - u(20), h: G.stage.y + G.stage.h - u(40) - (core.cy + core.frame + u(96)) }
-    else G.tail = { x: G.head.x, y: G.stage.y + u(560), w: G.head.w, h: G.stage.h - u(560) - u(24) }
-    // the time terrain: every thread's output over the last minutes, between the numbers and the tail
-    G.terrain = { x: G.head.x, y: G.stage.y + u(262), w: G.head.w, h: u(250) }
+    G.coreBox = { x: G.stage.x, y: G.stage.y, w: split - G.stage.x, h: core.bottom - G.stage.y }
+    G.plinth = { x: G.stage.x, y: core.bottom, w: split - G.stage.x, h: u(100) }
+    G.charts = { x: headX, y: G.stage.y + u(262), w: G.head.w, h: u(170) }
+    const stageBottom = G.stage.y + G.stage.h
+    if (wide) {
+      // landscape: the tail runs under the core across the stage, the terrain closes the stage
+      G.terrain = { x: G.stage.x + M, y: stageBottom - u(350), w: G.stage.w - 2 * M, h: u(330) }
+      G.band = { x: G.stage.x, y: G.terrain.y - u(10), w: G.stage.w, h: stageBottom - (G.terrain.y - u(10)) }
+      const tailTop = G.plinth.y + G.plinth.h + u(46)
+      G.tail = { x: G.stage.x + M + u(20), y: tailTop, w: G.stage.w - 2 * M - u(20), h: G.band.y - u(20) - tailTop }
+      G.under = null
+      G.tailBox = { x: G.stage.x, y: tailTop - u(36), w: G.stage.w, h: G.band.y - (tailTop - u(36)) }
+      G.headBox = { x: split, y: G.stage.y, w: G.stage.x + G.stage.w - split, h: G.charts.y - G.stage.y }
+      G.chartsBox = { x: split, y: G.charts.y, w: G.stage.x + G.stage.w - split, h: G.tailBox.y - G.charts.y }
+    } else {
+      G.tail = { x: headX, y: G.stage.y + u(478), w: G.head.w, h: G.stage.h - u(478) - u(22) }
+      G.under = { x: G.stage.x, y: G.plinth.y + G.plinth.h, w: split - G.stage.x, h: stageBottom - (G.plinth.y + G.plinth.h) }
+      G.tailBox = { x: split, y: G.tail.y - u(36), w: W - split, h: stageBottom - (G.tail.y - u(36)) }
+      G.headBox = { x: split, y: G.stage.y, w: W - split, h: G.charts.y - G.stage.y }
+      G.chartsBox = { x: split, y: G.charts.y, w: W - split, h: G.tailBox.y - G.charts.y }
+      // the time terrain: every thread's output over the last minutes, the whole width
+      G.terrain = { x: M, y: G.band.y + u(6), w: W - 2 * M, h: G.band.h - u(12) }
+    }
     // the circuit
     const C = G.circuit
     G.rowsTop = C.y + u(62)
@@ -234,15 +263,22 @@ export class Renderer {
     }
     const focus = G.rowOf.get(scene.focus.id)
     if (focus && !G.wide) {
-      // straight up the bus to where it meets the instrument's dotted frame
-      const core = G.core
-      const reach = Math.sqrt(Math.max(0, core.frame * core.frame - (core.cx - G.busX) ** 2))
-      flow.setPath(`focus:${focus.sid}`, [[focus.somaX - focus.r, focus.axonY], [G.busX, focus.axonY], [G.busX, Math.round(core.cy + reach + u(5))]])
+      // straight up the bus to the tip, where what it writes gathers before it enters the core
+      const tip = this.tipOf()
+      flow.setPath(`focus:${focus.sid}`, [[focus.somaX - focus.r, focus.axonY], [G.busX, focus.axonY], [G.busX, Math.round(tip.y + u(24))]])
     }
     this.buildRegions()
     this.layoutHits()
     this.wiresSignature = ""
     return true
+  }
+
+  // Where the focused thread's wire ends: under the core's near left, below the outer orbit.
+  tipOf() {
+    const G = this.G
+    const core = G.core
+    if (G.wide || !G.busX) return { x: core.left + this.u(40), y: core.bottom - this.u(30) }
+    return { x: G.busX, y: core.bottom - this.u(30) }
   }
 
   // A synapse: leaves horizontally, arrives horizontally.
@@ -276,9 +312,16 @@ export class Renderer {
     const G = this.G
     const C = G.circuit
     const regions = []
-    const add = (name, rect, sign, draw, circuit = false) => regions.push({ name, rect, sign, draw, circuit, last: null })
+    const add = (name, rect, sign, draw, circuit = false, wires = circuit) => regions.push({ name, rect, sign, draw, circuit, wires, last: null })
     add("header", G.header, (scene, ui, now, meta) => this.signHeader(scene, ui, now, meta), (c, scene, ui, now, meta) => this.drawHeader(c, scene, ui, now, meta))
-    add("stage", G.stage, (scene, ui, now) => this.signStage(scene, ui, now), (c, scene, ui, now) => this.drawStage(c, scene, ui, now))
+    // the stage in parts, so a second ticking or a word typed repaints only where it happened
+    add("core", G.coreBox, (scene, ui, now) => this.signCore(scene, ui, now), (c, scene, ui, now) => this.drawCore(c, scene, ui, now), false, true)
+    add("plinth", G.plinth, (scene, ui, now) => this.signPlinth(scene, ui, now), (c, scene, ui, now) => this.drawPlinth(c, scene, ui, now), false, true)
+    if (G.under) add("under", G.under, (scene, ui, now) => this.signUnder(scene, ui, now), (c, scene, ui, now) => this.drawUnder(c, scene, ui, now), false, true)
+    add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
+    add("charts", G.chartsBox, (scene, ui, now) => this.signCharts(scene, ui, now), (c, scene, ui, now) => this.drawCharts(c, scene, ui, now))
+    add("tail", G.tailBox, (scene, ui, now) => this.signTail(scene, ui, now), (c, scene, ui, now) => this.drawTail(c, scene, ui, now))
+    add("terrain", G.band, (scene, ui, now) => this.signTerrain(scene, ui, now), (c, scene, ui, now) => this.drawTerrain(c, scene, ui, now))
     const left = G.railsRight
     const right = G.termX + this.u(12)
     add("rails", { x: C.x, y: C.y, w: left - C.x, h: C.h }, (scene, ui, now) => this.signRails(scene, now), (c, scene, ui, now) => this.drawRails(c, scene, now), true)
@@ -359,7 +402,12 @@ export class Renderer {
   dotAt(x, y, scene) {
     const flock = this.flock
     const core = this.G.core
-    if (!scene.focused || flock.sid !== scene.focus.id || Math.abs(x - core.cx) > core.frame || Math.abs(y - core.cy) > core.frame) return null
+    if (!scene.focused || flock.sid !== scene.focus.id || !inside(this.G.coreBox, x, y)) return null
+    // a satellite: a tool call in flight on its lane
+    for (const sat of flock.sats) {
+      const r = this.u(11)
+      if (Math.abs(x - sat.x) <= r && Math.abs(y - sat.y) <= r) return { kind: "tool", id: sat.id, sid: flock.sid, tool: sat.tool, sat: true, moving: true, rect: { x: sat.x - r, y: sat.y - r, w: r * 2, h: r * 2 } }
+    }
     const index = flock.hit(x, y, this.u(9))
     if (index < 0) return null
     const r = this.u(8)
@@ -371,24 +419,25 @@ export class Renderer {
     const u = (value) => this.u(value)
     const G = this.G
     const clock = this.clock
-    if (clock) {
-      const dx = x - G.core.cx
-      const dy = y - G.core.cy
-      const radius = Math.hypot(dx, dy)
-      if (radius > G.core.RB + u(6) && radius < G.core.RA + u(44)) {
-        const angle = (Math.atan2(dy, dx) + Math.PI / 2 + TAU) % TAU
-        const reach = (u(7) / radius) * 1.2
-        const list = radius > G.core.RA + u(5) ? clock.tools : clock.steps
-        let best = null
+    if (clock && inside(G.coreBox, x, y)) {
+      // a pillar (a tool call) or a bar (a model call) on the turn clock: the nearest one within reach
+      const reach = u(5)
+      let best = null
+      for (const list of [clock.tools, clock.steps]) {
         for (const entry of list) {
-          const gap = Math.abs(((entry.angle - angle + Math.PI * 3) % TAU) - Math.PI)
-          if (gap <= reach && (!best || gap < best.gap)) best = { ...entry, gap }
+          const sx = entry.x1 - entry.x0
+          const sy = entry.y1 - entry.y0
+          const along = clamp(((x - entry.x0) * sx + (y - entry.y0) * sy) / (sx * sx + sy * sy || 1), 0, 1)
+          const gap = Math.hypot(x - (entry.x0 + sx * along), y - (entry.y0 + sy * along))
+          if (gap <= reach && (!best || gap < best.gap)) best = { entry, gap }
         }
-        if (best) {
-          const px = G.core.cx + Math.cos(best.angle - Math.PI / 2) * radius
-          const py = G.core.cy + Math.sin(best.angle - Math.PI / 2) * radius
-          return { kind: best.tool ? "tool" : "step", id: best.tool ? best.tool.id : `${clock.sid}:${best.step.seq}`, sid: clock.sid, tool: best.tool, step: best.step, rect: { x: px - u(9), y: py - u(9), w: u(18), h: u(18) } }
-        }
+      }
+      if (best) {
+        const { entry } = best
+        const mx = (entry.x0 + entry.x1) / 2
+        const my = (entry.y0 + entry.y1) / 2
+        const h = Math.max(u(16), Math.abs(entry.y1 - entry.y0) + u(8))
+        return { kind: entry.tool ? "tool" : "step", id: entry.tool ? entry.tool.id : `${clock.sid}:${entry.step.seq}`, sid: clock.sid, tool: entry.tool, step: entry.step, rect: { x: mx - u(8), y: my - h / 2, w: u(16), h } }
       }
     }
     for (const g of G.rows) {
@@ -485,7 +534,7 @@ export class Renderer {
     c.rect(x, y, w, h)
     c.clip()
     c.clearRect(x, y, w, h)
-    if (region.circuit || region.name === "stage") c.drawImage(this.wiresCanvas, x, y, w, h, x, y, w, h)
+    if (region.wires) c.drawImage(this.wiresCanvas, x, y, w, h, x, y, w, h)
     region.draw(c, scene, ui, now, meta)
     c.restore()
     this.hits.set(region.name, this.sink)
@@ -748,23 +797,38 @@ export class Renderer {
       const session = focus.session
       const core = G.core
       const hex = spriteHex(modelColor(session.model, session.provider))
-      if (session.turn) {
-        const elapsed = now - session.turn.start
-        const angle = Math.min(0.999, elapsed / this.turnScale(session, elapsed)) * TAU - Math.PI / 2
-        out.push({ key: "ring-head", kind: `pulse|${hex}`, x: core.cx + Math.cos(angle) * core.RA, y: core.cy + Math.sin(angle) * core.RA })
-      }
-      if (session.state === "working" && session.phase.key !== "tool") this.comet(out, "core", core.cx, core.cy, (core.r1 + core.RB) / 2, this.theta.get(session.id) ?? 0, hex, 7, 0.085, true)
       // the flock: the turn's output, flying or in formation
       const turn = this.turnWindow(session, now)
-      const reach = Math.sqrt(Math.max(0, core.frame * core.frame - (core.cx - G.busX) ** 2))
       const started = performance.now()
       const flock = this.flock
-      flock.held = ui.hover?.kind === "dot" ? ui.hover.index : ui.pinned?.target.kind === "dot" && ui.pinned.target.sid === session.id ? -1 : -1
-      flock.step({ session, turn, scale: turn ? this.turnScale(session, turn.end - turn.start) : 0, now, dt: this.dt, core, S: this.S, rate: scene.rateOf(session.id, now), entry: G.wide || !G.busX ? { x: core.cx, y: core.cy + core.frame } : { x: G.busX, y: core.cy + reach }, pointer: ui.pointer && !ui.help ? ui.pointer : null, focusSince: scene.focus.since })
-      flock.emit(out, { core, S: this.S, session, now })
+      flock.held = ui.hover?.kind === "dot" ? ui.hover.index : -1
+      flock.step({ session, turn, now, dt: this.dt, core, S: this.S, rate: scene.rateOf(session.id, now), entry: this.tipOf(), pointer: ui.pointer && !ui.help ? ui.pointer : null, ports: scene.ports })
+      flock.emit(out, { core, S: this.S, session, now, dt: this.dt })
       this.flockMs = performance.now() - started
-      // moons: the focused thread's subagents ride the instrument's outer circle, each a comet
-      // that turns as fast as its own tokens stream; one that rests sits still
+      const view = flock.view
+      const spot = [0, 0, 0, 0]
+      // a point of a ring as the flock's view sees it this frame, shifted with the pointer like the dots
+      const onRing = (radius, angle) => {
+        ringPoint(view, radius, angle, 0, spot)
+        return { x: spot[0] + spot[2] * flock.parX, y: spot[1] + spot[2] * flock.parY, under: false }
+      }
+      if (session.turn) {
+        // the head of the turn clock's arc
+        const elapsed = now - session.turn.start
+        const at = onRing(core.RA, Math.min(0.999, elapsed / this.turnScale(session, elapsed)) * TAU)
+        out.push({ key: "ring-head", kind: `pulse|${hex}`, x: at.x, y: at.y, z: 12 })
+      }
+      if (session.state === "working" && session.phase.key !== "tool") {
+        // the comet on the context ring: the model is generating, faster when tokens stream faster
+        const theta = this.theta.get(session.id) ?? 0
+        for (let segment = 0; segment <= 7; segment += 1) {
+          const at = onRing(core.RB, theta - segment * 0.075)
+          out.push({ key: segment ? `core.${segment}` : "core", kind: `${segment === 0 ? "pulse" : segment <= 4 ? "tail" : "mote"}|${hex}`, x: at.x, y: at.y, z: 11 })
+        }
+      }
+      // Moons: the focused thread's subagents ride the outermost orbit. One that works circles
+      // as fast as its own tokens stream, with a small flock of its own (one dot at 250 tokens
+      // of its turn, one more each time that doubles, eight at most); one that rests sits still.
       this.moons = []
       let slot = 0
       for (const row of scene.threads) {
@@ -772,12 +836,18 @@ export class Renderer {
         const child = row.session
         const tone = spriteHex(child.state === "waiting" ? INK.warn : modelColor(child.model, child.provider))
         const busy = child.state === "working"
-        const theta = busy ? (this.theta.get(child.id) ?? 0) * 0.35 + slot * 2.4 : Math.PI * 0.75 + slot * 0.22
-        const mx = core.cx + Math.cos(theta) * core.frame
-        const my = core.cy + Math.sin(theta) * core.frame
-        if (busy) this.comet(out, `moon:${child.id}`, core.cx, core.cy, core.frame, theta, tone, 5, 0.03, true)
-        else out.push({ key: `moon:${child.id}`, kind: `dot|${tone}`, x: mx, y: my })
-        this.moons.push({ sid: child.id, x: mx, y: my })
+        const theta = busy ? (this.theta.get(child.id) ?? 0) * 0.35 + slot * 2.4 : Math.PI * 1.3 + slot * 0.2
+        const at = onRing(core.Rm, theta)
+        const wrote = child.turn?.out ?? child.lastOut ?? 0
+        const minis = wrote >= 250 ? clamp(1 + Math.floor(Math.log2(wrote / 250)), 1, 8) : 0
+        const turnBy = busy ? (this.theta.get(child.id) ?? 0) * 0.8 : slot
+        for (let mini = 0; mini < minis; mini += 1) {
+          const angle = turnBy + (mini / minis) * TAU
+          const lift = Math.sin(angle)
+          out.push({ key: `moon:${child.id}.${mini}`, kind: `${lift > 0.3 ? "f4" : lift > -0.3 ? "f3" : "f2"}|${tone}`, x: at.x + Math.cos(angle) * u(17), y: at.y + lift * u(8), z: lift > 0 ? 14 : 8 })
+        }
+        out.push({ key: `moon:${child.id}`, kind: `moon|${tone}`, x: at.x, y: at.y, z: 10 })
+        this.moons.push({ sid: child.id, x: at.x, y: at.y })
         slot += 1
       }
     }
@@ -973,4 +1043,4 @@ export class Renderer {
   }
 }
 
-Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card)
+Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts)
