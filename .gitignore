@@ -3,3 +3,6 @@ shots/
 stats.json
 nexus.pid
 scratch/
+v1/shots/
+v1/stats.json
+v1/nexus.pid
