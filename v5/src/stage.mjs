@@ -38,7 +38,7 @@ export const stage = {
       else parts.push(item.key, this.shownOf(item))
     }
     const flock = this.flock
-    if (flock.sid === session.id) parts.push(flock.state, flock.count, Math.round(flock.tilt * 90))
+    if (flock.sid === session.id) parts.push(flock.state, flock.count, Math.round((flock.tilt * 180) / Math.PI))
     parts.push(this.signTerrain(scene, ui, now))
     return parts.join("|")
   },
@@ -152,7 +152,8 @@ export const stage = {
     const unit = flockUnit(out)
     const flock = this.flock
     const mine = flock.sid === session.id
-    const lean = mine ? flock.tilt : 0.35
+    // drawn in whole degrees, so the lanes move only when the lean really changed
+    const lean = ((mine ? Math.round((flock.tilt * 180) / Math.PI) : 20) * Math.PI) / 180
     const wall = core.r0 + (core.r1 - core.r0) * 0.72 * fill
     this.hoop(c, cx, cy, core.r1 + u(5), lean, INK.dim, 96)
     this.hoop(c, cx, cy, wall - u(2), lean, fill >= 0.92 ? INK.bad : fill >= 0.8 ? INK.warn : INK.soft, 64)
