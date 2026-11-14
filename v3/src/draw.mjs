@@ -314,6 +314,10 @@ export class Renderer {
   // Things that ease or type themselves: text reveal, comet angles.
   advance(scene, now, dt) {
     const live = new Set()
+    // text types in steps of a fifteenth of a second: it reads the same and repaints half as often
+    this.typeClock = (this.typeClock ?? 0) + dt
+    const typeStep = this.typeClock >= 0.066 ? this.typeClock : 0
+    if (typeStep) this.typeClock = 0
     for (const g of this.G.rows) {
       const session = g.row.session
       for (const item of session.tail ?? []) {
@@ -330,7 +334,7 @@ export class Renderer {
         state.length = length
         if (state.shown < length) {
           const left = length - state.shown
-          state.shown = Math.min(length, state.shown + Math.max(260, left / 0.9) * dt)
+          if (typeStep) state.shown = Math.min(length, state.shown + Math.max(260, left / 0.9) * typeStep)
         } else state.shown = length
       }
       const rate = scene.rateOf(session.id, now)
@@ -572,7 +576,8 @@ export class Renderer {
     const focus = scene.focused
     if (!focus) return "none"
     const session = focus.session
-    const parts = [session.id, scene.focus.auto, focus.index, session.state, session.phase.key, session.title, session.cost.toFixed(2), session.context.used, Math.floor(now / 1000)]
+    // a working thread's clock moves every second, a resting one every minute
+    const parts = [session.id, scene.focus.auto, focus.index, session.state, session.phase.key, session.title, session.cost.toFixed(2), session.context.used, Math.floor(now / (session.turn ? 1000 : 60e3))]
     parts.push(session.turn?.out ?? session.lastOut, session.steps.length)
     for (const item of session.tail ?? []) {
       if (item.kind === "tool") parts.push(item.tool.id, item.tool.status, item.tool.end === null && now - item.tool.start < 10e3 ? Math.floor(now / 100) : "")
