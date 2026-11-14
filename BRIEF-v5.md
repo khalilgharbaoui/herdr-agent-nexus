@@ -173,3 +173,17 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 3. **The accounts part is perfect. Leave it exactly as the operator saw it** (the state of `60a856e`). This overrides the Continuation section's "reservoirs become wide tubes". If it has been changed since, put it back.
 4. **Collecting at the tip.** What rises toward the orb must visibly gather at the tip before it goes in: a charge that grows with what has arrived, and at a set energy level it shoots into the orb. The shot seems to happen already; the gathering is what does not read. Make it unmistakable, and put the unit and the threshold in the table of marks.
 5. The operator likes v5 and is watching the pane. Carry on with the order of work.
+
+## Fourth addendum: more feedback on live v5 (verbatim, 2026-11-15 about 00:15)
+
+> "it seems the dots became a bit 3d balls which i dont like what i ment with a thouch of 3d is that their behavior has that 3d-ness flocking organically and inorganically
+>
+> also the collectiong at the tip is ok but it lacks that energy feel as if something is building up
+>
+> as for the orb the look and feel of it getting better i see"
+
+### What this asks
+
+1. **The dots are flat digital dots, not balls.** No shading, no highlights, no sphere look. The touch of 3D lives in how they behave: the flock turning and banking in space, depth read from motion, overlap and parallax, organic murmuration and inorganic formations. This corrects the Continuation section where it asks for dots that look larger and rounder with depth: keep them crisp and flat, as they were before they became balls.
+2. **The charge at the tip must feel like energy building up.** The gathering is right; the feeling is missing. As the charge grows, let it show: the gathered motes circle tighter and faster, the glow and corona grow, the tip trembles, the pulse quickens, and at the threshold it releases with a flash and a short afterglow. Every part of that is driven by the real charge (what has arrived against the threshold) and by the real arrival rate.
+3. **The orb's look and feel is going the right way.** Keep going in that direction.
