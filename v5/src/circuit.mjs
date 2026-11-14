@@ -96,11 +96,33 @@ export const circuit = {
       for (let tick = 0; tick <= 4; tick += 1) this.line(c, rail.x - u(3), G.railBottom - Math.round((height * tick) / 4), rail.x + u(4), G.railBottom - Math.round((height * tick) / 4), INK.ghost, 1)
       const left = account?.left === null || account?.left === undefined ? null : clamp(account.left / 100, 0, 1)
       const tone = left === null ? INK.dim : left < 0.06 ? INK.bad : left < 0.16 ? INK.warn : INK.soft
+      // the reservoir: a tube, and what is left of the window standing in it
+      const half = u(6)
+      c.strokeStyle = INK.ghost
+      c.lineWidth = 1
+      c.strokeRect(rail.x - half + 0.5, G.railTop + 0.5, half * 2, height)
       if (left !== null) {
         const top = G.railBottom - Math.round(height * left)
+        const body = c.createLinearGradient(0, top, 0, G.railBottom)
+        body.addColorStop(0, rgba(tone, 0.5))
+        body.addColorStop(1, rgba(tone, 0.14))
+        c.fillStyle = body
+        c.fillRect(rail.x - half + 1, top, half * 2 - 1, G.railBottom - top)
         c.fillStyle = tone
         c.fillRect(rail.x - 1, top, 3, G.railBottom - top)
-        this.line(c, rail.x - u(6), top, rail.x + u(7), top, tone, 1)
+        this.line(c, rail.x - u(9), top, rail.x + u(10), top, tone, 2)
+        // where on the window's own time axis it runs dry at this pace: a hollow amber mark
+        if (account.dryAt && five.resetsAt) {
+          const at = G.railBottom - Math.round(height * (1 - clamp(1 - (five.resetsAt - account.dryAt) / five.span, 0, 1)))
+          c.strokeStyle = INK.warn
+          c.lineWidth = 1.5
+          c.beginPath()
+          c.moveTo(rail.x - u(6), at)
+          c.lineTo(rail.x - u(13), at - u(4))
+          c.lineTo(rail.x - u(13), at + u(4))
+          c.closePath()
+          c.stroke()
+        }
         // where the level would stand at an even pace
         if (five.resetsAt) {
           const gone = clamp(1 - (five.resetsAt - now) / five.span, 0, 1)

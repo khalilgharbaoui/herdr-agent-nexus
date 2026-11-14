@@ -892,6 +892,29 @@ export class Renderer {
       else if (stream.type === "kid") streams.push({ key: stream.key, path: `kid:${stream.sid}`, kind: `tail|${PORT_COLOR.agent}`, speed: u(40), gap: u(26) })
       else if (stream.type === "wait") streams.push({ key: stream.key, path: `syn:${stream.sid}:you`, kind: `tail|${INK.warn}`, speed: u(30), gap: u(46) })
     }
+    // Wires with volume. A working thread's words ride its axon as a stream of motes, denser the
+    // faster it writes (one every 180, 104, 66 or 44 px for under 15, 15 to 40, 40 to 80 and over
+    // 80 tokens a second); the focused thread's stream also runs up into its flock. An account
+    // that is being drawn on drains: motes sink through its reservoir, closer together the
+    // further its burn is above an even pace.
+    for (const g of G.rows) {
+      if (!g.row || g.row.session.state !== "working") continue
+      const rate = scene.rateOf(g.sid, now)
+      if (!rate) continue
+      const hex = spriteHex(modelColor(g.row.session.model, g.row.session.provider))
+      const gap = u(rate >= 80 ? 44 : rate >= 40 ? 66 : rate >= 15 ? 104 : 180)
+      streams.push({ key: `tok:${g.sid}`, path: `axon:${g.sid}`, kind: `mote|${hex}`, speed: u(110), gap })
+      if (g.sid === scene.focus.id) streams.push({ key: `feed:${g.sid}`, path: `focus:${g.sid}`, kind: `mote|${hex}`, speed: u(150), gap })
+    }
+    for (const rail of G.rails ?? []) {
+      const account = scene.world.accounts.find((candidate) => candidate.name === rail.name)
+      if (!account || account.left === null || account.left === undefined || account.left <= 0) continue
+      if (!scene.world.sessions.some((session) => session.account === rail.name && session.state === "working")) continue
+      const top = G.railBottom - Math.round((G.railBottom - G.railTop) * clamp(account.left / 100, 0, 1))
+      flow.setPath(`drain:${rail.name}`, [[rail.x, top + u(6)], [rail.x, G.railBottom - u(2)]])
+      const pace = account.pace ?? 1
+      streams.push({ key: `drain:${rail.name}`, path: `drain:${rail.name}`, kind: `mote|${INK.text}`, speed: u(34), gap: u(pace >= 2 ? 22 : pace >= 1 ? 36 : 64) })
+    }
     flow.setStreams(streams, now)
   }
 

@@ -53,6 +53,8 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Diamond on a ridge | A tool call, coloured by equipment; red and taller when it failed | Moves left with time | The call | Pins it |
 | Flag on a ridge | An alert raised for that thread | Moves left with time | The alert | Focuses the thread |
 | Ring on a ridge | The subagent was dispatched then | Moves left with time | n/a | n/a |
+| Motes along an axon | A working thread's words: one mote every 180, 104, 66 or 44 px for under 15, 15 to 40, 40 to 80 and over 80 tokens a second | Flow right at 110 px/s; the focused thread's stream also runs up the wire into its flock | n/a | n/a |
+| Account reservoir | The tube is the five hour window, the level what is left of it, the cyan triangle an even pace, the hollow amber triangle where on the window's time axis it runs dry at this pace | Motes sink through it while a thread draws on the account: every 64 px under an even pace, 36 px at or above it, 22 px at twice it | The account's card | Pins it |
 | Window buttons 1, 5, 30 MIN | Control: the terrain's window | n/a | What it does | Sets the window (`w` cycles) |
 | Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
@@ -93,9 +95,9 @@ nearer dot is drawn over a farther one.
 ## State of the build
 
 Done: the 3D flock core, moons, the time terrain, cards for every new mark, explain mode, the
-keyboard walk, depth-ordered sprites.
+keyboard walk, depth-ordered sprites, token streams on the wires, account reservoirs.
 
-Not done yet, in the order the brief gives: wires as particle streams whose density is the token
-rate, accounts as draining reservoirs with a time axis, live latency lines in the equipment
-boxes, a livelier sector map, scrubbing the terrain by dragging, the demo's missing project
-directories.
+Not done yet, in the order the brief gives: live latency lines in the equipment boxes, a
+livelier sector map, a tool call as a packet with a shape per tool, the old flock dispersing
+when the focus leaves it, scrubbing the terrain by dragging, the demo's missing project
+directories. Not measured: a quiet machine, landscape, resize.
