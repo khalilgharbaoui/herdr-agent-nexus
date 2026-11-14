@@ -17,6 +17,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import v8 from "node:v8"
 import { createCanvas } from "@napi-rs/canvas"
 import { DemoSource } from "./src/demo.mjs"
 import { Renderer } from "./src/draw.mjs"
@@ -157,13 +158,16 @@ async function runHeadless() {
     }
     const name = OPTIONS.name ? `${OPTIONS.name}${OPTIONS.frames > 1 ? `-${frame}` : ""}.png` : `frame-${frame}${OPTIONS.demo ? "-demo" : ""}${width > height ? "-wide" : ""}.png`
     const file = saveShot(renderer, result.sprites, atlas, name)
-    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}  atlas ${atlas.state.pages} pages ${atlas.state.mb} MB`)
+    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}  atlas ${atlas.state.pages} pages ${atlas.state.mb} MB  rss ${Math.round(process.memoryUsage().rss / 1048576)} MB`)
   }
   for (const line of said) console.log(`  ${line}`)
   source.close()
 }
 
 async function runTerminal() {
+  // A frame makes a few hundred short-lived objects and some pixel buffers. A small young
+  // generation collects them often, so dead pixel buffers do not pile up between collections.
+  v8.setFlagsFromString("--max-semi-space-size=4")
   const terminal = new Terminal()
   const kitty = await terminal.open()
   if (!kitty) {
@@ -435,6 +439,7 @@ async function runTerminal() {
       heapMb: Math.round(process.memoryUsage().heapUsed / 1048576),
       externalMb: Math.round(process.memoryUsage().external / 1048576),
       buffersMb: Math.round(process.memoryUsage().arrayBuffers / 1048576),
+      readbackMbPerSecond: Number((((terminal.readBytes ?? 0) - (mark.read ?? 0)) / 1e6 / seconds).toFixed(1)), // pixels read back from the canvas to find what changed
       threads: scene.threads.length,
       working: scene.counts.working,
       phase: scene.phase.level,
@@ -452,7 +457,7 @@ async function runTerminal() {
       load: os.loadavg()[0].toFixed(1),
       error: error ?? terminal.error ?? null,
     }
-    mark = { ...total, at: now, cpu: process.cpuUsage(), input }
+    mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0 }
     peak = 0
     const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`
     meta.line = `${terminal.width}×${terminal.height} native  ·  ${stats.fps.toFixed(0)} fps  ·  ${stats.sprites} ${verdict}  ·  ${stats.kbPerSecond.toFixed(0)} kB/s  ·  cpu ${stats.cpuPercent.toFixed(0)}%`

@@ -91,7 +91,8 @@ export class Terminal {
     this.input.pixels = this.mouseModes[1016] === 1 || this.mouseModes[1016] === 3
     this.input.cell = this.cell
     this.input.origin = process.env.HERDR_ENV === "1" ? 1 : 0
-    this.worker = new Worker(path.join(HERE, "encoder.mjs"))
+    // the encoder makes short-lived strings and buffers only: a small young generation is enough
+    this.worker = new Worker(path.join(HERE, "encoder.mjs"), { resourceLimits: { maxYoungGenerationSizeMb: 8 } })
     this.worker.on("message", (result) => {
       this.inflight = Math.max(0, this.inflight - 1)
       if (result.wiped) this.reset = true // the worker cleared the screen on its own: send everything again
@@ -243,6 +244,7 @@ export class Terminal {
         const span = Math.min(width, end * tileWidth) - x0
         const local = span * 4
         const image = context.getImageData(x0, top, span, rows).data
+        this.readBytes = (this.readBytes ?? 0) + span * rows * 4
         const bytes = Buffer.from(image.buffer, image.byteOffset, image.length)
         let changed = false
         for (let column = first; column < end; column += 1) {
