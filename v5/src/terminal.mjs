@@ -16,6 +16,13 @@ const ESC = "\x1b"
 const TILE_COLS = 16
 const TILE_ROWS = 3
 const MAX_SPRITES = 960
+const PAGE_BASE = 7200 // image ids of the sprite pages start here
+const PROBE_SLOT = 999 // the placement that asks whether a page is still there
+const PROBE_MS = 2000
+// What the terminal's image store holds for one pane. Under herdr 0.9.5 it is 64 MiB (measured
+// with tools/gfx-probe.mjs); past it the oldest image is dropped without a word. Ghostty on its
+// own keeps 320 MB.
+export const STORE_LIMIT = process.env.HERDR_ENV === "1" ? 64 * 1024 * 1024 : 320e6
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 
@@ -33,8 +40,13 @@ export class Terminal {
     this.slots = new Map() // sprite key -> { slot, col, row, sx, sy }
     this.free = []
     for (let slot = MAX_SPRITES; slot >= 1; slot -= 1) this.free.push(slot)
-    this.atlasSent = false
     this.dropped = 0
+    this.atlas = null
+    this.probedAt = 0
+    this.tileBytes = new Map() // tile index -> bytes of pixels the terminal holds for it
+    this.tilesHeld = 0
+    this.cardBytes = 0
+    this.gfx = { tail: "", answers: 0, uploads: 0, lost: [], refused: 0, last: "", lastAt: 0 }
   }
 
   write(text) {
@@ -82,6 +94,7 @@ export class Terminal {
     this.worker = new Worker(path.join(HERE, "encoder.mjs"))
     this.worker.on("message", (result) => {
       this.inflight = Math.max(0, this.inflight - 1)
+      if (result.wiped) this.reset = true // the worker cleared the screen on its own: send everything again
       this.onFrameDone(result)
     })
     this.worker.on("error", (error) => {
@@ -115,7 +128,75 @@ export class Terminal {
   receive(text) {
     this.inbox += text
     if (this.inbox.length > 65536) this.inbox = this.inbox.slice(-4096)
+    if (text.includes("\x1b_G") || this.gfx.tail) this.answers(text)
     this.input.feed(text)
+  }
+
+  // What the terminal says about the sprite pages: an upload is answered with OK or an error,
+  // and so is the heartbeat placement of every page. ENOENT means the terminal dropped the page
+  // (its store was full): it goes up again with the next frame.
+  answers(text) {
+    const gfx = this.gfx
+    const all = gfx.tail + text
+    const pattern = /\x1b_G([^;\x1b]*);([^\x1b]*)\x1b\\/g
+    let end = 0
+    for (let match = pattern.exec(all); match; match = pattern.exec(all)) {
+      end = match.index + match[0].length
+      const id = Number(/(?:^|,)i=(\d+)/.exec(match[1])?.[1] ?? -1)
+      const page = this.atlas?.byId.get(id - PAGE_BASE)
+      if (!page) continue
+      gfx.answers += 1
+      gfx.last = match[2]
+      gfx.lastAt = Date.now()
+      if (match[2] === "OK") {
+        page.held = true
+        continue
+      }
+      if (!page.sent) continue // already known, the new upload is on its way
+      page.held = false
+      page.sent = false
+      if (/^ENOENT/.test(match[2])) gfx.lost.push(Date.now())
+      else gfx.refused += 1
+      // its placements went with it: every sprite on that page is placed again
+      for (const [key, entry] of this.slots) {
+        if (entry.page !== page) continue
+        this.free.push(entry.slot)
+        this.slots.delete(key)
+      }
+    }
+    const open = all.lastIndexOf("\x1b_G")
+    gfx.tail = open >= end && all.length - open < 256 ? all.slice(open) : ""
+  }
+
+  // Bytes of pixels the terminal holds for this pane right now, as far as this side knows.
+  get storeBytes() {
+    let pages = 0
+    if (this.atlas) for (const page of this.atlas.pages.values()) if (page.sent) pages += page.bytes
+    return this.tilesHeld + pages + this.cardBytes
+  }
+
+  // True when the terminal keeps losing or refusing the sprite pages: the caller should paint
+  // the moving layer into the tiles instead.
+  get spritesFailing() {
+    const now = Date.now()
+    this.gfx.lost = this.gfx.lost.filter((at) => now - at < 60e3)
+    return this.gfx.lost.length >= 3 || this.gfx.refused >= 3
+  }
+
+  get graphics() {
+    const gfx = this.gfx
+    const state = this.atlas?.state ?? { pages: 0, sent: 0, held: 0, lost: 0, mb: 0 }
+    return {
+      ...state,
+      verdict: !state.sent ? "nothing up" : state.held === state.sent ? "held" : gfx.answers ? "partly held" : "no answer yet",
+      answers: gfx.answers,
+      lostLastMinute: gfx.lost.length,
+      refusedUploads: gfx.refused,
+      lastAnswer: gfx.last,
+      answeredAgoMs: gfx.lastAt ? Date.now() - gfx.lastAt : null,
+      storeMb: Number((this.storeBytes / 1e6).toFixed(1)),
+      storeLimitMb: Number((STORE_LIMIT / 1e6).toFixed(1)),
+    }
   }
 
   // Rows of the frame per tile row.
@@ -193,6 +274,8 @@ export class Terminal {
       for (let index = tile.offset >> 2, end = (tile.offset + tile.length) >> 2; index < end; index += 1) any |= words[index]
       if (!any) tile.length = 0
       tile.bytes = undefined
+      this.tilesHeld += tile.length - (this.tileBytes.get(tile.index) ?? 0)
+      this.tileBytes.set(tile.index, tile.length)
     }
     return { payload, dirty, across, down }
   }
@@ -203,6 +286,9 @@ export class Terminal {
     const places = []
     const deletes = []
     const wanted = new Set()
+    const pages = new Set()
+    atlas.now = Date.now()
+    this.atlas = atlas
     for (const sprite of sprites) {
       if (wanted.has(sprite.key)) continue
       const spot = atlas.locate(sprite.kind, sprite.x, sprite.y, this.cols, this.rows)
@@ -214,10 +300,17 @@ export class Terminal {
           this.dropped += 1
           continue
         }
-        entry = { slot, col: -1, row: -1, sx: -1, sy: -1, z: 0 }
+        entry = { slot, page: spot.page, col: -1, row: -1, sx: -1, sy: -1, z: 0 }
         this.slots.set(sprite.key, entry)
       }
       wanted.add(sprite.key)
+      if (!spot.page.sent) pages.add(spot.page)
+      if (entry.page !== spot.page) {
+        // the sprite changed to a shape on another page: its old placement goes
+        if (entry.page.sent) deletes.push(PAGE_BASE + entry.page.id, entry.slot)
+        entry.page = spot.page
+        entry.col = -1
+      }
       // Three layers: sprites behind the still layer (z 1 to 15), the still layer itself (z 20, see
       // the encoder), sprites in front of it (z 21 to 59) and what must never be covered (z 60).
       // Within a layer a nearer dot is drawn over a farther one.
@@ -228,15 +321,15 @@ export class Terminal {
       entry.row = spot.row
       entry.sx = spot.sx
       entry.sy = spot.sy
-      places.push(entry.slot, spot.col, spot.row, spot.sx, spot.sy, spot.w, spot.h, z)
+      places.push(entry.slot, spot.col, spot.row, spot.sx, spot.sy, spot.w, spot.h, z, PAGE_BASE + spot.page.id)
     }
     for (const [key, entry] of this.slots) {
       if (wanted.has(key)) continue
-      deletes.push(entry.slot)
+      if (entry.page.sent) deletes.push(PAGE_BASE + entry.page.id, entry.slot)
       this.free.push(entry.slot)
       this.slots.delete(key)
     }
-    return { places, deletes }
+    return { places, deletes, pages }
   }
 
   // One frame: the tiles that changed and the sprites that moved, handed to the worker as one
@@ -248,11 +341,14 @@ export class Terminal {
     if (this.inflight >= 2 || !this.worker) return "busy"
     const reset = this.reset
     if (reset) {
-      // the terminal was cleared: every placement is gone and the atlas with it
+      // the terminal was cleared: every placement is gone and every sprite page with it
       this.slots.clear()
       this.free = []
       for (let slot = MAX_SPRITES; slot >= 1; slot -= 1) this.free.push(slot)
-      this.atlasSent = false
+      atlas.forget()
+      this.tileBytes.clear()
+      this.tilesHeld = 0
+      this.cardBytes = 0
       this.cardShown = null
     }
     let cardMessage = null
@@ -273,36 +369,44 @@ export class Terminal {
           const pixels = card.pixels()
           cardMessage.pixels = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.length)
           transfer.push(cardMessage.pixels)
+          this.cardBytes = card.width * card.height * 4
         }
       }
       this.cardShown = { key: card.key, ...place }
     } else if (this.cardShown) {
       cardMessage = { remove: true }
       this.cardShown = null
+      this.cardBytes = 0
     }
     const { payload, dirty, across, down } = this.diffTiles(context, marks, spans)
-    const { places, deletes } = this.diffSprites(sprites, atlas)
-    const needAtlas = !this.atlasSent && (places.length > 0 || reset)
-    if (!reset && !dirty.length && !places.length && !deletes.length && !cardMessage) return "still"
-    let atlasMessage = null
-    if (needAtlas) {
-      // The atlas goes to the worker in strips, each compressed as it arrives, so the whole
-      // picture is never held three times over (it is some forty megabytes of pixels).
-      const context = atlas.canvas.getContext("2d")
-      this.worker.postMessage({ atlasBegin: true })
-      for (let top = 0; top < atlas.height; top += 256) {
-        const rows = Math.min(256, atlas.height - top)
-        const image = context.getImageData(0, top, atlas.width, rows).data
-        const strip = image.buffer.slice(image.byteOffset, image.byteOffset + image.length)
-        this.worker.postMessage({ atlasStrip: strip }, [strip])
-      }
-      atlasMessage = { width: atlas.width, height: atlas.height }
-      this.atlasSent = true
+    const { places, deletes, pages } = this.diffSprites(sprites, atlas)
+    // pages that were dropped to make room leave the terminal too, and their placements with them
+    const dropPages = atlas.retired.map((id) => PAGE_BASE + id)
+    atlas.retired = []
+    // the heartbeat: every sprite page is asked whether it is still there
+    const now = Date.now()
+    const probes = []
+    if (now - this.probedAt > PROBE_MS) {
+      this.probedAt = now
+      for (const page of atlas.pages.values()) if (page.sent && now - page.sentAt > 300) probes.push(PAGE_BASE + page.id)
+    }
+    if (!reset && !dirty.length && !places.length && !deletes.length && !cardMessage && !dropPages.length && !probes.length) return "still"
+    // A page goes up right before the first placement of it, after the tiles: an image without a
+    // placement is the first one the terminal drops when its store is full.
+    const uploads = []
+    for (const page of pages) {
+      const pixels = atlas.pixels(page)
+      uploads.push({ id: PAGE_BASE + page.id, width: page.width, height: page.height, pixels })
+      transfer.push(pixels)
+      page.sent = true
+      page.sentAt = now
+      page.held = null
+      this.gfx.uploads += 1
     }
     this.inflight += 1
     transfer.push(payload)
     this.worker.postMessage(
-      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, atlas: atlasMessage, places, deletes, card: cardMessage },
+      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, pages: uploads, dropPages, probes, probeSlot: PROBE_SLOT, places, deletes, card: cardMessage },
       transfer,
     )
     this.reset = false

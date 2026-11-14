@@ -24,13 +24,13 @@
 
 import { LANES, lanePoint, lapOf, makeView, project, toPlane } from "./body.mjs"
 import { portOf, wroteOf } from "./model.mjs"
+import { STREAK_DIRS, streakOf } from "./sprites.mjs"
 import { GOLDEN, PORT_COLOR, spriteHex } from "./theme.mjs"
 import { INK, TAU, clamp, modelColor } from "./util.mjs"
 
 export const FLOCK_CAP = 300 // dots; past this one dot stands for more tokens
 export const FLOCK_UNITS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000]
 export const LEVELS = 7 // depth layers of a dot: 1 is the farthest
-export const STREAK_DIRS = 12 // a flying dot's streak points one of twelve ways
 export const STREAK_FROM = 3 // from this depth layer on a flying dot shows its streak
 export const CHARGE_SOCKETS = 8 // the charge at the tip fills this many sockets, then fires one dot
 const GHOST_MS = 700
@@ -555,7 +555,7 @@ export class Flock {
         const speed = Math.hypot(mx, my)
         if (speed > u(46) && speed < u(2400)) {
           const way = ((Math.round(Math.atan2(my, mx) / (TAU / STREAK_DIRS)) % STREAK_DIRS) + STREAK_DIRS) % STREAK_DIRS
-          kind = `s${level}d${way}|${hex}`
+          kind = `${streakOf(level, way)}|${hex}`
         }
       }
       this.sx[i] = X

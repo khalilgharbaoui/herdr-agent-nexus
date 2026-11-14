@@ -24,7 +24,7 @@ import { Flow } from "./src/flow.mjs"
 import { LiveSource } from "./src/live.mjs"
 import { Scene } from "./src/model.mjs"
 import { Atlas } from "./src/sprites.mjs"
-import { Terminal } from "./src/terminal.mjs"
+import { STORE_LIMIT, Terminal } from "./src/terminal.mjs"
 import { Controller } from "./src/ui.mjs"
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
@@ -157,7 +157,7 @@ async function runHeadless() {
     }
     const name = OPTIONS.name ? `${OPTIONS.name}${OPTIONS.frames > 1 ? `-${frame}` : ""}.png` : `frame-${frame}${OPTIONS.demo ? "-demo" : ""}${width > height ? "-wide" : ""}.png`
     const file = saveShot(renderer, result.sprites, atlas, name)
-    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}`)
+    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}  atlas ${atlas.state.pages} pages ${atlas.state.mb} MB`)
   }
   for (const line of said) console.log(`  ${line}`)
   source.close()
@@ -182,6 +182,7 @@ async function runTerminal() {
   let source = await makeSource(demo)
   let scene = new Scene()
   let painted = OPTIONS.painted
+  let fallback = null // why the moving layer is painted when nobody asked for that
   let error = null
   let quitting = false
   let wantShot = null
@@ -227,6 +228,10 @@ async function runTerminal() {
       },
       transport: () => {
         painted = !painted
+        fallback = null
+        terminal.gfx.lost = []
+        terminal.gfx.refused = 0
+        if (painted) atlas.clear() // no sprite page stays on the terminal while it is not used
         readAll = true
         lastSpriteBands = null
         return painted ? "moving layer painted into tiles" : "moving layer as sprites"
@@ -301,6 +306,19 @@ async function runTerminal() {
       error = null
       const stepped = performance.now()
       total.step += stepped - started
+      // The terminal answers for every sprite page. When it keeps dropping or refusing them, or
+      // the tiles leave no room for them in its image store, the moving layer is painted into
+      // the tiles instead, and the header says so.
+      if (!painted) {
+        const why = terminal.spritesFailing ? "the terminal keeps dropping the sprite images" : terminal.tilesHeld + atlas.budget + 6e6 > STORE_LIMIT ? "this pane leaves no room for sprite images" : null
+        if (why) {
+          painted = true
+          fallback = why
+          atlas.clear()
+          readAll = true
+          lastSpriteBands = null
+        }
+      }
       let outcome
       if (painted) {
         const { context, bands } = paintSprites(sprites, changed ? renderer.marks : null)
@@ -411,6 +429,8 @@ async function runTerminal() {
       phase: scene.phase.level,
       flags: scene.alerts.length,
       transport: painted ? "painted" : "sprites",
+      fallback,
+      graphics: terminal.graphics, // what the terminal itself answered about the sprite pages, and its image store
       droppedSprites: terminal.dropped,
       mode: demo ? "DEMO" : "LIVE",
       mouseModes: terminal.mouseModes,
@@ -423,7 +443,8 @@ async function runTerminal() {
     }
     mark = { ...total, at: now, cpu: process.cpuUsage(), input }
     peak = 0
-    meta.line = `${terminal.width}×${terminal.height} native  ·  ${stats.fps.toFixed(0)} fps  ·  ${stats.sprites} ${painted ? "painted" : "sprites"}  ·  ${stats.kbPerSecond.toFixed(0)} kB/s  ·  cpu ${stats.cpuPercent.toFixed(0)}%`
+    const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`
+    meta.line = `${terminal.width}×${terminal.height} native  ·  ${stats.fps.toFixed(0)} fps  ·  ${stats.sprites} ${verdict}  ·  ${stats.kbPerSecond.toFixed(0)} kB/s  ·  cpu ${stats.cpuPercent.toFixed(0)}%`
     try {
       fs.writeFileSync(path.join(HERE, "stats.json"), JSON.stringify(stats))
     } catch {}
@@ -431,7 +452,8 @@ async function runTerminal() {
   report.unref()
 
   terminal.on("resize", () => {
-    atlas = new Atlas(terminal.cell.width, terminal.cell.height)
+    // the pages depend on the cell size only: a resize that keeps it keeps them
+    if (atlas.cw !== terminal.cell.width || atlas.ch !== terminal.cell.height) atlas = new Atlas(terminal.cell.width, terminal.cell.height)
     renderer.bandHeight = terminal.bandHeight
     renderer.resize(terminal.width, terminal.height, terminal.cell)
     readAll = true
