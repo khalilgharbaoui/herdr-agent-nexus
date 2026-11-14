@@ -5,12 +5,11 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-14 22:36: v5 (operator: words verbatim in `BRIEF-v5.md`, with the addendum "a thouch of
-  3D, bring it to life"). The operator reset usage on `default` (1% used, window to 03:30), so a
-  fresh `designer` subagent was dispatched at once on `claude-code-default/claude-fable-5-2#xhigh`,
-  in the background, with `BRIEF-v5.md` as its brief. The 23:31 wake-up planned earlier is moot.
-  If no `v5/` exists and nobody is building it, that dispatch failed: dispatch again.
-  The designer removes this entry when v5 is running in pane `wE:pQ1`.
+- 2026-11-14 23:25: v5 runs live in herdr pane `wE:p1Q1` (the old `wE:pQ1` was closed when v4
+  quit, so a new right-hand pane was split from `wE:pP0`). `v5/README.md` has the table of marks
+  and, at its end, what is done and what is not done yet from `BRIEF-v5.md`'s second addendum
+  (wires as particle streams, account reservoirs, equipment latency lines, sector map, scrubbing).
+  A new session continues from there.
 
 ## Open from the operator
 

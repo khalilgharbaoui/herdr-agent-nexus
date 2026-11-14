@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Writes synthetic input into the pane that runs v4, to test its own handling of the mouse and
+// Writes synthetic input into the pane that runs v5, to test its own handling of the mouse and
 // the keys without a hand on the mouse. The bytes are the reports a terminal would send (SGR
 // with pixels, counted from 1 as herdr does), written with `herdr pane send-text`.
 //
-//   node v4/tools/poke.mjs wE:pQ1 "move:420,1055;wait:400;click:420,1055;key:i"
-//   node v4/tools/poke.mjs wE:pQ1 --sweep 400     400 moves along a diagonal, as fast as herdr takes them
+//   node v5/tools/poke.mjs wE:p1Q1 "move:420,1055;wait:400;click:420,1055;key:i"
+//   node v5/tools/poke.mjs wE:p1Q1 --sweep 400     400 moves along a diagonal, as fast as herdr takes them
 //
 // Verbs: move:x,y  click:x,y  middle:x,y  wheel:x,y,1 (down) or -1 (up)  key:<char or name>  wait:ms
-// This tests v4, not herdr's forwarding of a real mouse: for that, use the mouse.
+// This tests v5, not herdr's forwarding of a real mouse: for that, use the mouse.
 
 import { execFileSync } from "node:child_process"
 import { sgr } from "../src/input.mjs"
