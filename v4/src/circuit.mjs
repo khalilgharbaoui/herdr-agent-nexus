@@ -121,7 +121,7 @@ export const circuit = {
       this.label(c, `${rail.name.toUpperCase()}${account?.tier ? `   ${account.tier.toUpperCase()}` : ""}`, 0, 0, INK.dim, "left", 11.5)
       c.restore()
       const cx = rail.x + 1
-      this.text(c, left === null ? "–" : `${Math.round(left * 100)}%`, cx, G.railBottom + u(26), { size: 14.5, family: FAMILY.monoMedium, color: left === null ? INK.dim : tone === INK.soft ? INK.text : tone, align: "center" })
+      this.text(c, left === null ? "n/a" : `${Math.round(left * 100)}%`, cx, G.railBottom + u(26), { size: 14.5, family: FAMILY.monoMedium, color: left === null ? INK.dim : tone === INK.soft ? INK.text : tone, align: "center" })
       this.text(c, "5h left", cx, G.railBottom + u(44), { size: 11, color: INK.dim, align: "center" })
       // two short lines, so neighbouring rails never run into each other
       if (left === 0 && five?.resetsAt) {

@@ -252,17 +252,17 @@ export const stage = {
     y += u(42)
     const rate = scene.rateOf(session.id, now)
     const cells = [
-      [turn?.live ? "OUT THIS TURN" : "OUT LAST TURN", out ? `${compactOf(out)} tok` : "–"],
-      ["RATE", rate ? `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s` : "–"],
-      ["CONTEXT", limit && used ? `${Math.round(fill * 100)}% of ${compactOf(limit)}` : used ? compactOf(used) : "–"],
-      ["SPENT", session.cost ? moneyOf(session.cost) : "–"],
+      [turn?.live ? "OUT THIS TURN" : "OUT LAST TURN", out ? `${compactOf(out)} tok` : "n/a"],
+      ["RATE", rate ? `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s` : "n/a"],
+      ["CONTEXT", limit && used ? `${Math.round(fill * 100)}% of ${compactOf(limit)}` : used ? compactOf(used) : "n/a"],
+      ["SPENT", session.cost ? moneyOf(session.cost) : "n/a"],
       ["ONE DOT", `${compactOf(unit)} tok`],
     ]
     x = head.x
     for (const [name, value] of cells) {
       x = this.run(c, x, y, [
         [`${name}  `, { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
-        [value, { size: 15, family: FAMILY.monoMedium, color: value === "–" ? INK.faint : INK.text }],
+        [value, { size: 15, family: FAMILY.monoMedium, color: value === "n/a" ? INK.faint : INK.text }],
       ])
       x += u(34)
     }

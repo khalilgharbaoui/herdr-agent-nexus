@@ -384,10 +384,10 @@ export const hud = {
       ["modes", info.modes ?? "not asked"],
       ["key", info.key ?? "none yet"],
       ["mouse", info.mouse ?? "none yet"],
-      ["at", info.at ?? "–"],
+      ["at", info.at ?? "n/a"],
       ["hit", info.hit ?? "nothing"],
-      ["did", info.did ?? "–"],
-      ["seen", info.seen ?? "–"],
+      ["did", info.did ?? "n/a"],
+      ["seen", info.seen ?? "n/a"],
     ]
     lines.forEach(([name, value], index) => {
       const y = top + (index + 1) * u(25) + u(2)
@@ -623,7 +623,7 @@ export const hud = {
     if (target.kind === "alert") {
       const alert = scene.alerts.find((entry) => entry.key === target.id) ?? target.alert
       if (!alert) return null
-      return { tone: LEVEL_COLOR[alert.level], kicker: alert.kind === "call" ? "CALL" : alert.level.toUpperCase(), title: alert.sid ? threadOf(alert.sid) : alert.text, lines: [["WHAT", alert.text], ["DETAIL", clean(alert.detail) || "–"], ["SINCE", alert.kind === "context" || alert.kind === "account" ? "now" : `${clockOf(alert.since)}  ·  ${agoOf(now - alert.since)} ago`], ["LEVEL", alert.muted ? `${alert.level}, muted` : alert.level]], foot: alert.sid ? "click: focus this thread  ·  x: mute or unmute" : "an account flag clears when the window resets" }
+      return { tone: LEVEL_COLOR[alert.level], kicker: alert.kind === "call" ? "CALL" : alert.level.toUpperCase(), title: alert.sid ? threadOf(alert.sid) : alert.text, lines: [["WHAT", alert.text], ["DETAIL", clean(alert.detail) || "n/a"], ["SINCE", alert.kind === "context" || alert.kind === "account" ? "now" : `${clockOf(alert.since)}  ·  ${agoOf(now - alert.since)} ago`], ["LEVEL", alert.muted ? `${alert.level}, muted` : alert.level]], foot: alert.sid ? "click: focus this thread  ·  x: mute or unmute" : "an account flag clears when the window resets" }
     }
     return null
   },
