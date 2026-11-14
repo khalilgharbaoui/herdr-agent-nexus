@@ -123,8 +123,14 @@ export const circuit = {
       const cx = rail.x + 1
       this.text(c, left === null ? "–" : `${Math.round(left * 100)}%`, cx, G.railBottom + u(26), { size: 14.5, family: FAMILY.monoMedium, color: left === null ? INK.dim : tone === INK.soft ? INK.text : tone, align: "center" })
       this.text(c, "5h left", cx, G.railBottom + u(44), { size: 11, color: INK.dim, align: "center" })
-      if (account?.dryAt) this.text(c, `dry ${hourMinuteOf(account.dryAt)}`, cx, G.railBottom + u(62), { size: 11, color: INK.warn, align: "center" })
-      else if (account?.seven && account.seven.used !== null) this.text(c, `7d ${Math.round(100 - account.seven.used)}%`, cx, G.railBottom + u(62), { size: 11, color: INK.faint, align: "center" })
+      // two short lines, so neighbouring rails never run into each other
+      if (left === 0 && five?.resetsAt) {
+        this.text(c, "back", cx, G.railBottom + u(62), { size: 11, color: INK.bad, align: "center" })
+        this.text(c, hourMinuteOf(five.resetsAt), cx, G.railBottom + u(78), { size: 11, color: INK.bad, align: "center" })
+      } else if (account?.dryAt) {
+        this.text(c, "dry", cx, G.railBottom + u(62), { size: 11, color: INK.warn, align: "center" })
+        this.text(c, hourMinuteOf(account.dryAt), cx, G.railBottom + u(78), { size: 11, color: INK.warn, align: "center" })
+      } else if (account?.seven && account.seven.used !== null) this.text(c, `7d ${Math.round(100 - account.seven.used)}%`, cx, G.railBottom + u(62), { size: 11, color: INK.faint, align: "center" })
     }
   },
 

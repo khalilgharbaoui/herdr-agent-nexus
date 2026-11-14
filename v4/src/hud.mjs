@@ -7,21 +7,21 @@ import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, mod
 
 export const KEYMAP = [
   ["j  k  ↑  ↓", "move the focus through the threads"],
-  ["←  →  h  l", "fold or open a subtree, step out to the parent or in to a child"],
+  ["←  →  h  l", "fold or open a subtree; step out or in"],
   ["1 … 9", "focus thread 01 to 09"],
   ["g  G", "first thread, last thread"],
   ["enter", "go to the focused thread's pane in herdr"],
   ["tab  shift+tab", "next or previous thing that needs you"],
   ["c", "answer the oldest call: go to its pane"],
-  ["x", "mute or unmute what the focused thread is flagged for"],
-  ["space", "pin or unpin the inspection card of the focused thread"],
-  ["a", "follow the action again (focus moves by itself)"],
-  ["f", "which threads are listed: active, all open, needs you"],
+  ["x", "mute or unmute the focused thread's flags"],
+  ["space", "pin or unpin the focused thread's card"],
+  ["a", "follow the action again"],
+  ["f", "list: active, all open, needs you"],
   ["z", "zoom the focus stage"],
   ["pgup  pgdn", "scroll the live tail"],
-  ["i", "input monitor: the last key and mouse event and what it hit"],
+  ["i", "input monitor: last event, what it hit"],
   ["d", "live data or the simulation"],
-  ["p", "moving layer as sprites or painted into tiles"],
+  ["p", "moving layer: sprites or painted tiles"],
   ["s", "save a snapshot to v4/shots"],
   ["?  esc", "this sheet, and closing things"],
   ["q", "quit"],
@@ -542,7 +542,7 @@ export const hud = {
       if (session.kids) lines.push(["SUBAGENTS", `${session.kids}${row?.closed ? "  (folded)" : ""}`])
       for (const alert of session.alerts) lines.push([alert.muted ? "MUTED" : "FLAG", `${alert.text}${alert.detail && alert.kind !== "call" ? `  ·  ${clean(alert.detail).slice(0, 60)}` : ""}`, alert.muted ? INK.faint : LEVEL_COLOR[alert.level]])
       lines.push(["SESSION", session.id, INK.dim])
-      return { tone: modelColor(session.model, session.provider), kicker: `${session.parentId ? "SUBAGENT" : "THREAD"} ${index(session.id)}`, title: session.title, lines, pin: true, foot: `click: focus${pane ? "  ·  middle click or enter: go to its pane" : ""}  ·  space: pin` }
+      return { tone: modelColor(session.model, session.provider), kicker: `${session.parentId ? "SUBAGENT" : "THREAD"} ${index(session.id)}`, title: session.title, lines, pin: true, foot: `click: focus${pane ? "  ·  middle click: go to pane" : ""}  ·  space: pin` }
     }
     if (target.kind === "project") {
       const project = scene.projects.find((entry) => entry.key === target.id)
