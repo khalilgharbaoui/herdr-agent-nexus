@@ -11,6 +11,11 @@ is done or dropped.
   (wires as particle streams, account reservoirs, equipment latency lines, sector map, scrubbing).
   A new session continues from there.
 
+- 2026-11-14 23:25: next for v5: the director dispatches a fresh `designer` on appical
+  (`claude-code-appical/claude-fable-5-2@appical#xhigh`, window back at 23:30) with the
+  "Continuation" section at the end of `BRIEF-v5.md` as its order of work. If nobody is building
+  v5 and that section's items are not done, dispatch it.
+
 ## Open from the operator
 
 v4, raised 2026-11-14 by the designer's report. Answer now, later or drop for each.

@@ -127,3 +127,27 @@ v5 must not land as "v4 plus a flock and a few sparklines". The operator expects
 6. The rest.
 
 Put v5 in the pane as soon as its core is alive (v4 is no longer running there), commit that checkpoint, and keep improving it live so the operator can watch it grow.
+
+## Continuation (director, 2026-11-14 23:25, after looking at a live v5 frame)
+
+v5 runs live in herdr pane `wE:p1Q1` at `60a856e`. The first v5 session stopped because its account ran low, not because v5 was done. Built so far: the flock in the core with moons, the time terrain, wire streams, account reservoirs, cards for dots and ridge points, the keyboard walk, explain mode, and the table of marks in `v5/README.md`.
+
+Seen in the frame (`v5/shots/latest.png`, 23:22), measured against "i expect way more from v5":
+
+- The core is larger, but it still reads as a flat dial with a small clump of dots in a mostly empty disc. The 3D does not show in a still frame.
+- The time terrain is good and small. Its depth is faint.
+- The dead space is still there: under the core down to the circuit, the band between the stage and the circuit, and the right half of most circuit rows.
+- The circuit, the equipment column, comms, the sector map and the log look like v4. The reservoirs are two thin bars that are easy to miss, and the wire streams do not show.
+
+So the leap has not happened yet. Next session, in this order:
+
+1. **Performance back into v4's class first, briefly.** Samples from the first session: 7.4 to 8.7% of a core with the flock flying, then 14.2% and 950 kB/s, 23.9% in explain mode with a card open, once 29% and 1.3 MB/s. Memory 488 MB at start against v4's 164 to 173 MB, 692 MB under heavy repaint. Find what is resent every frame and what allocates, fix it, and measure a quiet machine, the flock at its densest, hover over the flock and explain mode. Do not spend more than a small part of the session here.
+2. **Make the core unmistakably three-dimensional and full.** The flock fills the volume of the disc instead of clumping at one side. Dots are larger near, smaller far, with short trails so motion and depth read even in a single frame. The ring becomes a body in space (a tilted ring system or a sphere), not a dial with ticks. Tools are satellites on orbit lanes around it, leaving and returning with their results. The old flock disperses and the new one gathers on a change of focus.
+3. **Give the living charts the dead space.** Make the terrain large (the full band between the stage and the circuit is free) with real perspective: ridges receding, haze on the far ones, a glowing head at "now". Mark estimated heights as estimates on the chart itself, not only in the card. Add the cost, context and latency lines from the brief where the rest of the dead space is.
+4. **Make the circuit visibly flow.** Streams on the wires must be seen at a glance: larger motes, glow, density as the token rate. Reservoirs become wide tubes with a moving surface, a pace mark and a dry mark that can be read from across the room.
+5. **Equipment, sector map, comms and log come alive** as the second addendum describes (latency lines, calls in flight, a flash on failure, panes that rise and glow).
+6. **Choreography and hidden signals:** phase ripples from the thread that caused them, the cache cooling, context closing a ring, scrubbing if the budget allows.
+7. **Smallest things:** header lamps, footer labels and every remaining v4 mark become targets with cards. Fix explain-mode tags that overlap each other and the title.
+8. **Tests:** poke for each new interaction, and the ones never tested: hovering a ridge and a single flying dot, `enter` while walking, moon clicks.
+
+Keep v5 running in `wE:p1Q1` and restart it in place after each change so the operator sees it grow. Commit after every step that works, and keep the end of `v5/README.md` current with what is done and what is next.
