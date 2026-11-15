@@ -67,13 +67,39 @@ export const stage = {
     }
   },
 
+  // The flock's own line above the core: how many dots, what one stands for, what the flock is
+  // doing. It is a region of its own because it changes with every dot.
+  signFlockLine(scene) {
+    const session = scene.focused?.session
+    if (!session) return "none"
+    const flock = this.flock
+    return [session.id, session.state, session.turn?.out ?? session.lastOut ?? 0, flock.sid === session.id ? `${flock.state}|${flock.count}|${flock.unit}` : ""].join("|")
+  },
+
+  drawFlockLine(c, scene) {
+    const session = scene.focused?.session
+    if (!session) return
+    const u = (value) => this.u(value)
+    const core = this.G.core
+    const flock = this.flock
+    const mine = flock.sid === session.id
+    const out = session.turn?.out ?? session.lastOut ?? 0
+    const unit = mine ? flock.unit : flockUnit(out)
+    const dots = mine ? flock.count : Math.min(FLOCK_CAP, Math.floor(out / unit))
+    const flockLine = out || dots ? `${dots} dot${dots === 1 ? "" : "s"} × ${compactOf(unit)} tok  ·  ${mine ? flock.state : "forming"}` : "no output reported for this turn"
+    const flockX = core.left
+    const flockY = core.top - u(12)
+    const flockW = this.run(c, flockX, flockY, [["FLOCK  ", { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }], [flockLine, { size: 12.5, color: session.state === "working" ? INK.soft : INK.dim }]]) - flockX
+    this.hit("flock", session.id, { x: flockX, y: flockY - u(14), w: flockW, h: u(20) })
+  },
+
   signCore(scene, ui, now) {
     const focus = scene.focused
     if (!focus) return "none"
     const session = focus.session
     const { degrees, rs } = this.coreView(session)
     const turn = this.turnWindow(session, now)
-    const parts = [session.id, focus.index, session.state, session.phase.key, session.context.used, session.steps.length, degrees, rs, this.flock.state, this.flock.count, this.flock.unit, scene.threads.filter((row) => row.parent?.session.id === session.id).length]
+    const parts = [session.id, focus.index, session.state, session.phase.key, session.context.used, session.steps.length, degrees, rs, this.flock.unit, scene.threads.filter((row) => row.parent?.session.id === session.id).length]
     if (turn) {
       const elapsed = turn.end - turn.start
       const scale = this.turnScale(session, elapsed)
@@ -241,15 +267,6 @@ export const stage = {
       }
     }
 
-    // the flock's own line: how many dots, what one stands for, what the flock is doing
-    const out = session.turn?.out ?? session.lastOut ?? 0
-    const unit = flockUnit(out)
-    const dots = mine ? flock.count : Math.min(FLOCK_CAP, Math.floor(out / unit))
-    const flockLine = out ? `${dots} dot${dots === 1 ? "" : "s"} × ${compactOf(unit)} tok  ·  ${mine ? flock.state : "forming"}` : "no output reported for this turn"
-    const flockX = core.left
-    const flockY = core.top - u(12)
-    const flockW = this.run(c, flockX, flockY, [["FLOCK  ", { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }], [flockLine, { size: 12.5, color: working ? INK.soft : INK.dim }]]) - flockX
-    this.hit("flock", session.id, { x: flockX, y: flockY - u(14), w: flockW, h: u(20) })
     this.hit("flock", session.id, { x: cx - rs, y: cy - rs, w: rs * 2, h: rs * 2 })
     this.coreMeta = { degrees, rs, laneRadius }
   },

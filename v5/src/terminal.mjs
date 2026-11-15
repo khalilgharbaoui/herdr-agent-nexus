@@ -43,6 +43,7 @@ export class Terminal {
     this.dropped = 0
     this.atlas = null
     this.probedAt = 0
+    this.movedBy = {} // placements sent since the last report, by kind of mark
     this.tileBytes = new Map() // tile index -> bytes of pixels the terminal holds for it
     this.tilesHeld = 0
     this.cardBytes = 0
@@ -324,6 +325,9 @@ export class Terminal {
       entry.sx = spot.sx
       entry.sy = spot.sy
       places.push(entry.slot, spot.col, spot.row, spot.sx, spot.sy, spot.w, spot.h, z, PAGE_BASE + spot.page.id)
+      // which kind of mark is being moved: the key up to its first digit or colon names it
+      const family = /^[a-z-]+/i.exec(sprite.key)?.[0] ?? "other"
+      this.movedBy[family] = (this.movedBy[family] ?? 0) + 1
     }
     for (const [key, entry] of this.slots) {
       if (wanted.has(key)) continue

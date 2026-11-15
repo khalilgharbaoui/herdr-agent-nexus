@@ -440,6 +440,8 @@ async function runTerminal() {
       externalMb: Math.round(process.memoryUsage().external / 1048576),
       buffersMb: Math.round(process.memoryUsage().arrayBuffers / 1048576),
       readbackMbPerSecond: Number((((terminal.readBytes ?? 0) - (mark.read ?? 0)) / 1e6 / seconds).toFixed(1)), // pixels read back from the canvas to find what changed
+      movedPerFrameBy: Object.fromEntries(Object.entries(terminal.movedBy).map(([name, count]) => [name, Number((count / frames).toFixed(1))]).filter(([, rate]) => rate >= 1).sort((a, b) => b[1] - a[1])), // sprite placements a frame, by kind of mark
+      repaintsPerSecond: Object.fromEntries(Object.entries(renderer.repaints ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.2).sort((a, b) => b[1] - a[1])), // which regions of the still layer were painted again, and how often
       threads: scene.threads.length,
       working: scene.counts.working,
       phase: scene.phase.level,
@@ -458,6 +460,8 @@ async function runTerminal() {
       error: error ?? terminal.error ?? null,
     }
     mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0 }
+    renderer.repaints = {}
+    terminal.movedBy = {}
     peak = 0
     const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`
     meta.line = `${terminal.width}×${terminal.height} native  ·  ${stats.fps.toFixed(0)} fps  ·  ${stats.sprites} ${verdict}  ·  ${stats.kbPerSecond.toFixed(0)} kB/s  ·  cpu ${stats.cpuPercent.toFixed(0)}%`

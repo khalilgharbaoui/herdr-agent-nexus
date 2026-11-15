@@ -36,6 +36,7 @@ export const CHARGE_SOCKETS = 8 // the charge at the tip fills this many sockets
 const GHOST_MS = 700
 const SIPHON_MS = 1400 // how long a dot takes from the orbit into the globe
 const MAX_RATE = 120 // tokens a second: the most an open call is taken to write
+export const ORBIT_CAP = 48 // dots the orbit holds; what an open call writes past that waits at the tip
 const smooth = (value, low, high) => {
   const t = clamp((value - low) / (high - low), 0, 1)
   return t * t * (3 - 2 * t)
@@ -267,9 +268,11 @@ export class Flock {
     if (openSince) this.own = ((now - openSince) / 1000) * this.callRate
     if (this.carry > 0 && now - this.carryAt > 6000) this.carry = 0
     this.estimate = this.carry + this.own
-    const target = out + this.estimate
+    const unit = flockUnit(out + this.estimate)
+    // the orbit holds so many dots; an open call that has written more keeps the tip charged
+    this.orbitFull = this.estimate > ORBIT_CAP * unit
+    const target = out + Math.min(this.estimate, ORBIT_CAP * unit)
     this.target = target
-    const unit = flockUnit(target)
     this.orbitR = (core.RB + core.RA) / 2
     this.frame += 1
     this.laneGap = u(26)
@@ -542,7 +545,7 @@ export class Flock {
     const fails = session.failStreak ?? 0
     const jitter = u(26) * Math.min(3, fails) + (scattering ? u(220) : 0)
     this.formation = !working ? (session.state === "waiting" ? "formed up, waiting on you" : session.state === "stalled" ? "locked, silent" : session.state === "failed" ? "formed up, the turn failed" : "formed up, at rest") : scattering ? "scattered by a failed call" : phase === "tool" ? "locked, stepping while a tool runs" : this.lock > 0.6 ? "locked, nothing heard" : this.pace < 0.75 ? "slowing, nothing heard" : phase === "writing" ? "in rings while it writes" : phase === "thinking" ? "a murmuration while it reasons" : "a murmuration while the model is called"
-    this.state = this.inOrbit ? `${this.formation}  ·  ${this.inOrbit} in orbit` : this.formation
+    this.state = this.inOrbit ? `${this.formation}  ·  ${this.inOrbit} in orbit${this.orbitFull ? ", full" : ""}` : this.formation
     // the rings: the turn's output cut into parallels, oldest at the south, newest at the north
     const rings = clamp(Math.round(Math.sqrt(count) / 1.7), 2, 9)
     this.rings = rings
@@ -843,8 +846,12 @@ export class Flock {
       let level = 1 + Math.floor(clamp((pr[2] + span) / (2 * span), 0, 0.999) * LEVELS)
       if (resting && this.stage[i] === 3) level = Math.max(1, level - 2) // settled and at rest: dimmer
       const under = this.z[i] < 0 ? 1 : 0
-      // a far dot is small and slow on screen: it is brought up to date every other frame
-      if (level <= 2 && ((i ^ odd) & 1) && this.level[i] === level && this.under[i] === under && !this.squad[i]) {
+      // A placement costs some seventy bytes, so a large flock is not brought up to date all at
+      // once: the nearest dots move every frame, the ones behind them every second or third
+      // frame and the farthest, smallest ones every fourth. A dot on its way (in orbit, in the
+      // siphon, out with a tool) moves every frame.
+      const stride = this.stage[i] !== 3 || this.squad[i] ? 1 : this.count > 120 ? (level <= 2 ? 4 : level <= 4 ? 3 : level === 5 ? 2 : 1) : level <= 2 ? 2 : 1
+      if (stride > 1 && (this.frame + i) % stride !== 0 && this.level[i] === level && this.under[i] === under) {
         out.push({ key: `fl${i}`, kind: this.kind[i], x: this.sx[i], y: this.sy[i], z: level, under: under === 1 })
         continue
       }
@@ -854,8 +861,8 @@ export class Flock {
       // a dot in flight leaves a streak the way it is going
       let kind = `f${level}|${hex}`
       if (level >= STREAK_FROM && perSecond && this.level[i]) {
-        const mx = (X - this.sx[i]) * perSecond
-        const my = (Y - this.sy[i]) * perSecond
+        const mx = ((X - this.sx[i]) * perSecond) / stride
+        const my = ((Y - this.sy[i]) * perSecond) / stride
         const speed = Math.hypot(mx, my)
         if (speed > u(46) && speed < u(2400)) {
           const way = ((Math.round(Math.atan2(my, mx) / (TAU / STREAK_DIRS)) % STREAK_DIRS) + STREAK_DIRS) % STREAK_DIRS
@@ -912,7 +919,7 @@ export class Flock {
     if (!tip || !this.out) return
     // a backlog of more than a dot and a half (a call just reported all it wrote): the charge
     // stays full and tight while the dots stream out of it
-    const flooding = this.target - this.shown > this.unit * 1.5
+    const flooding = this.target - this.shown > this.unit * 1.5 || (this.orbitFull && this.arrive > 0.3)
     const charge = flooding ? 1 : this.charge
     const lit = Math.floor(charge * CHARGE_SOCKETS + 1e-6)
     const since = now - (this.flashAt ?? 0)

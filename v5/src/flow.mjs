@@ -21,6 +21,7 @@ export class Flow {
     this.pulses = []
     this.flashes = []
     this.streams = new Map()
+    this.streamTick = 0
     this.serial = 0
   }
 
@@ -132,14 +133,19 @@ export class Flow {
       const path = this.paths.get(stream.path)
       if (!path) continue
       const reach = Math.min(path.total, ((now - stream.born) / 1000) * stream.speed * 4)
-      const phase = ((now / 1000) * stream.speed) % stream.gap
-      let index = 0
-      for (let distance = phase; distance < reach; distance += stream.gap) {
+      // every other mote of a stream is moved on every other frame, so a stream costs half the
+      // placements; a mote that waits stands where it stood a frame ago
+      const stale = this.streamedAt ?? now
+      for (let index = 0; ; index += 1) {
+        const at = (index + this.streamTick) & 1 ? stale : now
+        const distance = (((at / 1000) * stream.speed) % stream.gap) + index * stream.gap
+        if (distance >= reach) break
         const [x, y] = this.at(path, distance)
         out.push({ key: `s:${stream.key}:${index}`, kind: stream.kind, x, y })
-        index += 1
       }
     }
+    this.streamedAt = now
+    this.streamTick = (this.streamTick + 1) & 1
 
     const glowing = []
     for (const flash of this.flashes) {

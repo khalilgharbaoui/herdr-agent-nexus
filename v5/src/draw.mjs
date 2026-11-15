@@ -107,7 +107,10 @@ export class Renderer {
     const headX = core.cx + core.Rm + u(42)
     const split = headX - u(22) // where the core's column ends and the head's begins
     G.head = { x: headX, y: G.stage.y + u(34), w: G.stage.x + G.stage.w - M - headX }
-    G.coreBox = { x: G.stage.x, y: G.stage.y, w: split - G.stage.x, h: core.bottom - G.stage.y }
+    // the flock's own line of text changes with every dot that is fired: it has its own strip,
+    // so the core under it (the largest region there is) is not painted again for it
+    G.flockBox = { x: G.stage.x, y: G.stage.y, w: split - G.stage.x, h: u(38) }
+    G.coreBox = { x: G.stage.x, y: G.stage.y + u(38), w: split - G.stage.x, h: core.bottom - G.stage.y - u(38) }
     G.plinth = { x: G.stage.x, y: core.bottom, w: split - G.stage.x, h: u(100) }
     G.charts = { x: headX, y: G.stage.y + u(262), w: G.head.w, h: u(170) }
     const stageBottom = G.stage.y + G.stage.h
@@ -316,6 +319,7 @@ export class Renderer {
     add("header", G.header, (scene, ui, now, meta) => this.signHeader(scene, ui, now, meta), (c, scene, ui, now, meta) => this.drawHeader(c, scene, ui, now, meta))
     // the stage in parts, so a second ticking or a word typed repaints only where it happened
     add("core", G.coreBox, (scene, ui, now) => this.signCore(scene, ui, now), (c, scene, ui, now) => this.drawCore(c, scene, ui, now), false, true)
+    add("flockline", G.flockBox, (scene) => this.signFlockLine(scene), (c, scene) => this.drawFlockLine(c, scene))
     add("plinth", G.plinth, (scene, ui, now) => this.signPlinth(scene, ui, now), (c, scene, ui, now) => this.drawPlinth(c, scene, ui, now), false, true)
     if (G.under) add("under", G.under, (scene, ui, now) => this.signUnder(scene, ui, now), (c, scene, ui, now) => this.drawUnder(c, scene, ui, now), false, true)
     add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
@@ -479,9 +483,11 @@ export class Renderer {
     for (let band = 0; band < bands; band += 1) this.spans[band * 2] = this.W
     const wires = this.signWires(scene, now)
     const rewire = wires !== this.wiresSignature || rearranged
+    this.repaints ??= {}
     if (rewire) {
       this.wiresSignature = wires
       this.drawWires(scene, now)
+      this.repaints.wires = (this.repaints.wires ?? 0) + 1
     }
     // overlays wanted now, and the ground that has to be repainted because one moved, changed or left
     const overlays = this.overlaysFor(scene, ui, now)
@@ -504,6 +510,7 @@ export class Renderer {
       if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) continue
       region.last = signature
       this.paint(region, scene, ui, now, meta)
+      this.repaints[region.name] = (this.repaints[region.name] ?? 0) + 1
       painted.push(region.rect)
       any = true
     }

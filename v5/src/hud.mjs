@@ -2,7 +2,7 @@
 // and the two overlays (the inspection card and the help sheet).
 
 import { explain } from "./explain.mjs"
-import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD, LEVELS } from "./flock.mjs"
+import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD, LEVELS, ORBIT_CAP } from "./flock.mjs"
 import { portOf } from "./model.mjs"
 import { LEVEL_COLOR, PANEL, PORT_COLOR, bare, clean, homed, wrap } from "./theme.mjs"
 import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, modelColor, moneyOf, shortModel, spanOf, timerOf } from "./util.mjs"
@@ -560,7 +560,7 @@ export const hud = {
         ["SOCKETS", `${lit} of ${CHARGE_SOCKETS} lit  ·  one socket is ${Math.round((flock.unit / CHARGE_SOCKETS) * 10) / 10} tok`],
         ["FIRES AT", `${compactOf(flock.unit)} tok: one dot goes into the body`],
         ["REPORTED", `${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}, counted when a model call ends`],
-        ["OPEN CALL", flock.openSince ? (flock.callRate > 0 ? `about ${compactOf(Math.round(flock.estimate))} tok so far: ${Math.round((now - flock.openSince) / 1000)} s at ${flock.callRate >= 10 ? Math.round(flock.callRate) : flock.callRate.toFixed(1)} tok/s, the thread's last measured rate. An estimate until the call reports` : "open, its rate is not known yet: nothing is estimated") : "no model call is open", flock.openSince && flock.callRate > 0 ? INK.live : INK.soft],
+        ["OPEN CALL", flock.openSince ? (flock.callRate > 0 ? `about ${compactOf(Math.round(flock.estimate))} tok so far: ${Math.round((now - flock.openSince) / 1000)} s at ${flock.callRate >= 10 ? Math.round(flock.callRate) : flock.callRate.toFixed(1)} tok/s, the thread's last measured rate. An estimate until the call reports${flock.orbitFull ? `. The orbit holds ${ORBIT_CAP} dots: the rest waits here, charged` : ""}` : "open, its rate is not known yet: nothing is estimated") : "no model call is open", flock.openSince && flock.callRate > 0 ? INK.live : INK.soft],
         ["FIRED", `${flock.count} dot${flock.count === 1 ? "" : "s"} so far`],
         ["ENERGY", flock.arrive > 0.3 ? `motes circle at ${Math.round(24 - 14 * flock.charge)} px, ${(1.6 + 8.4 * flock.charge ** 2).toFixed(1)} rad/s; the corona beats ${(1.3 + 5.7 * flock.charge ** 2).toFixed(1)} times a second` : "still: no tokens are arriving"],
       ]
