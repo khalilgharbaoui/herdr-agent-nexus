@@ -12,7 +12,7 @@
 // globe and in front of it as they would.
 
 import { LANES, lanePoint, makeView, project, ringPoint } from "./body.mjs"
-import { cacheSign, cacheState, leftWord, lifeWord } from "./cache.mjs"
+import { CACHE_COOL, cacheSign, cacheState, leftWord, lifeWord } from "./cache.mjs"
 import { portOf } from "./model.mjs"
 import { FLOCK_CAP, flockUnit } from "./flock.mjs"
 import { PORT_COLOR, STATE_WORD, bare, clean, homed, wrap } from "./theme.mjs"
@@ -412,8 +412,9 @@ export const stage = {
 
   // The focused thread's prompt cache as a time axis: its last model call at the left end, the
   // moment it goes cold at the right, and now moving between them. The stretch still ahead is
-  // drawn in the cache's warmth; it is dashed, and the reading says so, when the lifetime is
-  // assumed and not measured.
+  // drawn in the colours the cache will pass through: its colour now at the head, the cold
+  // blue at the right end. It is dashed, and the reading says so, when the lifetime is assumed
+  // and not measured.
   drawCache(c, scene, ui, now) {
     const u = (value) => this.u(value)
     const session = scene.focused?.session
@@ -445,7 +446,11 @@ export const stage = {
     }
     const head = x0 + (x1 - x0) * (1 - state.share)
     if (!state.cold) {
-      c.strokeStyle = state.color
+      // what is left, each point in the colour the cache will have when now gets there
+      const ahead = c.createLinearGradient(head, ay, x1, ay)
+      ahead.addColorStop(0, state.color)
+      ahead.addColorStop(1, CACHE_COOL)
+      c.strokeStyle = x1 - head > 2 ? ahead : state.color
       c.lineWidth = u(4)
       c.lineCap = "butt"
       if (!cache.measured) c.setLineDash([u(7), u(5)])

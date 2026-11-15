@@ -8,8 +8,17 @@
 
 import { clockOf, mix } from "./util.mjs"
 
-export const CACHE_HOT = "#ff9166" // just touched
-export const CACHE_COOL = "#5d7fa6" // about to go cold
+// The cache has a ramp of its own, and the hue is the reading: rose when a call has just
+// touched it, through a dusty orchid, to a cold indigo blue when it is about to go cold. Grey
+// (the caller's) once it is cold. No model, signal or tool colour is on the ramp: measured in
+// OKLab against all 21 colours the screen uses, the nearest any point of it comes to one is
+// 8.9 (a tertiary label grey); the ember orange it replaces came within 3.6 of the colour of
+// local models and sat beside the amber of fable and of "waiting on you".
+export const CACHE_HOT = "#ff8fa8" // just touched
+export const CACHE_COOL = "#6272d6" // about to go cold
+// The colour of a cache with this share of its lifetime left. Straight in the share, so equal
+// times are equal steps of colour, and a stretch of the axis can be drawn as one gradient.
+export const cacheColor = (share) => mix(CACHE_COOL, CACHE_HOT, Math.max(0, Math.min(1, share)))
 
 // Where a cache stands at `now`: what is left of its lifetime, as time and as a share, and the
 // colour of that warmth.
@@ -18,7 +27,7 @@ export function cacheState(cache, now) {
   const age = Math.max(0, now - cache.at)
   const left = Math.max(0, cache.lifetime - age)
   const share = left / cache.lifetime
-  return { age, left, share, cold: left <= 0, coldAt: cache.at + cache.lifetime, color: mix(CACHE_COOL, CACHE_HOT, share ** 0.8) }
+  return { age, left, share, cold: left <= 0, coldAt: cache.at + cache.lifetime, color: cacheColor(share) }
 }
 
 // How finely the time left is shown: a minute while there are more than ten, then ten seconds,
