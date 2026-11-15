@@ -389,7 +389,10 @@ export const stage = {
     } else if (expect) usual = `usually ${spanOf(expect.p50)}`
     this.text(c, usual, core.cx + half + u(24), y - u(26), { size: 13.5, family: FAMILY.monoMedium, color: expect && session.turn && now - session.turn.start > expect.p75 ? INK.warn : INK.soft })
     if (expect) this.text(c, `3 in 4 end by ${spanOf(expect.p75)}`, core.cx + half + u(24), y - u(4), { size: 12.5, color: INK.dim })
-    this.hit("clock", session.id, { x: core.cx - half - u(10), y: y - u(56), w: half * 2 + u(20), h: u(64) })
+    // the state word on its left and the usual length on its right belong to the same reading
+    const left = Math.max(this.width(c, word, { size: 13, family: FAMILY.label, weight: "600", spacing: 2.6 }), u(90)) + u(30)
+    const right = Math.max(this.width(c, usual, { size: 13.5, family: FAMILY.monoMedium }), expect ? this.width(c, `3 in 4 end by ${spanOf(expect.p75)}`, { size: 12.5 }) : 0) + u(30)
+    this.hit("clock", session.id, { x: core.cx - half - left, y: y - u(56), w: half * 2 + left + right, h: u(64) })
   },
 
   // Where the cache axis runs: clear of the focused thread's wire, which climbs to the tip.
@@ -530,8 +533,9 @@ export const stage = {
     const fade = turn.live ? 1 : 0.6
     this.label(c, turn.live ? "THIS TURN" : "LAST TURN", x0, listTop, INK.dim, "left", 11.5)
     this.text(c, turn.live ? `began ${agoOf(now - turn.start)} ago` : `ran ${spanOf(turn.end - turn.start)}`, x1, listTop, { size: 11.5, color: INK.faint, align: "right" })
+    this.note("turn-list", { x: x0 - u(4), y: listTop - u(14), w: x1 - x0 + u(8), h: u(20) }, turn.live ? "THIS TURN" : "LAST TURN", turn.live ? `began ${clockOf(turn.start)}, ${agoOf(now - turn.start)} ago` : `ran ${spanOf(turn.end - turn.start)}, to ${clockOf(turn.end)}`, [["WHAT", "what the turn has used so far: its model calls, then every kind of equipment it called, how often, and how long those calls took together"], ["TURN", "from the message that started it to the reply that ends it"]])
     const lines = [{ tone: INK.text, round: true, name: "MODEL CALLS", value: String(calls), note: "a bar under the ring each" }]
-    for (const [id, entry] of tally) lines.push({ tone: PORT_COLOR[id], name: scene.ports.get(id).label, value: `${entry.count}`, note: `${spanOf(entry.ms)}${entry.failed ? `  ·  ${entry.failed} failed` : ""}`, bad: entry.failed > 0 })
+    for (const [id, entry] of tally) lines.push({ id, tone: PORT_COLOR[id], name: scene.ports.get(id).label, value: `${entry.count}`, note: `${spanOf(entry.ms)}${entry.failed ? `  ·  ${entry.failed} failed` : ""}`, bad: entry.failed > 0 })
     // two columns when there are many kinds, so the list never runs off the stage
     const perColumn = Math.max(1, Math.floor(room / lineH))
     const columns = lines.length > perColumn ? 2 : 1
@@ -547,6 +551,10 @@ export const stage = {
       this.text(c, line.name, x + u(18), y, { size: 12.5, family: FAMILY.label, weight: "600", color: rgba(INK.soft, fade), spacing: 2.2 })
       this.text(c, line.value, x + u(150), y, { size: 14, family: FAMILY.monoMedium, color: rgba(INK.text, fade), align: "right" })
       if (line.note) this.text(c, this.fit(c, line.note, columnW - u(180), { size: 13 }), x + u(168), y, { size: 13, color: line.bad ? INK.bad : rgba(INK.dim, fade) })
+      // a line is a target: the equipment's own card, or what a model call is
+      const rect = { x: x - u(2), y: y - u(17), w: columnW - u(6), h: lineH }
+      if (line.id) this.hit("port", line.id, rect)
+      else this.note("turn-calls", rect, turn.live ? "THIS TURN" : "LAST TURN", `${calls} model call${calls === 1 ? "" : "s"}`, [["WHAT", "requests to the model in this turn. Each is a bar under the turn clock, longer when it wrote more, and a point on the CONTEXT chart"], ["COUNTED", "from opencode's record of the thread: one per assistant step"]])
     })
   },
 
