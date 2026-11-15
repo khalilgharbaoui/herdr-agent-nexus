@@ -231,10 +231,20 @@ Looked at since (2026-11-15, 22:30 to 22:40), from the brief's third item:
   itself out for each; a resize while it runs was not tried (it would move the split of the
   directing session's pane).
 
+- **The event-driven marks in the real pane.** `stats.json` now counts, under `eventsPlaced`,
+  every packet, flash and ripple when it is first placed on the terminal (red ones apart). With
+  the pages held, that is the pane's own account of having shown them, which a snapshot cannot
+  give. In the live pane at 22:42, within three minutes of a restart: 5 packets, 16 flashes and
+  2 ripples; and after one tool call of a listed thread was made to fail on purpose (a read of
+  a file that does not exist): 1 failed packet coming back, 4 red flashes (the equipment box,
+  the end of its log line, its pane on the sector map) and 1 red ripple from its cell body, the
+  terminal holding 28 of 28 pages, none lost. What a counter cannot say is how they look: that
+  is still the operator's eye.
+
 Not done yet, in the order the brief gives: a wide pane in the real terminal and a resize while
-running (see above), the remaining v4 marks as targets, explain-mode tags that overlap,
-scrubbing the terrain by dragging, and the event-driven marks seen in the real pane. In
-landscape the stage still has empty space above the terrain.
+running (see above), the remaining v4 marks as targets, explain-mode tags that overlap, and
+scrubbing the terrain by dragging. In landscape the stage still has empty space above the
+terrain.
 
 Verified since, in a snapshot: the ring formation once it has settled (parallels turning against
 each other), and a 206 column frame in the landscape layout (28 pages, 3.9 MB; its tiles are at
@@ -254,9 +264,9 @@ ring's own line answered a hover and a click in a simulated run only. Seen in sn
 the head, the dashed stretch and the ticks. Not seen at all: the head running back after a
 compaction (no thread compacted while this was built).
 
-Not verified: a 206 column pane in the real terminal, a quiet machine, and the marks that need
-an event to fire while someone looks: a packet in flight, the red flash on a failure, a pane of
-the sector map lighting up, a ripple. They ran for 16 s of simulated work without an error.
+Not verified: a 206 column pane in the real terminal, a resize while it runs, a quiet machine,
+and how the event-driven marks look in the pane (that they are placed there is counted, see
+above).
 
 Measured at 105 columns by 82 rows, three to four threads working, with the charts and the
 perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the

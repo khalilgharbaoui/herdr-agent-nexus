@@ -12,6 +12,18 @@ import path from "node:path"
 import { Worker } from "node:worker_threads"
 import { Input } from "./input.mjs"
 
+// Which event-driven mark a sprite is, or "" when it is not one. A packet is the sign of a tool
+// call on its synapse, a flash answers something that just happened, a ripple runs from a cell
+// body, the phase lamp or a line.
+const RED = "#ff4d5e"
+function eventOf(sprite) {
+  const [shape, hex] = String(sprite.kind).split("|")
+  if (shape.startsWith("pk")) return hex === RED ? "packetsFailed" : "packets"
+  if (sprite.key.startsWith("rp:")) return hex === RED ? "ripplesRed" : "ripples"
+  if (/^f\d+$/.test(sprite.key)) return hex === RED ? "flashesRed" : "flashes"
+  return ""
+}
+
 const ESC = "\x1b"
 const TILE_COLS = 16
 const TILE_ROWS = 3
@@ -44,6 +56,7 @@ export class Terminal {
     this.atlas = null
     this.probedAt = 0
     this.movedBy = {} // placements sent since the last report, by kind of mark
+    this.eventsPlaced = {} // event-driven marks placed since the start, by kind
     this.tileBytes = new Map() // tile index -> bytes of pixels the terminal holds for it
     this.tilesHeld = 0
     this.cardBytes = 0
@@ -305,6 +318,11 @@ export class Terminal {
         }
         entry = { slot, page: spot.page, col: -1, row: -1, sx: -1, sy: -1, z: 0 }
         this.slots.set(sprite.key, entry)
+        // A mark that only an event brings (a packet, a flash, a ripple) is counted when it is
+        // first placed: with the pages held by the terminal, that is the pane's own account of
+        // having shown it, which a snapshot cannot give.
+        const event = eventOf(sprite)
+        if (event) this.eventsPlaced[event] = (this.eventsPlaced[event] ?? 0) + 1
       }
       wanted.add(sprite.key)
       if (!spot.page.sent) pages.add(spot.page)

@@ -5,7 +5,7 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-15 22:40: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
+- 2026-11-15 22:45: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
   transport, the terminal holds every sprite page; restart it in place with
   `v5/tools/restart.sh`). It was not running from about 05:00 to 21:38: the third designer
   session was cut off by a network failure while the Mac slept, and a fourth one (on `default`,
@@ -16,9 +16,11 @@ is done or dropped.
   context read at every model call from the transcript; three faults fixed (circuit rows
   showed stale data between layout changes; the core was painted every other frame for a turn
   past its usual length; chart titles collided in landscape); the painted transport at 15
-  frames a second. Next, in the brief's order: a wide pane and a live resize in the real
-  terminal; the remaining small marks as targets and the explain tags that overlap; scrubbing
-  the terrain; the event-driven marks seen in the real pane. `v5/README.md` ends with what is done, what was only seen in a snapshot, and the
+  frames a second. The event-driven marks are now counted when the
+  terminal places them (`eventsPlaced` in `v5/stats.json`): packets, flashes and ripples, red
+  ones after a failure, all seen placed in the live pane. Next, in the brief's order: a wide
+  pane and a live resize in the real terminal; the remaining small marks as targets and the
+  explain tags that overlap; scrubbing the terrain. `v5/README.md` ends with what is done, what was only seen in a snapshot, and the
   measurements.
 
 ## Open from the operator

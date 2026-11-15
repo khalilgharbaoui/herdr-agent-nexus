@@ -451,6 +451,7 @@ async function runTerminal() {
       fallback,
       graphics: terminal.graphics, // what the terminal itself answered about the sprite pages, and its image store
       droppedSprites: terminal.dropped,
+      eventsPlaced: painted ? null : terminal.eventsPlaced, // event-driven marks placed on the terminal since the start: packets, flashes, ripples (red: a failure)
       mode: demo ? "DEMO" : "LIVE",
       mouseModes: terminal.mouseModes,
       pixelMouse: terminal.input.pixels,
