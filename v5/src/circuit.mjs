@@ -228,7 +228,7 @@ export const circuit = {
     if (session.turn) parts.push(Math.floor((now - session.turn.start) / 1000))
     else parts.push(Math.floor((now - (session.idleSince || session.updated)) / 60e3))
     const live = g.live ? this.liveOf(session) : null
-    if (live?.kind === "tool") parts.push(live.tool.id, live.more, now - live.tool.start < 10e3 ? Math.floor(now / 100) : Math.floor(now / 1000))
+    if (live?.kind === "tool") parts.push(live.tool.id, live.more, Math.floor((now - live.tool.start) / 1000))
     else if (live?.item) parts.push(live.item.key, this.shownOf(live.item))
     return parts.join("|")
   },
@@ -343,7 +343,8 @@ export const circuit = {
     } else if (live.kind === "tool") {
       const tool = live.tool
       const name = bare(tool.name)
-      const timer = spanOf(now - tool.start)
+      // a running call counts in whole seconds: tenths would repaint this whole row ten times a second
+      const timer = spanOf(Math.max(1000, Math.floor((now - tool.start) / 1000) * 1000))
       const timerW = this.width(c, timer, { size, family: FAMILY.monoMedium }) + u(16)
       const nameStyle = { size, family: FAMILY.monoMedium, color: toolMeta(tool.name).color }
       this.text(c, name, titleX, liveY, nameStyle)

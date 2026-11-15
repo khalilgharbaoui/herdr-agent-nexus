@@ -467,7 +467,7 @@ export const stage = {
     const session = focus.session
     const parts = [session.id, session.state, session.phase.key, ui.tailScroll]
     for (const item of session.tail ?? []) {
-      if (item.kind === "tool") parts.push(item.tool.id, item.tool.status, item.tool.end === null ? (now - item.tool.start < 10e3 ? Math.floor(now / 100) : Math.floor(now / 1000)) : "")
+      if (item.kind === "tool") parts.push(item.tool.id, item.tool.status, item.tool.end === null ? Math.floor((now - item.tool.start) / 1000) : "")
       else parts.push(item.key, this.shownOf(item))
     }
     return parts.join("|")
@@ -498,7 +498,7 @@ export const stage = {
       if (item.kind === "tool") {
         const tool = item.tool
         const running = tool.end === null && session.state === "working"
-        const right = running ? spanOf(now - tool.start) : tool.status === "error" ? "failed" : tool.end !== null ? spanOf(tool.end - tool.start) : ""
+        const right = running ? spanOf(Math.max(1000, Math.floor((now - tool.start) / 1000) * 1000)) : tool.status === "error" ? "failed" : tool.end !== null ? spanOf(tool.end - tool.start) : ""
         lines.push({ tool, meta: toolMeta(tool.name), right, rightColor: running ? INK.live : tool.status === "error" ? INK.bad : INK.dim, running })
         return
       }
