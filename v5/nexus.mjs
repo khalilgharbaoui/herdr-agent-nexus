@@ -53,6 +53,7 @@ const OPTIONS = {
 }
 const POLL_MS = 250
 const QUIET_FPS = 10
+const PAINTED_FPS = 15 // the painted transport sends whole tiles for every move: half the frames, half the cost
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -397,7 +398,7 @@ async function runTerminal() {
     } else if (performance.now() - lastFrameAt > 8) frame()
     const phase = scene.phase
     const lively = scene.counts.working > 0 || scene.calls.length > 0 || flow.busy || wantShot || Date.now() < controller.ui.activeUntil || phase.level === "alert" || phase.cooling
-    const frameMs = 1000 / (lively ? OPTIONS.fps : QUIET_FPS)
+    const frameMs = 1000 / (lively ? (painted ? Math.min(OPTIONS.fps, PAINTED_FPS) : OPTIONS.fps) : QUIET_FPS)
     next += frameMs
     const now = performance.now()
     if (next < now - frameMs) next = now

@@ -212,9 +212,29 @@ fit, and the context itself read at every model call from the transcript where t
 subagent in its first turn showed none: the ring, the CONTEXT chart, the rows and the globe
 all gain from it).
 
-Not done yet, in the order the brief gives: scrubbing the terrain by
-dragging, the remaining v4 marks as targets, explain-mode tags that overlap. In landscape the
-three charts are cramped and the stage has empty space above the terrain.
+Looked at since (2026-11-15, 22:30 to 22:40), from the brief's third item:
+
+- **A fault in long turns.** For a turn that had run past its usual length, the core (the
+  largest region there is) was painted again every other frame: its signature flipped on
+  rounding noise. With such a turn in focus that was 2.2 to 2.3 MB/s and 17 to 20% of a core;
+  it is 470 to 620 kB/s and 6.4 to 8.8% again (five threads working, 84 columns), the core
+  painted 1 to 2.5 times a second.
+- **Landscape.** A chart too narrow for its name and its value shows the value in brief, so
+  the three charts no longer run into their own titles at 206 columns. The cache axis sits
+  under the turn's time there too. Seen in a simulated frame only.
+- **`z` zoom** in the real pane: toggled on and off through herdr, no error, the terminal
+  still held every page.
+- **The painted transport** in the real pane (`p`): it works, and at 30 frames a second it
+  cost 8.9 MB/s and 53% of a core with five threads working, so it now runs at 15 frames a
+  second: 3.8 MB/s and 23%. Back on sprites the terminal answered "held" at once.
+- **Pane resize.** The pane was 90, then 84 and 83 columns at successive restarts and v5 laid
+  itself out for each; a resize while it runs was not tried (it would move the split of the
+  directing session's pane).
+
+Not done yet, in the order the brief gives: a wide pane in the real terminal and a resize while
+running (see above), the remaining v4 marks as targets, explain-mode tags that overlap,
+scrubbing the terrain by dragging, and the event-driven marks seen in the real pane. In
+landscape the stage still has empty space above the terrain.
 
 Verified since, in a snapshot: the ring formation once it has settled (parallels turning against
 each other), and a 206 column frame in the landscape layout (28 pages, 3.9 MB; its tiles are at
