@@ -971,11 +971,17 @@ export class Renderer {
         const tone = spriteHex(PORT_COLOR[signal.port])
         if (signal.port === "agent" && this.childOf(scene, signal.sid)) continue
         flow.flash(g.somaX, g.axonY, tone, now, 200) // the cell gathers itself, then lets go
-        flow.pulse({ path: `out:${signal.sid}:${signal.port}`, kind: `pulse|${tone}`, tailKind: `tail|${tone}`, tail: 6, speed: u(1300), delay: 90, flash: tone, now })
+        flow.pulse({ path: `out:${signal.sid}:${signal.port}`, kind: `${PACKET[signal.port] ?? "pulse"}|${tone}`, tailKind: `tail|${tone}`, tail: 6, speed: u(1300), delay: 90, flash: tone, now })
       } else if (signal.type === "tool-end") {
         const tone = signal.failed ? INK.bad : spriteHex(PORT_COLOR[signal.port])
         if (signal.port === "agent" && this.childOf(scene, signal.sid)) continue
-        flow.pulse({ path: `back:${signal.sid}:${signal.port}`, kind: `pulse|${tone}`, tailKind: `tail|${tone}`, tail: 6, speed: u(1300), delay: 120, flash: tone, now })
+        // the result comes back as the same sign; a failure comes back red and its equipment flashes
+        flow.pulse({ path: `back:${signal.sid}:${signal.port}`, kind: `${PACKET[signal.port] ?? "pulse"}|${tone}`, tailKind: `tail|${tone}`, tail: 6, speed: u(1300), delay: 120, flash: tone, now })
+        const box = signal.failed ? G.ports.get(signal.port) : null
+        if (box) {
+          flow.flash(box.x + G.boxW / 2, box.y, INK.bad, now, 520)
+          flow.flash(box.x, box.y, INK.bad, now + 140, 420)
+        }
       } else if (signal.type === "speak") {
         const count = clamp(Math.ceil(signal.chars / 320), 1, 5)
         for (let index = 0; index < count; index += 1) flow.pulse({ path: `out:${signal.sid}:you`, kind: `dot|${INK.text}`, tailKind: `mote|${INK.text}`, tail: 3, speed: u(1000), delay: index * 110, now })
@@ -1057,5 +1063,8 @@ export class Renderer {
     return canvas
   }
 }
+
+// the sign a tool call travels as, by the equipment it goes to
+const PACKET = { exec: "pkexec", read: "pkread", write: "pkwrite", web: "pkweb", agent: "pkagent", other: "pkother" }
 
 Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts)

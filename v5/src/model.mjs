@@ -520,6 +520,8 @@ export class Scene {
       port.p50 = port.spans.length ? port.spans[Math.floor(port.spans.length / 2)] : 0
       port.p95 = port.spans.length ? port.spans[Math.min(port.spans.length - 1, Math.floor(port.spans.length * 0.95))] : 0
       port.recent.sort((a, b) => b.tool.start - a.tool.start)
+      // every call of the window, for the latency line under the box: when, how long, how it ended
+      port.calls = port.recent.map(({ tool }) => ({ start: tool.start, ms: Math.max(1, (tool.end ?? now) - tool.start), failed: tool.status === "error", open: tool.end === null }))
       port.recent.length = Math.min(port.recent.length, 6)
     }
     this.ports.get("you").inflight = this.calls.length

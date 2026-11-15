@@ -110,6 +110,36 @@ const SHAPES = {
     c.arc(19, 19, 17, 0, Math.PI * 2)
     c.stroke()
   }],
+  // A tool call in flight between a thread and its equipment: one flat sign per equipment, so
+  // what is being called is read off the packet itself. A prompt for the shell, a page for a
+  // read, a stroke for a write, a globe for the web, two squares for an agent, a block for
+  // anything else.
+  pkexec: [22, 22, (c, hex) => packet(c, hex, () => {
+    c.moveTo(7, 5)
+    c.lineTo(14, 11)
+    c.lineTo(7, 17)
+  })],
+  pkread: [22, 22, (c, hex) => packet(c, hex, () => {
+    c.rect(6.5, 4.5, 9, 13)
+    c.moveTo(9, 9)
+    c.lineTo(13, 9)
+    c.moveTo(9, 12.5)
+    c.lineTo(13, 12.5)
+  }, 1.5)],
+  pkwrite: [22, 22, (c, hex) => packet(c, hex, () => {
+    c.moveTo(6, 16)
+    c.lineTo(16, 6)
+  }, 3.2)],
+  pkweb: [22, 22, (c, hex) => packet(c, hex, () => {
+    c.arc(11, 11, 6, 0, Math.PI * 2)
+    c.moveTo(5, 11)
+    c.lineTo(17, 11)
+  }, 1.6)],
+  pkagent: [22, 22, (c, hex) => packet(c, hex, () => {
+    c.rect(5, 5, 6, 6)
+    c.rect(11, 11, 6, 6)
+  }, 0)],
+  pkother: [22, 22, (c, hex) => packet(c, hex, () => c.rect(7, 7, 8, 8), 0)],
   // one dot of a leader line, from a mark to its card
   lead: [4, 4, (c, hex) => disc(c, 2, 2, 1.5, hex, 0.95)],
   // the head of a chart line: where the newest reading is
@@ -135,6 +165,21 @@ function halo(c, x, y, radius, hex, alpha) {
   gradient.addColorStop(1, `rgba(${r},${g},${b},0)`)
   c.fillStyle = gradient
   c.fillRect(x - radius, y - radius, radius * 2, radius * 2)
+}
+
+// A packet: a soft light and a flat sign on it. `width` 0 fills the sign instead of drawing it.
+function packet(c, hex, sign, width = 2.4) {
+  halo(c, 11, 11, 11, hex, 0.42)
+  const ink = mix(hex, "#ffffff", 0.6)
+  c.strokeStyle = ink
+  c.fillStyle = ink
+  c.lineWidth = width || 1
+  c.lineJoin = "miter"
+  c.lineCap = "butt"
+  c.beginPath()
+  sign()
+  if (width) c.stroke()
+  else c.fill()
 }
 
 function corner(c, hex, turn) {
@@ -214,6 +259,7 @@ const FAMILIES = {
   travel: ["pulse", "dot", "tail", "mote", "bar1", "bar2", "bar3", "pip", "head", "lead"],
   glow: ["glow", "glow2", "breath1", "breath2", "breath3", "breath4"],
   frame: ["cornerA", "cornerB", "cornerC", "cornerD", "ring", "ring2", "chev", "seg", "sat", "moon"],
+  packets: ["pkexec", "pkread", "pkwrite", "pkweb", "pkagent", "pkother"],
 }
 const FAMILY_OF = {}
 for (const [family, shapes] of Object.entries(FAMILIES)) for (const shape of shapes) FAMILY_OF[shape] = family

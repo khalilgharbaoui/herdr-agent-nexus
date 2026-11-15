@@ -9,8 +9,8 @@ is done or dropped.
   place with `v5/tools/restart.sh`). The sprite layer had vanished because herdr keeps 64 MiB of
   images per pane and drops the oldest when full, which was the 39 MB atlas; the atlas is now 2
   to 4 MB of small pages, each acknowledged by the terminal, and `v5/stats.json` says under
-  `graphics` whether the terminal holds them. **The operator has not yet said that he sees the
-  dots in the pane again**: only he can. Built since: flat dots, the charge that builds at the
+  `graphics` whether the terminal holds them. The operator looked at the live pane at about
+  02:30 and said "looking good carry on": the dots are back. Built since: flat dots, the charge that builds at the
   tip, the flock in orbit round the rings and the siphon into the globe (fourth and sixth
   addenda), three live charts beside the core, the terrain in perspective, wire streams seen at a
   glance. Not built from `BRIEF-v5.md`: equipment latency lines, the sector map, tool calls as

@@ -371,6 +371,7 @@ export const circuit = {
   signPorts(scene) {
     const parts = []
     for (const port of scene.ports.values()) parts.push(port.id, port.inflight, port.count, port.errors, Math.round(port.p50 / 100))
+    parts.push(Math.floor((scene.world?.now ?? 0) / 2500)) // the latency lines move left with time
     return parts.join("|")
   },
 
@@ -407,6 +408,31 @@ export const circuit = {
       for (let lamp = 0; lamp < Math.min(8, port.inflight); lamp += 1) {
         c.fillStyle = tone
         c.fillRect(rect.x + rect.w - u(16) - lamp * u(10), rect.y + rect.h - u(14), u(6), u(6))
+      }
+      // The latency line under the box: every call of the window as a stem at the time it
+      // started, as tall as it took (log scale, a tenth of a second to ten minutes), red when it
+      // failed, hollow at the top while it still runs. The dotted line is the usual time.
+      const calls = port.calls ?? []
+      if (calls.length && port.id !== "you") {
+        const now = scene.world?.now ?? Date.now()
+        const strip = { x: rect.x + u(6), y: rect.y + rect.h + u(6), w: rect.w - u(12), h: u(24) }
+        const floor = strip.y + strip.h
+        const tall = (ms) => clamp((Math.log10(Math.max(100, ms) / 1000) + 1) / (Math.log10(600) + 1), 0.1, 1) * strip.h
+        this.line(c, strip.x, floor, strip.x + strip.w, floor, rgba(INK.faint, 0.7))
+        if (port.p50) {
+          const y = Math.round(floor - tall(port.p50))
+          c.setLineDash([u(1.5), u(4)])
+          this.line(c, strip.x, y, strip.x + strip.w, y, rgba(INK.soft, 0.4))
+          c.setLineDash([])
+        }
+        for (const call of calls) {
+          const x = Math.round(strip.x + clamp((call.start - (now - scene.windowMs)) / scene.windowMs, 0, 1) * strip.w)
+          const h = Math.round(tall(call.ms))
+          c.fillStyle = call.failed ? INK.bad : rgba(color, call.open ? 1 : 0.7)
+          c.fillRect(x, floor - h, call.failed ? 2 : 1.5, h)
+          if (call.open) c.fillRect(x - 2, floor - h - 1, 5.5, 1.5)
+        }
+        this.hit("port", port.id, strip)
       }
     }
   },
