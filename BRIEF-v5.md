@@ -207,3 +207,15 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 3. **Do not trust a snapshot for what the pane shows.** The operator's eyes are the only check of the real pane today; say in the report which claims were seen in the pane and which only in a snapshot.
 4. Memory and CPU back into the brief's class is part of the same fix: a 41 MB canvas rebuilt on every resize, plus its copies, is where much of it goes.
 5. Then carry on with the fourth addendum (flat dots, the charge that builds).
+
+## Sixth addendum: an orbit phase before the globe (verbatim, 2026-11-15 about 00:35)
+
+> "maybe the should also have a fase where they orbit the "planetary" disk as a flock in organic movement the siphon off to the globe it self"
+
+### What this asks
+
+1. **A third phase in a dot's life, between the shot and the globe.** Today a dot rises, gathers at the tip, is fired and lands in the globe. Add a stage in between: after the release the dots join a flock that circles the planetary disk (the tilted ring system), moving organically, a murmuration that follows the ring's plane and banks with it, passing behind and in front of the globe.
+2. **Then they siphon off into the globe.** From that orbiting flock, dots peel away in a thin stream, spiral inward and settle in the globe. The stream is a visible funnel or thread from the ring to the globe, not dots vanishing and reappearing.
+3. **Drive it with real data, and say with which.** The operator did not say what the orbit stands for, so choose a true meaning and put it in the table of marks. A natural reading: the dots in orbit are this turn's output that has arrived but is not yet part of the conversation (the step in flight), and they siphon into the globe when the step completes, at a rate set by what completed. If another reading fits the data better, use it and say why.
+4. **Flat dots still.** The fourth addendum holds: the 3D is in the motion (the orbit's tilt, overlap, parallax, the inward spiral), never in shaded balls.
+5. This comes after the fifth addendum's fix (sprites back on screen) and belongs with the fourth addendum's work on the charge: tip, release, orbit, siphon, globe is one continuous path.
