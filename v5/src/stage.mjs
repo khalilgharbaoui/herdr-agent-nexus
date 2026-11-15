@@ -27,7 +27,7 @@ export const stage = {
     const flock = this.flock
     const mine = flock.sid === session?.id
     const degrees = mine ? Math.round(flock.pitch / DEG) : 54
-    return { view: makeView(this.G.core, degrees * DEG), degrees, rs: mine && flock.rs ? Math.round(flock.rs) : Math.round(this.G.core.RB * 0.66), mine }
+    return { view: makeView(this.G.core, degrees * DEG), degrees, rs: mine && flock.rs ? Math.round(flock.rs / 4) * 4 : Math.round(this.G.core.RB * 0.66), mine }
   },
 
   // A stretch of a ring, from angle a0 to a1 (clockwise from the far point), drawn in pieces so
@@ -110,7 +110,7 @@ export const stage = {
       if (newest) parts.push(newest.end === null ? "open" : "closed", newest.tools.length, newest.tools[newest.tools.length - 1]?.status ?? "")
     }
     const intro = (now - scene.focus.since) / 450
-    if (intro < 1) parts.push(Math.floor(intro * 14))
+    if (intro < 1) parts.push(Math.floor(intro * 6))
     return parts.join("|")
   },
 

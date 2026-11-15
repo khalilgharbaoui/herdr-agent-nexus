@@ -49,7 +49,7 @@ export const terrain = {
   signTerrain(scene, ui, now) {
     const span = ui.window ?? WINDOWS[1]
     const parts = [span, Math.floor(now / (span / BINS)), scene.focus.id]
-    for (const row of scene.threads.slice(0, 24)) parts.push(row.session.id, row.session.steps.length, row.session.steps[row.session.steps.length - 1]?.end ?? 0, row.session.alerts.length, row.session.phase?.key ?? "", Math.round(scene.rateOf(row.session.id, now) / 4))
+    for (const row of scene.threads.slice(0, 24)) parts.push(row.session.id, row.session.steps.length, row.session.steps[row.session.steps.length - 1]?.end ?? 0, row.session.alerts.length, row.session.phase?.key === "thinking" || row.session.phase?.key === "writing" ? Math.round(scene.rateOf(row.session.id, now) / 8) + 1 : 0)
     return parts.join("|")
   },
 

@@ -174,8 +174,10 @@ the sector map lighting up, a ripple. They ran for 16 s of simulated work withou
 
 Measured at 105 columns by 82 rows, three to four threads working, with the charts and the
 perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the
-focused thread runs tools, 500 to 540 kB/s and 6 to 11% while its whole flock flies; 257 to 270
-MB physical footprint (resident size swings from 130 to 450 MB with the machine's memory
-pressure); 16 to 18 MB of the terminal's 67 MB store. `stats.json` says what costs it:
+focused thread runs tools, 450 to 650 kB/s and 5 to 11% while its whole flock flies; for a
+second or two after the focus moves to another thread, up to 1.6 MB/s and 18% (the core and the
+tail are drawn afresh); 300 to 340 MB physical footprint (resident size swings from 130 to 500
+MB with the machine's memory pressure); 16 to 18 MB of the terminal's 67 MB store.
+`stats.json` says what costs it:
 `repaintsPerSecond` by region of the still layer and `movedPerFrameBy` by kind of mark. Painted
 fallback: 1.5 to 4.7 MB/s and about one core.
