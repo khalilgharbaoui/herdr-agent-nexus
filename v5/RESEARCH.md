@@ -68,3 +68,27 @@ The behaviour below says it follows the pane's mouse modes.
   pane", and the wheel for scrolling. It never needs the right button, ctrl + click or shift,
   because herdr or Ghostty keep those.
 - Every pointer action has a key that does the same, so nothing depends on the mouse.
+
+## The terminal's image store (measured 2026-11-15, herdr 0.9.5 in Ghostty)
+
+Measured from inside the pane with `tools/gfx-probe.mjs`, which uploads images with replies on
+and reads what the terminal says.
+
+- herdr answers graphics commands itself (each pane is a Ghostty terminal core inside herdr), so
+  a reply tells what herdr holds for the pane. That is what herdr draws from.
+- An upload is answered `OK` at 4, 15.5 and 41 MB of pixels, as one zlib stream and as a stream
+  of sync-flushed strips alike. Size and encoding are not refused.
+- The store holds 64 MiB of pixels per pane: with 2 MB images that are all placed, the 34th
+  evicts the first (66 MB held, 68 MB not).
+- Eviction is silent with `q=2`. Unplaced images go first (110 unplaced 2 MB images never cost a
+  placed one its place), then the oldest placed image.
+- A placement of an image that is gone answers `ENOENT: image not found`; a placement of one
+  that is there answers `OK`. That is the heartbeat v5 uses.
+- herdr's own protocol to its client has further limits that were not reached ("graphics asset
+  payload too large", "too many graphics placements", "too many retained graphics assets" are in
+  its binary). What Ghostty itself shows cannot be asked from inside a pane.
+
+What v5 does with that: tiles are 4 bytes per pixel of the pane wherever something is drawn
+(15.5 MB at 105 columns by 82 rows, 30.4 MB at 206), so the sprite atlas is small pages under a
+10 MB budget, uploaded after the tiles and right before their first placement, acknowledged, and
+checked every two seconds.

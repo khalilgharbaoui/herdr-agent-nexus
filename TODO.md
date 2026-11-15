@@ -5,25 +5,16 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-15 00:30: the sprite layer is invisible in the live pane (operator: "i dont see any kind
-  of dots anymore anywhere or moving particles on lines"). The app still thinks it draws them.
-  `f8d0c88` grew the atlas from 15.5 MB to 41.1 MB of pixels; the upload stream is valid, so the
-  terminal most likely drops the image. Detail and order of work: `BRIEF-v5.md`, fifth addendum.
-  Sent to the running designer (`ses_e23d0202dffetludbKiavO9TH1`, "Agent Nexus v5 continue") at
-  00:30; the fourth addendum (flat dots, the charge that builds) comes after it. Until fixed,
-  `p` in the pane switches to the painted transport. Remove this entry when the operator has
-  seen dots in the pane again.
-
-- 2026-11-14 23:25: v5 runs live in herdr pane `wE:p1Q1` (the old `wE:pQ1` was closed when v4
-  quit, so a new right-hand pane was split from `wE:pP0`). `v5/README.md` has the table of marks
-  and, at its end, what is done and what is not done yet from `BRIEF-v5.md`'s second addendum
-  (wires as particle streams, account reservoirs, equipment latency lines, sector map, scrubbing).
-  A new session continues from there.
-
-- 2026-11-14 23:25: next for v5: the director dispatches a fresh `designer` on appical
-  (`claude-code-appical/claude-fable-5-2@appical#xhigh`, window back at 23:30) with the
-  "Continuation" section at the end of `BRIEF-v5.md` as its order of work. If nobody is building
-  v5 and that section's items are not done, dispatch it.
+- 2026-11-15 02:10: v5 runs live in herdr pane `wE:p1Q1` on the sprite transport (restart it in
+  place with `v5/tools/restart.sh`). The sprite layer had vanished because herdr keeps 64 MiB of
+  images per pane and drops the oldest when full, which was the 39 MB atlas; the atlas is now 2
+  to 4 MB of small pages, each acknowledged by the terminal, and `v5/stats.json` says under
+  `graphics` whether the terminal holds them. **The operator has not yet said that he sees the
+  dots in the pane again**: only he can. Built since: flat dots, the charge that builds at the
+  tip, the flock in orbit round the rings and the siphon into the globe (fourth and sixth
+  addenda). Not built from `BRIEF-v5.md`: the live charts beside the core, equipment latency
+  lines, the sector map, tool calls as packets, scrubbing the terrain. `v5/README.md` ends with
+  what is done, what was only seen in a snapshot, and the measurements.
 
 ## Open from the operator
 
