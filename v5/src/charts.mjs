@@ -74,11 +74,13 @@ export const charts = {
   },
 
   // The head of a chart: its name, what it measures, and the newest value at the right.
-  chartHead(c, f, name, note, value, tone = INK.text) {
+  // `brief` is the value in fewer words, for a chart too narrow to hold the name and the value.
+  chartHead(c, f, name, note, value, tone = INK.text, brief = "") {
     const u = (v) => this.u(v)
     this.label(c, name, f.x, f.y + u(13), INK.dim, "left", 11.5)
     const nameW = this.width(c, name, { size: 11.5, family: FAMILY.label, weight: "600", spacing: 2.6 })
     const valueStyle = { size: 12.5, family: FAMILY.monoMedium, color: tone, align: "right" }
+    if (value && brief && nameW + this.width(c, value, valueStyle) + u(12) > f.w) value = brief
     const valueW = value ? this.width(c, value, valueStyle) : 0
     if (value) this.text(c, value, f.x + f.w, f.y + u(13), valueStyle)
     const room = f.w - nameW - valueW - u(26)
@@ -103,7 +105,7 @@ export const charts = {
     const used = session.context.used || readings[readings.length - 1]?.ctx || 0
     const share = limit && used ? used / limit : null
     const tone = share === null ? INK.soft : share >= 0.92 ? INK.bad : share >= 0.8 ? INK.warn : INK.text
-    this.chartHead(c, f, "CONTEXT", "at every model call", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone)
+    this.chartHead(c, f, "CONTEXT", "at every model call", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone, used && limit ? `${Math.round(share * 100)}%` : "")
     this.timeAxis(c, f, span)
     const top = limit || Math.max(1, ...readings.map((step) => step.ctx)) * 1.15
     const xOf = (time) => f.px + clamp((time - from) / span, 0, 1) * f.pw
@@ -173,7 +175,7 @@ export const charts = {
     }
     const done = tools.filter((entry) => entry.tool.end !== null).map((entry) => entry.tool.end - entry.tool.start).sort((a, b) => a - b)
     const median = done.length ? done[Math.floor(done.length / 2)] : null
-    this.chartHead(c, f, "LATENCY", "tool calls and model calls", median === null ? (tools.length ? "running" : "n/a") : `median tool ${spanOf(median)}`)
+    this.chartHead(c, f, "LATENCY", "tool calls and model calls", median === null ? (tools.length ? "running" : "n/a") : `median tool ${spanOf(median)}`, INK.text, median === null ? "" : spanOf(median))
     this.timeAxis(c, f, span)
     for (const [ms, word] of [[1000, "1s"], [10e3, "10s"], [60e3, "1m"], [600e3, "10m"]]) {
       const y = Math.round(yOf(ms))
@@ -242,7 +244,7 @@ export const charts = {
     }
     const start = five.resetsAt - five.span
     const tone = five.used >= 90 ? INK.bad : account.dryAt ? INK.warn : INK.text
-    this.chartHead(c, f, name, "used against an even pace", `${Math.round(five.used)}% used${account.dryAt ? `  ·  dry ${hourMinuteOf(account.dryAt)}` : ""}`, tone)
+    this.chartHead(c, f, name, "used against an even pace", `${Math.round(five.used)}% used${account.dryAt ? `  ·  dry ${hourMinuteOf(account.dryAt)}` : ""}`, tone, `${Math.round(five.used)}%`)
     const xOf = (time) => f.px + clamp((time - start) / five.span, 0, 1) * f.pw
     const yOf = (used) => f.py + f.ph - clamp(used / 100, 0, 1) * f.ph
     // the axis is the window itself: when it began, when it resets
