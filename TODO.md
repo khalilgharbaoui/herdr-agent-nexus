@@ -22,13 +22,13 @@ is done or dropped.
 
 ## Open from the operator
 
-v4, raised 2026-11-14 by the designer's report. Answer now, later or drop for each.
+The operator answered the director's questions on 2026-11-15 with "do the most recommended and
+move forward with it". The decisions are in `BRIEF-v5.md`, eighth addendum. A third designer
+session (`ses_e22bbcd86ffepxmgCR4m3131yw`, on `default`, started 04:35) works from it: v5 back
+in a new pane, comms and log, cache cooling, landscape and resize, remaining marks, scrubbing.
 
-1. Demo data has no project directories, so `--demo` shows one "NO PROJECT" group instead of the
-   account, project, thread hierarchy.
-2. A long comms line truncates mid-word ("Here First Message Convers: marked busy").
-3. Not verified with a real hand: go to pane (`herdr agent focus <pane>`, reached by `enter`, a
+Still the operator's own:
+
+1. Not verified with a real hand: go to pane (`herdr agent focus <pane>`, reached by `enter`, a
    click on a pane id, a middle click or alt + click), the real wheel and real typed keys. Real
    hover and one real left click were seen.
-4. Not looked at in v4: landscape layout, pane resize, `z` zoom, the `p` painted transport, and
-   the numbers for a quiet machine.
