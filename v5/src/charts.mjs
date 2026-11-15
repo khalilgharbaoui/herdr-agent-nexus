@@ -220,6 +220,7 @@ export const charts = {
       }
       this.hit("tool", tool.id, { x: x - u(6), y: y - u(7), w: u(12), h: u(14) }, { sid: session.id, tool, step })
     }
+    this.hit("thread", session.id, { x: f.px, y: f.py, w: f.pw, h: f.ph })
     if (median !== null) {
       const y = Math.round(yOf(median))
       c.setLineDash([u(2), u(4)])
