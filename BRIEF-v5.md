@@ -219,3 +219,9 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 3. **Drive it with real data, and say with which.** The operator did not say what the orbit stands for, so choose a true meaning and put it in the table of marks. A natural reading: the dots in orbit are this turn's output that has arrived but is not yet part of the conversation (the step in flight), and they siphon into the globe when the step completes, at a rate set by what completed. If another reading fits the data better, use it and say why.
 4. **Flat dots still.** The fourth addendum holds: the 3D is in the motion (the orbit's tilt, overlap, parallax, the inward spiral), never in shaded balls.
 5. This comes after the fifth addendum's fix (sprites back on screen) and belongs with the fourth addendum's work on the charge: tip, release, orbit, siphon, globe is one continuous path.
+
+## Seventh addendum: the operator on the live pane (verbatim, 2026-11-15 about 02:27)
+
+> "looking good carry on"
+
+Said while looking at the pane after the paged atlas, the flat dots, the charge at the tip, the orbit and siphon, and the three live charts were in. Nothing was singled out. This is the first check of the real pane since the sprites vanished, so the sprite layer counts as seen by the operator again. No change of direction: carry on with the order of work.
