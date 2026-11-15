@@ -432,7 +432,16 @@ export class Atlas {
     const col = Math.floor(left / this.cw)
     const row = Math.floor(top / this.ch)
     if (col + sprite.cols > cols || row + sprite.rows > rows) return null
-    return { page: sprite.page, col, row, sx: sprite.x - (left - col * this.cw), sy: sprite.y - (top - row * this.ch), w: sprite.w, h: sprite.h }
+    // one object for every answer: it is read at once by the one caller and never kept
+    const spot = (this.spot ??= { page: null, col: 0, row: 0, sx: 0, sy: 0, w: 0, h: 0 })
+    spot.page = sprite.page
+    spot.col = col
+    spot.row = row
+    spot.sx = sprite.x - (left - col * this.cw)
+    spot.sy = sprite.y - (top - row * this.ch)
+    spot.w = sprite.w
+    spot.h = sprite.h
+    return spot
   }
 
   // The same sprite drawn straight onto a canvas: snapshots, headless frames, the painted path.

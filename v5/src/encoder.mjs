@@ -11,6 +11,14 @@
 // window of its page, and moving it is one short command. A page upload and the heartbeat
 // placement of every page ask the terminal for an answer (no q key), which the main thread
 // reads: that is how a page the terminal dropped is noticed and sent again.
+//
+// Memory. zlib.deflateSync makes a stream object per call, and each keeps a 16 KB output
+// buffer cut from one of Node's 64 KB pool slabs until V8 runs a full collection, which in a
+// thread this small it does only when some 60 MB of them have piled up (measured: 150 to 770
+// dead slabs, a sawtooth of 15 to 60 MB). So tiles and cards go through one deflate stream per
+// level that is reset between images and writes into one buffer that is kept. That uses the
+// stream's handle directly; it is checked against zlib.inflateSync when the worker starts, and
+// when the check fails every image goes through zlib.deflateSync as before.
 
 import fs from "node:fs"
 import { parentPort } from "node:worker_threads"
@@ -43,6 +51,65 @@ function chunked(parts, keys, base64) {
   }
 }
 
+// One stream per compression level, reset for every image, and one output buffer for all.
+let packed = Buffer.allocUnsafeSlow(256 << 10)
+const engines = new Map()
+let reuse = true
+function deflateInto(input, level) {
+  let engine = engines.get(level)
+  if (!engine) {
+    engine = zlib.createDeflate({ level })
+    engine.on("error", () => {
+      reuse = false
+    })
+    engines.set(level, engine)
+  }
+  const handle = engine._handle
+  const state = engine._writeState
+  handle.reset()
+  let from = 0
+  let left = input.length
+  let at = 0
+  for (;;) {
+    if (packed.length - at < 4096) {
+      const larger = Buffer.allocUnsafeSlow(packed.length * 2)
+      packed.copy(larger, 0, 0, at)
+      packed = larger
+    }
+    const room = packed.length - at
+    handle.writeSync(zlib.constants.Z_FINISH, input, from, left, packed, at, room)
+    const roomAfter = state[0]
+    const leftAfter = state[1]
+    at += room - roomAfter
+    from += left - leftAfter
+    left = leftAfter
+    if (left === 0 && roomAfter !== 0) return at
+  }
+}
+// base64 of the deflated bytes of `input`
+function deflated(input, level) {
+  if (reuse) {
+    try {
+      const length = deflateInto(input, level) // first: it may replace `packed` with a larger buffer
+      return packed.toString("base64", 0, length)
+    } catch {
+      reuse = false
+    }
+  }
+  return zlib.deflateSync(input, { level }).toString("base64")
+}
+// the check: what the kept stream writes must inflate to what went in, twice in a row
+try {
+  const sample = Buffer.alloc(300e3)
+  for (let index = 0; index < sample.length; index += 1) sample[index] = (index * 31 + (index >> 7)) & (index % 5 ? 255 : 3)
+  for (const size of [300e3, 5000]) {
+    const length = deflateInto(sample.subarray(0, size), 1)
+    if (!zlib.inflateSync(packed.subarray(0, length)).equals(sample.subarray(0, size))) reuse = false
+  }
+} catch {
+  reuse = false
+}
+
 let flips = new Uint8Array(0)
 let shown = new Uint8Array(0) // 1 while a tile has an image on screen
 let cardFlip = 0
@@ -65,7 +132,7 @@ parentPort.on("message", (message) => {
     const id = ID_BASE + tile.index * 2 + flips[tile.index]
     const old = ID_BASE + tile.index * 2 + (1 - flips[tile.index])
     if (tile.length) {
-      const base64 = zlib.deflateSync(Buffer.from(message.pixels, tile.offset, tile.length), { level: 1 }).toString("base64")
+      const base64 = deflated(Buffer.from(message.pixels, tile.offset, tile.length), 1)
       parts.push(`${ESC}[${Math.floor(tile.index / across) * tileRows + 1};${(tile.index % across) * tileCols + 1}H`)
       chunked(parts, `a=T,f=32,o=z,s=${tile.width},v=${tile.height},i=${id},p=1,c=${Math.round(tile.width / cellWidth)},r=${Math.round(tile.height / cellHeight)},z=${TILE_Z},C=1,q=2`, base64)
       if (shown[tile.index]) parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
@@ -81,7 +148,7 @@ parentPort.on("message", (message) => {
   // sprite pages: after the tiles and right before their placements, with the answer wanted
   for (const id of message.dropPages ?? []) parts.push(`${ESC}_Ga=d,d=I,i=${id},q=2${ESC}\\`)
   for (const page of message.pages ?? []) {
-    chunked(parts, `a=t,f=32,o=z,s=${page.width},v=${page.height},i=${page.id}`, zlib.deflateSync(Buffer.from(page.pixels), { level: 6 }).toString("base64"))
+    chunked(parts, `a=t,f=32,o=z,s=${page.width},v=${page.height},i=${page.id}`, deflated(Buffer.from(page.pixels), 6))
   }
   for (let at = 0; at < deletes.length; at += 2) parts.push(`${ESC}_Ga=d,d=i,i=${deletes[at]},p=${deletes[at + 1]},q=2${ESC}\\`)
   for (let at = 0; at < places.length; at += 9) {
@@ -103,7 +170,7 @@ parentPort.on("message", (message) => {
     const old = CARD_ID + cardFlip
     if (card.pixels) {
       cardFlip ^= 1
-      chunked(parts, `a=t,f=32,o=z,s=${card.width},v=${card.height},i=${CARD_ID + cardFlip},q=2`, zlib.deflateSync(Buffer.from(card.pixels), { level: 1 }).toString("base64"))
+      chunked(parts, `a=t,f=32,o=z,s=${card.width},v=${card.height},i=${CARD_ID + cardFlip},q=2`, deflated(Buffer.from(card.pixels), 1))
     }
     const place = card.place
     parts.push(`${ESC}[${place.row + 1};${place.col + 1}H${ESC}_Ga=p,i=${CARD_ID + cardFlip},p=1,x=${place.sx},y=${place.sy},w=${place.w},h=${place.h},z=${CARD_Z},C=1,q=2${ESC}\\`)
@@ -121,6 +188,7 @@ parentPort.on("message", (message) => {
     of: total,
     moved: places.length / 9,
     wiped,
+    deflate: reuse ? "one stream, kept" : "a stream per image", // which path compresses: see "Memory" at the top
     encodeMs: encoded - started,
     writeMs: performance.now() - encoded,
   })

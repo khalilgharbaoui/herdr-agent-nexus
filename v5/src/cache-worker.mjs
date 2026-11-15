@@ -21,7 +21,14 @@
 //
 // Everything here is read-only, and only usage numbers and timestamps are taken from a
 // transcript, never its text. This runs in a worker because the plugin's file is several
-// megabytes and is rewritten at the end of every turn; parsing it must not hold up a frame.
+// megabytes and is rewritten at the end of every turn; reading it must not hold up a frame.
+//
+// Memory. Both kinds of file pass through one buffer of a quarter of a megabyte that is
+// allocated once (CHUNK). Nothing is read whole: the plugin's record (9 MB, most of it digests)
+// is walked byte by byte for the four fields wanted, and a transcript is taken line by line.
+// Read whole, each first pass left 4 to 9 MB blocks behind that the allocator kept, and a
+// parsed copy of the record in this thread's heap: 110 MB for a job that keeps a few
+// kilobytes per thread (measured with tools/mem-source.mjs).
 
 import fs from "node:fs"
 import os from "node:os"
@@ -30,6 +37,10 @@ import { parentPort } from "node:worker_threads"
 
 const FIRST_READ = 4 << 20 // how much of the end of a transcript the first read takes
 const READ_CAP = 8 << 20 // further behind than this, a read starts near the end again
+const CHUNK = 256 << 10 // every file is read through one buffer of this size
+const LINE_CAP = 2 << 20 // a record longer than this is passed over (a tool result with pictures in it)
+const LISTING_AGE = 70 * 60e3 // a transcript untouched for longer than any cache lives is not a thread's current one
+const FILES_KEPT = 120
 const FIVE_MIN = 300e3
 const HOUR = 3600e3
 const NEAR = 250 // one block's end stamped twice on one machine: this close is the same block
@@ -38,8 +49,11 @@ const TOOL_LATE = 1500 // or this long after opencode first saw it begin (a tool
 const BEHIND = 120e3 // a transcript whose newest call is older than the thread's by this much is not its current one
 const LISTING_MS = 15e3
 
+const chunk = Buffer.allocUnsafeSlow(CHUNK)
+const USAGE = Buffer.from('"usage"')
+const ASSISTANT = Buffer.from('"assistant"')
 const store = { mtime: 0, size: 0, readAt: 0, bySession: new Map(), configDirs: new Set() }
-const files = new Map() // transcript path -> { size, mtime, ino, offset, partial, calls, stamps }
+const files = new Map() // transcript path -> { size, mtime, ino, offset, calls, stamps }
 const listings = new Map() // project folder -> { at, files: [{ file, mtime }] }
 
 function readStore(state) {
@@ -54,30 +68,143 @@ function readStore(state) {
   const now = Date.now()
   if (store.bySession.size && now - store.readAt < 12e3) return
   store.readAt = now
-  let data
+  const bySession = new Map()
+  const configDirs = new Set()
   try {
-    data = JSON.parse(fs.readFileSync(file, "utf8"))
+    scanStore(file, (key, record) => {
+      if (!record.claudeSessionId) return
+      if (record.configDir) configDirs.add(record.configDir)
+      const parts = key.split("::")
+      const sid = parts.find((part) => part.startsWith("ses_"))
+      if (!sid) return
+      const list = bySession.get(sid) ?? []
+      list.push({ cwd: parts[0], claude: record.claudeSessionId, configDir: record.configDir || "", updatedAt: Number(record.updatedAt) || 0 })
+      bySession.set(sid, list)
+    })
   } catch {
     return
   }
   store.mtime = stat.mtimeMs
   store.size = stat.size
-  const bySession = new Map()
-  const configDirs = new Set()
-  for (const [key, record] of Object.entries(data.sessions ?? {})) {
-    if (!record?.claudeSessionId) continue
-    if (record.configDir) configDirs.add(record.configDir)
-    const parts = key.split("::")
-    const sid = parts.find((part) => part.startsWith("ses_"))
-    if (!sid) continue
-    const list = bySession.get(sid) ?? []
-    list.push({ cwd: parts[0], claude: record.claudeSessionId, configDir: record.configDir || "", updatedAt: record.updatedAt ?? 0 })
-    bySession.set(sid, list)
-  }
   // one opencode session can have several Claude sessions (one per agent or model): newest first
   for (const list of bySession.values()) list.sort((a, b) => b.updatedAt - a.updatedAt)
   store.bySession = bySession
   store.configDirs = configDirs
+}
+// The plugin's record is { version, sessions: { key: { claudeSessionId, configDir, updatedAt,
+// chain: [...], shape: [...], ... } } }, and nearly all of its bytes are the two lists of
+// digests. This walks the bytes once and hands over, per session, its key and those three
+// fields. A string is skipped with the buffer's own search for its closing quote, so the
+// digests cost no work here; only a key, or the value of a wanted field, is ever decoded.
+const WANTED = new Set(["claudeSessionId", "configDir", "updatedAt"])
+function scanStore(file, onRecord) {
+  const fd = fs.openSync(file, "r")
+  try {
+    const kinds = [] // 123 for an object, 91 for a list, one per open bracket
+    let inString = false
+    let pendingSlash = false // the chunk ended on an odd run of backslashes inside a string
+    let keep = null // the pieces of the string being kept, when it is one that matters
+    let role = "" // what the open string is: a session's key, a field's name, a wanted value
+    let expectKey = false
+    let sessions = false // inside the "sessions" object
+    let topKey = ""
+    let key = ""
+    let field = ""
+    let record = null
+    let number = ""
+    let position = 0
+    const endString = () => {
+      const text = keep ? Buffer.concat(keep).toString("utf8") : ""
+      keep = null
+      let value = text
+      if (text.includes("\\")) {
+        try {
+          value = JSON.parse(`"${text}"`)
+        } catch {}
+      }
+      if (role === "top") topKey = value
+      else if (role === "key") {
+        key = value
+        record = {}
+      } else if (role === "field") field = value
+      else if (role === "value" && record) record[field] = value
+      role = ""
+    }
+    for (;;) {
+      const got = fs.readSync(fd, chunk, 0, CHUNK, position)
+      if (got <= 0) break
+      position += got
+      let index = 0
+      while (index < got) {
+        if (inString) {
+          // to the closing quote: the next quote that an even run of backslashes stands before
+          let quote = index
+          let found = -1
+          let slash = pendingSlash
+          pendingSlash = false
+          for (;;) {
+            quote = chunk.indexOf(34, quote)
+            if (quote < 0 || quote >= got) break
+            let run = 0
+            for (let back = quote - 1; back >= index && chunk[back] === 92; back -= 1) run += 1
+            const odd = quote - run === index ? (run % 2 === 1) !== slash : run % 2 === 1
+            if (!odd) {
+              found = quote
+              break
+            }
+            quote += 1
+          }
+          const end = found < 0 ? got : found
+          if (keep) keep.push(Buffer.from(chunk.subarray(index, end)))
+          if (found < 0) {
+            let run = 0
+            for (let back = got - 1; back >= index && chunk[back] === 92; back -= 1) run += 1
+            pendingSlash = got - run === index ? (run % 2 === 1) !== slash : run % 2 === 1
+            index = got
+            break
+          }
+          inString = false
+          endString()
+          index = found + 1
+          continue
+        }
+        const byte = chunk[index]
+        index += 1
+        const depth = kinds.length
+        if (byte === 34) {
+          inString = true
+          role = ""
+          if (expectKey && depth === 1) role = "top"
+          else if (expectKey && depth === 2 && sessions) role = "key"
+          else if (expectKey && depth === 3 && sessions) role = "field"
+          else if (!expectKey && depth === 3 && sessions && WANTED.has(field)) role = "value"
+          keep = role ? [] : null
+          expectKey = false
+        } else if (byte === 123 || byte === 91) {
+          if (depth === 1 && byte === 123 && topKey === "sessions") sessions = true
+          kinds.push(byte)
+          expectKey = byte === 123
+        } else if (byte === 125 || byte === 93) {
+          if (number && record) record[field] = number
+          number = ""
+          kinds.pop()
+          if (sessions && kinds.length === 2 && record) {
+            onRecord(key, record)
+            record = null
+          }
+          if (kinds.length === 1) sessions = false
+          expectKey = false
+        } else if (byte === 44) {
+          if (number && record) record[field] = number
+          number = ""
+          expectKey = kinds[depth - 1] === 123
+        } else if (byte === 58) expectKey = false
+        else if (sessions && depth === 3 && field === "updatedAt" && ((byte >= 48 && byte <= 57) || byte === 46)) number += String.fromCharCode(byte)
+      }
+    }
+  } finally {
+    fs.closeSync(fd)
+  }
 }
 
 const defaultConfigDir = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude")
@@ -99,6 +226,62 @@ function encodeCwd(cwd) {
 
 const transcriptOf = (record) => path.join(record.configDir || defaultConfigDir(), "projects", encodeCwd(record.cwd), `${record.claude}.jsonl`)
 
+// The whole lines of a file between two positions, one at a time, through the one buffer.
+// `onLine` gets a view that holds only until it returns. A line cut by the end of the buffer
+// is read again from its own start, so no copy of it is made; only a line longer than the
+// whole buffer is pieced together, and one longer than LINE_CAP is passed over. Returns the
+// position after the last whole line: a record still being written is read again next time,
+// from the file, so nothing of it is kept here.
+function eachLine(file, from, to, skipFirst, onLine) {
+  const fd = fs.openSync(file, "r")
+  let position = from
+  let after = from
+  let carry = null // the pieces of a line that runs over the end of a chunk
+  let carried = 0
+  let passing = skipFirst // inside a line that is passed over
+  try {
+    while (position < to) {
+      const got = fs.readSync(fd, chunk, 0, Math.min(CHUNK, to - position), position)
+      if (got <= 0) break
+      const last = position + got >= to
+      let advance = got
+      let start = 0
+      while (start < got) {
+        const end = chunk.indexOf(10, start)
+        if (end < 0 || end >= got) {
+          if (last) break // still being written: next time
+          if (start > 0 && !carry) advance = start
+          else if (!passing) {
+            if (carried + got - start > LINE_CAP) {
+              passing = true
+              carry = null
+              carried = 0
+            } else {
+              ;(carry ??= []).push(Buffer.from(chunk.subarray(start, got)))
+              carried += got - start
+            }
+          }
+          break
+        }
+        if (passing) passing = false
+        else if (carry) {
+          carry.push(chunk.subarray(start, end))
+          onLine(Buffer.concat(carry))
+        } else if (end > start) onLine(chunk.subarray(start, end))
+        carry = null
+        carried = 0
+        start = end + 1
+        after = position + start
+      }
+      if (last) break
+      position += advance
+    }
+  } finally {
+    fs.closeSync(fd)
+  }
+  return after
+}
+
 // A transcript is read forwards from where the last read ended: it only ever grows, and one
 // record of it can be hundreds of kilobytes (a tool result with a picture in it), so its end
 // is not a fixed number of bytes away. The first read takes the last four megabytes.
@@ -112,40 +295,23 @@ function readMore(file, stat, entry) {
     // too far behind (or the first read): start near the end, on the first whole line
     from = Math.max(0, stat.size - FIRST_READ)
     skip = from > 0
-    entry.partial = null
     entry.calls = []
     entry.stamps = []
   }
-  const length = stat.size - from
-  if (length <= 0) return
-  const buffer = Buffer.alloc(length)
-  const fd = fs.openSync(file, "r")
-  try {
-    fs.readSync(fd, buffer, 0, length, from)
-  } finally {
-    fs.closeSync(fd)
-  }
-  const whole = entry.partial ? Buffer.concat([entry.partial, buffer]) : buffer
-  const end = whole.lastIndexOf(10)
-  // a record still being written stays for the next read
-  entry.partial = end < whole.length - 1 ? whole.subarray(end + 1) : null
-  entry.offset = stat.size
-  if (end < 0) return
-  const lines = whole.toString("utf8", 0, end).split("\n")
-  if (skip) lines.shift() // cut in the middle of a record
+  if (stat.size - from <= 0) return
   let call = entry.calls[entry.calls.length - 1] ?? null
-  for (const line of lines) {
-    if (!line || !line.includes('"usage"') || !line.includes('"assistant"')) continue
+  entry.offset = eachLine(file, from, stat.size, skip, (line) => {
+    if (!line.includes(USAGE) || !line.includes(ASSISTANT)) return
     let record
     try {
-      record = JSON.parse(line)
+      record = JSON.parse(line.toString("utf8"))
     } catch {
-      continue
+      return
     }
     const usage = record?.message?.usage
-    if (record.type !== "assistant" || !usage || record.message.model === "<synthetic>") continue
+    if (record.type !== "assistant" || !usage || record.message.model === "<synthetic>") return
     const at = Date.parse(record.timestamp)
-    if (!Number.isFinite(at)) continue
+    if (!Number.isFinite(at)) return
     entry.stamps.push(at)
     if (!call || record.message.id !== call.id) {
       call = { id: record.message.id, first: at, at }
@@ -160,7 +326,7 @@ function readMore(file, stat, entry) {
     call.hour = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0
     // the context this call was given: what it read from the cache, wrote to it and sent fresh
     call.ctx = (usage.input_tokens ?? 0) + call.read + call.write
-  }
+  })
   if (entry.calls.length > 120) entry.calls.splice(0, entry.calls.length - 120)
   if (entry.stamps.length > 800) entry.stamps.splice(0, entry.stamps.length - 800)
 }
@@ -175,7 +341,7 @@ function transcript(file) {
   let entry = files.get(file)
   if (entry && entry.size === stat.size && entry.mtime === stat.mtimeMs) return entry
   // a file that shrank or was replaced is read afresh
-  if (!entry || stat.size < entry.offset || entry.ino !== stat.ino) entry = { ino: stat.ino, offset: -Infinity, partial: null, calls: [], stamps: [] }
+  if (!entry || stat.size < entry.offset || entry.ino !== stat.ino) entry = { ino: stat.ino, offset: -Infinity, calls: [], stamps: [] }
   try {
     readMore(file, stat, entry)
   } catch {}
@@ -183,7 +349,7 @@ function transcript(file) {
   entry.mtime = stat.mtimeMs
   files.delete(file)
   files.set(file, entry)
-  if (files.size > 200) files.delete(files.keys().next().value)
+  if (files.size > FILES_KEPT) files.delete(files.keys().next().value)
   return entry
 }
 
@@ -228,12 +394,13 @@ function recentIn(cwd, since) {
           if (!name.endsWith(".jsonl")) continue
           const file = path.join(folder, name)
           try {
-            listing.files.push({ file, mtime: fs.statSync(file).mtimeMs })
+            const mtime = fs.statSync(file).mtimeMs
+            if (mtime >= now - LISTING_AGE) listing.files.push({ file, mtime })
           } catch {}
         }
       } catch {}
       listings.set(folder, listing)
-      if (listings.size > 200) listings.delete(listings.keys().next().value)
+      if (listings.size > 60) listings.delete(listings.keys().next().value)
     }
     for (const entry of listing.files) if (entry.mtime >= since) out.push(entry.file)
   }
@@ -313,5 +480,13 @@ parentPort.on("message", ({ state, threads }) => {
     readStore(state)
     for (const thread of threads ?? []) entries.push([thread.id, seenFor(thread)])
   } catch {}
-  parentPort.postMessage({ entries })
+  // what this thread keeps, for stats.json: transcripts followed, and the calls and block
+  // stamps held for them
+  let calls = 0
+  let stamps = 0
+  for (const entry of files.values()) {
+    calls += entry.calls.length
+    stamps += entry.stamps.length
+  }
+  parentPort.postMessage({ entries, kept: { files: files.size, calls, stamps, sessions: store.bySession.size, listings: listings.size, heapMb: Number((process.memoryUsage().heapUsed / 1048576).toFixed(1)) } })
 })

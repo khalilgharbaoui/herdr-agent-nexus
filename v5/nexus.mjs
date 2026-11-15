@@ -19,6 +19,7 @@ import os from "node:os"
 import path from "node:path"
 import v8 from "node:v8"
 import { createCanvas } from "@napi-rs/canvas"
+import { profileAllocations } from "./src/allocations.mjs"
 import { DemoSource } from "./src/demo.mjs"
 import { Renderer } from "./src/draw.mjs"
 import { Flow } from "./src/flow.mjs"
@@ -165,10 +166,24 @@ async function runHeadless() {
   source.close()
 }
 
+// A frame makes a few hundred short-lived objects and some pixel buffers. A small young
+// generation collects them often, so dead ones do not pile up between collections, and it is
+// small in itself: V8 holds two halves of it, 32 MB at its default of 16 MB a half. The size
+// is fixed when the process starts (set later with v8.setFlagsFromString it changes nothing
+// for this thread: measured, 34 MB held either way), so when it was not given on the command
+// line this process is replaced by the same command with it. Nothing is left behind: execve
+// keeps the pid, the terminal and the environment.
+const SEMI_SPACE_MB = Number(process.env.NEXUS_SEMI) || 4
+function withSmallYoungGeneration() {
+  if (process.execArgv.some((flag) => flag.startsWith("--max-semi-space-size")) || process.env.NEXUS_REEXEC || typeof process.execve !== "function") return
+  try {
+    process.execve(process.execPath, [process.execPath, ...process.execArgv, `--max-semi-space-size=${SEMI_SPACE_MB}`, ...process.argv.slice(1)], { ...process.env, NEXUS_REEXEC: "1" })
+  } catch {}
+}
+
 async function runTerminal() {
-  // A frame makes a few hundred short-lived objects and some pixel buffers. A small young
-  // generation collects them often, so dead pixel buffers do not pile up between collections.
-  v8.setFlagsFromString("--max-semi-space-size=4")
+  withSmallYoungGeneration()
+  if (Number(process.env.NEXUS_ALLOC) > 0) profileAllocations(Number(process.env.NEXUS_ALLOC), path.join(HERE, "alloc.json"))
   const terminal = new Terminal()
   const kitty = await terminal.open()
   if (!kitty) {
@@ -204,6 +219,32 @@ async function runTerminal() {
   let mark = { ...total, at: performance.now(), cpu: process.cpuUsage(), input: 0 }
   let peak = 0
   const meta = { line: "" }
+  // what V8 holds for each thread, in megabytes: the picture, the encoder, the transcript reader
+  const heaps = { main: 0, encoder: null, cache: null, mainSpaces: {} }
+  const readHeaps = () => {
+    heaps.main = Math.round(process.memoryUsage().heapTotal / 1048576)
+    // the main thread's heap by space, held and in use: "new" is the young generation
+    heaps.mainSpaces = Object.fromEntries(
+      v8
+        .getHeapSpaceStatistics()
+        .filter((space) => space.physical_space_size > 1 << 20)
+        .map((space) => [space.space_name.replace(/_space$/, ""), `${Math.round(space.space_used_size / 1048576)}/${Math.round(space.physical_space_size / 1048576)}`]),
+    )
+    const ask = (worker, name) => {
+      if (!worker?.getHeapStatistics) {
+        heaps[name] = null
+        return
+      }
+      worker
+        .getHeapStatistics()
+        .then((statistics) => {
+          heaps[name] = Math.round(statistics.total_heap_size / 1048576)
+        })
+        .catch(() => {})
+    }
+    ask(terminal.worker, "encoder")
+    ask(source.cacheWorker, "cache")
+  }
 
   const quit = async () => {
     if (quitting) return
@@ -363,7 +404,9 @@ async function runTerminal() {
     }
   }
 
+  let deflate = null
   terminal.onFrameDone = (result) => {
+    deflate = result.deflate ?? deflate
     total.done += 1
     total.bytes += result.bytes
     total.tileBytes += result.tileBytes
@@ -440,6 +483,9 @@ async function runTerminal() {
       heapMb: Math.round(process.memoryUsage().heapUsed / 1048576),
       externalMb: Math.round(process.memoryUsage().external / 1048576),
       buffersMb: Math.round(process.memoryUsage().arrayBuffers / 1048576),
+      heaps, // V8's heap per thread as of the last report (rssMb is the whole process; tools/mem-watch.mjs splits it further)
+      cacheWorker: source.cacheKept ?? null, // what the transcript reader keeps: transcripts followed, calls and block stamps held, its own heap in use
+      deflate, // how the encoder compresses: "one stream, kept" or, when its check failed, "a stream per image"
       readbackMbPerSecond: Number((((terminal.readBytes ?? 0) - (mark.read ?? 0)) / 1e6 / seconds).toFixed(1)), // pixels read back from the canvas to find what changed
       movedPerFrameBy: Object.fromEntries(Object.entries(terminal.movedBy).map(([name, count]) => [name, Number((count / frames).toFixed(1))]).filter(([, rate]) => rate >= 1).sort((a, b) => b[1] - a[1])), // sprite placements a frame, by kind of mark
       repaintsPerSecond: Object.fromEntries(Object.entries(renderer.repaints ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.2).sort((a, b) => b[1] - a[1])), // which regions of the still layer were painted again, and how often
@@ -462,6 +508,7 @@ async function runTerminal() {
       error: error ?? terminal.error ?? null,
     }
     mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0 }
+    readHeaps()
     renderer.repaints = {}
     terminal.movedBy = {}
     peak = 0

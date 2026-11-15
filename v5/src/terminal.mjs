@@ -301,7 +301,8 @@ export class Terminal {
   diffSprites(sprites, atlas) {
     const places = []
     const deletes = []
-    const wanted = new Set()
+    const wanted = (this.wanted ??= new Set()) // kept between frames: a few hundred keys, every frame
+    wanted.clear()
     const pages = new Set()
     atlas.now = Date.now()
     this.atlas = atlas
@@ -316,7 +317,8 @@ export class Terminal {
           this.dropped += 1
           continue
         }
-        entry = { slot, page: spot.page, col: -1, row: -1, sx: -1, sy: -1, z: 0 }
+        // which kind of mark it is: the key up to its first digit or colon names it
+        entry = { slot, page: spot.page, col: -1, row: -1, sx: -1, sy: -1, z: 0, family: /^[a-z-]+/i.exec(sprite.key)?.[0] ?? "other" }
         this.slots.set(sprite.key, entry)
         // A mark that only an event brings (a packet, a flash, a ripple) is counted when it is
         // first placed: with the pages held by the terminal, that is the pane's own account of
@@ -343,9 +345,7 @@ export class Terminal {
       entry.sx = spot.sx
       entry.sy = spot.sy
       places.push(entry.slot, spot.col, spot.row, spot.sx, spot.sy, spot.w, spot.h, z, PAGE_BASE + spot.page.id)
-      // which kind of mark is being moved: the key up to its first digit or colon names it
-      const family = /^[a-z-]+/i.exec(sprite.key)?.[0] ?? "other"
-      this.movedBy[family] = (this.movedBy[family] ?? 0) + 1
+      this.movedBy[entry.family] = (this.movedBy[entry.family] ?? 0) + 1
     }
     for (const [key, entry] of this.slots) {
       if (wanted.has(key)) continue

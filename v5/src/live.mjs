@@ -140,9 +140,12 @@ export class LiveSource {
     for (const timer of this.timers) timer.unref()
     // the transcripts are read in a worker: see cache-worker.mjs
     try {
-      this.cacheWorker = new Worker(new URL("./cache-worker.mjs", import.meta.url))
+      // a small young generation: what a pass leaves behind is collected at the next pass,
+      // not when sixteen megabytes of it have piled up
+      this.cacheWorker = new Worker(new URL("./cache-worker.mjs", import.meta.url), { resourceLimits: { maxYoungGenerationSizeMb: 4 } })
       this.cacheWorker.on("message", (message) => {
         for (const [sid, call] of message.entries ?? []) this.cacheSeen.set(sid, call)
+        this.cacheKept = message.kept ?? null // what the worker holds: see stats.json
         this.cacheBusy = false
       })
       this.cacheWorker.on("error", () => {
