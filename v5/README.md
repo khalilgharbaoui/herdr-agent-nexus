@@ -264,6 +264,11 @@ ring's own line answered a hover and a click in a simulated run only. Seen in sn
 the head, the dashed stretch and the ticks. Not seen at all: the head running back after a
 compaction (no thread compacted while this was built).
 
+Memory is over its class and the cause is not isolated: 294 MB physical footprint at 22:07 with
+the cache marks in, 408 MB at 22:45 (84 columns, five threads working, 28 sprite pages against
+19). The suspect is the transcript worker's own heap (it parses the plugin's 9 MB record each
+time a turn ends); the page count is the other candidate. First thing to look at next.
+
 Not verified: a 206 column pane in the real terminal, a resize while it runs, a quiet machine,
 and how the event-driven marks look in the pane (that they are placed there is counted, see
 above).

@@ -18,7 +18,9 @@ is done or dropped.
   past its usual length; chart titles collided in landscape); the painted transport at 15
   frames a second. The event-driven marks are now counted when the
   terminal places them (`eventsPlaced` in `v5/stats.json`): packets, flashes and ripples, red
-  ones after a failure, all seen placed in the live pane. Next, in the brief's order: a wide
+  ones after a failure, all seen placed in the live pane. First thing next: memory is over its class
+  (408 MB physical footprint at 22:45 against 294 MB at 22:07; the transcript worker's heap is
+  the suspect). Then, in the brief's order: a wide
   pane and a live resize in the real terminal; the remaining small marks as targets and the
   explain tags that overlap; scrubbing the terrain. `v5/README.md` ends with what is done, what was only seen in a snapshot, and the
   measurements.
