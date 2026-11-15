@@ -26,6 +26,7 @@ function eventOf(sprite) {
 
 const ESC = "\x1b"
 const TILE_COLS = 16
+const PAYLOAD_SIZES = [32 << 10, 64 << 10, 128 << 10, 256 << 10, 512 << 10, 1 << 20] // see diffTiles
 const TILE_ROWS = 3
 const MAX_SPRITES = 960
 const PAGE_BASE = 7200 // image ids of the sprite pages start here
@@ -278,10 +279,32 @@ export class Terminal {
         if (changed) for (let row = 0; row < rows; row += 1) shadow.set(bytes.subarray(row * local, (row + 1) * local), (top + row) * stride + x0 * 4)
       }
     }
-    const payload = new ArrayBuffer(need)
-    const target = new Uint8Array(payload)
-    const words = new Uint32Array(payload)
+    // The pixels travel in buffers of a few fixed sizes: one of 32 KB to 1 MB when that holds
+    // them all, otherwise as many of 1 MB as it takes. A freed block of a size that comes again
+    // is handed out again by the allocator; one buffer of exactly `need` bytes was a new size
+    // at every large repaint (2 to 13 MB), and sixteen such dead blocks stayed in its cache.
+    const chunks = []
+    let target = null
+    let words = null
+    let used = 0
+    let room = 0
     for (const tile of dirty) {
+      if (tile.length > room - used) {
+        let size = PAYLOAD_SIZES[PAYLOAD_SIZES.length - 1]
+        if (!chunks.length) for (const candidate of PAYLOAD_SIZES) if (candidate >= need) {
+          size = candidate
+          break
+        }
+        const chunk = new ArrayBuffer(Math.max(size, tile.length))
+        chunks.push(chunk)
+        target = new Uint8Array(chunk)
+        words = new Uint32Array(chunk)
+        used = 0
+        room = chunk.byteLength
+      }
+      tile.chunk = chunks.length - 1
+      tile.offset = used
+      used += tile.length
       for (let row = 0; row < tile.height; row += 1) {
         const at = row * tile.local + tile.left * 4
         target.set(tile.bytes.subarray(at, at + tile.width * 4), tile.offset + row * tile.width * 4)
@@ -293,7 +316,7 @@ export class Terminal {
       this.tilesHeld += tile.length - (this.tileBytes.get(tile.index) ?? 0)
       this.tileBytes.set(tile.index, tile.length)
     }
-    return { payload, dirty, across, down }
+    return { chunks, dirty, across, down }
   }
 
   // Compares the sprites wanted this frame with the placements on screen and returns what has
@@ -402,7 +425,7 @@ export class Terminal {
       this.cardShown = null
       this.cardBytes = 0
     }
-    const { payload, dirty, across, down } = this.diffTiles(context, marks, spans)
+    const { chunks, dirty, across, down } = this.diffTiles(context, marks, spans)
     const { places, deletes, pages } = this.diffSprites(sprites, atlas)
     // pages that were dropped to make room leave the terminal too, and their placements with them
     const dropPages = atlas.retired.map((id) => PAGE_BASE + id)
@@ -435,9 +458,9 @@ export class Terminal {
       this.gfx.uploads += 1
     }
     this.inflight += 1
-    transfer.push(payload)
+    for (const chunk of chunks) transfer.push(chunk)
     this.worker.postMessage(
-      { pixels: payload, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, pages: uploads, dropPages, probes, probeSlot: PROBE_SLOT, places, deletes, card: cardMessage },
+      { chunks, tiles: dirty, total: across * down, across, cellWidth: this.cell.width, cellHeight: this.cell.height, tileCols: TILE_COLS, tileRows: TILE_ROWS, reset, pages: uploads, dropPages, probes, probeSlot: PROBE_SLOT, places, deletes, card: cardMessage },
       transfer,
     )
     this.reset = false

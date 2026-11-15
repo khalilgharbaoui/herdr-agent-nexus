@@ -43,6 +43,28 @@ function writeAll(buffer) {
   }
 }
 
+// A frame leaves through one buffer that is kept: as one string turned into one Buffer it was
+// a block of a new size every time (up to megabytes at a large repaint), and the allocator
+// kept the dead ones. The bracket of the synchronized update may span several writes.
+const out = Buffer.allocUnsafeSlow(256 << 10)
+function writeParts(parts) {
+  let at = out.latin1Write(`${ESC}[?2026h`, 0)
+  for (const part of parts) {
+    if (part.length > out.length - at) {
+      writeAll(out.subarray(0, at))
+      at = 0
+    }
+    if (part.length > out.length) writeAll(Buffer.from(part, "latin1"))
+    else at += out.latin1Write(part, at)
+  }
+  if (out.length - at < 16) {
+    writeAll(out.subarray(0, at))
+    at = 0
+  }
+  at += out.latin1Write(`${ESC}[?2026l`, at)
+  writeAll(out.subarray(0, at))
+}
+
 function chunked(parts, keys, base64) {
   for (let offset = 0; offset < base64.length; offset += 4096) {
     const chunk = base64.slice(offset, offset + 4096)
@@ -132,7 +154,7 @@ parentPort.on("message", (message) => {
     const id = ID_BASE + tile.index * 2 + flips[tile.index]
     const old = ID_BASE + tile.index * 2 + (1 - flips[tile.index])
     if (tile.length) {
-      const base64 = deflated(Buffer.from(message.pixels, tile.offset, tile.length), 1)
+      const base64 = deflated(Buffer.from(message.chunks[tile.chunk], tile.offset, tile.length), 1)
       parts.push(`${ESC}[${Math.floor(tile.index / across) * tileRows + 1};${(tile.index % across) * tileCols + 1}H`)
       chunked(parts, `a=T,f=32,o=z,s=${tile.width},v=${tile.height},i=${id},p=1,c=${Math.round(tile.width / cellWidth)},r=${Math.round(tile.height / cellHeight)},z=${TILE_Z},C=1,q=2`, base64)
       if (shown[tile.index]) parts.push(`${ESC}_Ga=d,d=I,i=${old},q=2${ESC}\\`)
@@ -179,7 +201,7 @@ parentPort.on("message", (message) => {
   }
   for (let index = before; index < parts.length; index += 1) spriteBytes += parts[index].length
   const encoded = performance.now()
-  if (parts.length) writeAll(Buffer.from(`${ESC}[?2026h${parts.join("")}${ESC}[?2026l`, "latin1"))
+  if (parts.length) writeParts(parts)
   parentPort.postMessage({
     bytes: tileBytes + spriteBytes,
     tileBytes,
