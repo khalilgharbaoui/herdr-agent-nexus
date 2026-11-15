@@ -269,3 +269,22 @@ The operator asked "what now?" after a network failure cut the third session off
 4. Scrubbing the terrain by dragging.
 5. The context head running back after a compaction: provoke one in the demo if it cannot be seen live, and say which.
 6. Then look at the whole screen once more against the operator's first words ("everything is alive", "every movement means something", "bring it to life") and the second addendum's list, and spend what budget is left on the weakest part of the screen. Say which part that was and why.
+
+## Tenth addendum: state at 00:08 on 2026-11-16, and the next order of work
+
+A fifth session fixed memory (four measured causes; physical footprint 171 to 176 MB at the flat level, from 420 to 433 MB), gave the prompt cache its own ramp (rose through orchid to a cold indigo blue, grey when cold), and made the header, the turn readout and each line of THIS TURN targets with cards. It stopped at `9ef405c` with `appical` at 74% of its window; `default` was at 86%. v5 runs in `wE:p1QF`, graphics verdict "held". The operator has not yet said how the cache ramp looks in the pane; if he says it reads wrong, the alternative is a pale warm white to ice blue.
+
+Nothing new from the operator. The standing instruction holds: "sofare so good now do the most recommended and move forward with it".
+
+### Decision taken for the operator
+
+**Chase the core repaint bursts first, briefly.** The performance class is a rule of the brief, and the bursts (11 to 15% of a core, 1.0 to 1.9 MB/s, the core painted 6 times a second against the usual 1.5 to 2.5) are the only thing outside it. Find what triggers the extra core paints (pointer movement over the pane is one suspect; there may be another), fix it, and show a minute of samples with the pointer moving and a minute without. Do not spend more than a small part of the session on it.
+
+### Order of work
+
+1. The core repaint bursts, as above. Also confirm the memory level settles again after a restart (the last restart started at 201 to 209 MB and was not watched down to the flat level), over ten minutes with five or more threads working if the machine has them.
+2. **The empty left column.** Between THIS TURN and the terrain there is an area of about 380 by 540 px with only a wire in it. The operator asked for no dead space and for everything to be alive and meaningful. Fill it with living data that is not shown elsewhere, never decoration. Choose what the screen lacks most; candidates: what the focused thread is doing right now as a short live trace (its last tool calls as packets on a small timeline with their durations), or the subagent tree of the focused thread with each child's own small flock and state. Put it in the table of marks, and make every mark in it a target.
+3. The rest of the small marks: the focus header, the section labels, sector map workspace names, the two kinds of wire, and the explain-mode tags that overlap. Use `v5/tools/coverage.mjs` and report the number.
+4. Scrubbing the terrain by dragging.
+5. The context head running back after a compaction: provoke it in the demo if it cannot be seen live, and say which.
+6. A last look at the whole screen against the operator's first words and the second addendum's list; spend what is left on the weakest part and say which it was.
