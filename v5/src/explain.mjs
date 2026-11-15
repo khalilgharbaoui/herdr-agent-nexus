@@ -20,14 +20,16 @@ export const explain = {
     const core = G.core
     const T = G.terrain
     const session = scene.focused?.session
-    const unit = session ? flockUnit(session.turn?.out ?? session.lastOut ?? 0) : 100
+    const unit = session && this.flock.sid === session.id ? this.flock.unit : session ? flockUnit(session.turn?.out ?? session.lastOut ?? 0) : 100
+    const tip = this.tipOf()
     const list = [
+      ["CHARGE", `Tokens gather where the thread's wire ends. Eight sockets make one dot (${compactOf(unit)} tokens): the fuller the charge, the tighter and faster its motes circle. A full charge fires the dot to the rings.`, tip.x + u(30), tip.y - u(26), "bl"],
       ["TURN CLOCK", "The arc is how long this turn has run. A full circle is 1.25 times what such a turn usually takes; the grey band is the usual range.", core.cx + core.RA * 0.42, core.cy - core.RA * 0.9, "bl"],
-      ["SPOKE", "One tool call, at the moment it started. Longer when it took longer. Its colour is the equipment it used, red when it failed.", core.cx + core.RA + u(14), core.cy - u(70), "tl"],
-      ["BAR", "One model call. Longer when it wrote more.", core.cx - core.RA + u(16), core.cy - u(60), "tr"],
+      ["PILLAR", "One tool call, standing on the turn clock at the moment it started. Taller when it took longer. Its colour is the equipment it used, red when it failed.", core.cx + core.RA + u(14), core.cy - u(70), "tl"],
+      ["BAR", "One model call, hanging under the turn clock. Longer when it wrote more.", core.cx - core.RA + u(16), core.cy - u(60), "tr"],
       ["CONTEXT RING", "How full the context window is. Amber past 80%, red past 92%.", core.cx - core.RB * 0.72, core.cy + core.RB * 0.7, "tr"],
-      ["FLOCK", `One dot is ${compactOf(unit)} tokens of this turn's output. It flies while the model generates, as fast as tokens stream, and locks into a lattice while a tool runs or nothing is heard. White is reply, the model's colour reasoning, an equipment colour tool input. Nearer is newer.`, core.cx + core.RB * 0.62, core.cy + core.RB * 0.5, "tl"],
-      ["WALL AND RIM", "The inner ring of points moves outward as the context fills and packs the flock against the outer one. The disc leans further back the longer the turn runs past its usual length.", core.cx - u(30), core.cy + core.RB * 0.93, "tr"],
+      ["GLOBE", `One dot is ${compactOf(unit)} tokens of this turn's output: the south pole its first, the north pole its newest. A murmuration while the model reasons, rings while it writes, a locked lattice while a tool runs. White is reply, the model's colour reasoning, an equipment colour tool input.`, core.cx + core.RB * 0.62, core.cy + core.RB * 0.5, "tl"],
+      ["ORBIT AND SIPHON", "Dots released at the tip circle the rings while their model call is open: its output is an estimate until the call reports. Then they spiral into the globe one after another. The ring system tips further back the longer the turn runs past its usual length.", core.cx - u(30), core.cy + core.RB * 0.93, "tr"],
       ["MOON", "A subagent of this thread on the outer circle. It circles as fast as it writes and sits still when it rests. Click it to focus it.", core.cx - core.Rm * 0.72, core.cy - core.Rm * 0.69, "tl"],
     ]
     if (T) {
