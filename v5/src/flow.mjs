@@ -152,6 +152,7 @@ export class Flow {
       const age = now - flash.start
       if (age >= flash.ms) continue
       glowing.push(flash)
+      if (age < 0) continue // a flash that was asked for a moment from now
       out.push({ key: `f${flash.id}`, kind: `${age < flash.ms * 0.45 ? "glow" : "glow2"}|${flash.hex}`, x: flash.x, y: flash.y })
     }
     this.flashes = glowing

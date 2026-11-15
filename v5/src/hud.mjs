@@ -4,7 +4,7 @@
 import { explain } from "./explain.mjs"
 import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD, LEVELS, ORBIT_CAP } from "./flock.mjs"
 import { portOf } from "./model.mjs"
-import { LEVEL_COLOR, PANEL, PORT_COLOR, bare, clean, homed, wrap } from "./theme.mjs"
+import { LEVEL_COLOR, LOG_USUAL_AT, PANEL, PORT_COLOR, bare, clean, homed, shortWords, wrap } from "./theme.mjs"
 import { FAMILY, INK, agoOf, clamp, clockOf, compactOf, dayOf, hourMinuteOf, modelColor, moneyOf, shortModel, spanOf, timerOf } from "./util.mjs"
 
 export const KEYMAP = [
@@ -155,19 +155,13 @@ export const hud = {
 
   // ---------------------------------------------------------------- footer
 
-  signFooter(scene, ui, now) {
-    const parts = [Math.floor(now / (scene.calls.length ? 1000 : 10e3)), scene.focus.id, ui.monitor, ui.monitor ? ui.stamp : "", scene.log[0]?.key, scene.log[0]?.span, scene.log.length, ui.tip, scene.world?.self]
-    for (const alert of scene.alerts) parts.push(alert.key, alert.level, alert.muted)
-    for (const pane of scene.world?.panes ?? []) parts.push(`${pane.id}${pane.status[0]}${pane.row}${pane.focused ? "f" : ""}`)
-    return parts.join("|")
-  },
-
-  drawFooter(c, scene, ui, now) {
+  // The footer in four parts, each repainted for its own reasons: comms, the sector map, the
+  // log and the strip of key hints.
+  footerCols() {
     const G = this.G
     const u = (value) => this.u(value)
     const F = G.footer
     const M = G.M
-    this.line(c, F.x + M, F.y, F.x + F.w - M, F.y, INK.ghost)
     const gap = u(34)
     const inner = F.w - 2 * M - 2 * gap
     const widths = [Math.round(inner * 0.34), Math.round(inner * 0.36), 0]
@@ -175,13 +169,71 @@ export const hud = {
     const x1 = F.x + M
     const x2 = x1 + widths[0] + gap
     const x3 = x2 + widths[1] + gap
-    const top = F.y + u(34)
-    this.drawComms(c, scene, now, x1, top, widths[0], F.h - u(84))
-    this.drawMap(c, scene, x2, top, widths[1], F.h - u(84))
-    if (ui.monitor) this.drawMonitor(c, ui, x3, top, widths[2])
-    else this.drawLog(c, scene, now, x3, top, widths[2], F.h - u(84))
+    const half = Math.round(gap / 2)
+    const hintsH = u(40)
+    const bodyH = F.h - hintsH
+    return {
+      F, M, widths, x1, x2, x3, top: F.y + u(34), h: F.h - u(84),
+      comms: { x: F.x, y: F.y, w: x2 - half - F.x, h: bodyH },
+      map: { x: x2 - half, y: F.y, w: x3 - x2, h: bodyH },
+      log: { x: x3 - half, y: F.y, w: F.x + F.w - (x3 - half), h: bodyH },
+      hints: { x: F.x, y: F.y + bodyH, w: F.w, h: hintsH },
+    }
+  },
 
-    // the key hints: every one is also a button
+  signComms(scene, now) {
+    const parts = [Math.floor(now / (scene.calls.length ? 1000 : 10e3))]
+    for (const alert of scene.alerts) parts.push(alert.key, alert.level, alert.muted, alert.text)
+    return parts.join("|")
+  },
+
+  signMap(scene) {
+    const parts = [scene.focus.id, scene.world?.self]
+    for (const pane of scene.world?.panes ?? []) parts.push(`${pane.id}${pane.status[0]}${pane.row}${pane.focused ? "f" : ""}`)
+    return parts.join("|")
+  },
+
+  // A running call counts in whole seconds; otherwise a line only changes when it hazes over.
+  signLog(scene, ui, now) {
+    if (ui.monitor) return `monitor|${ui.stamp}`
+    const cols = this.footerCols()
+    const shown = scene.log.slice(0, Math.floor(cols.h / this.u(25)))
+    const running = shown.some((entry) => entry.span === null && entry.tone === "run")
+    const parts = [Math.floor(now / (running ? 1000 : 5000)), scene.log.length]
+    for (const entry of shown) parts.push(entry.key, entry.span, entry.tone, scene.rowOf?.get(entry.sid)?.index)
+    return parts.join("|")
+  },
+
+  footerLine(c) {
+    const { F, M } = this.footerCols()
+    this.line(c, F.x + M, F.y, F.x + F.w - M, F.y, INK.ghost)
+  },
+
+  drawCommsRegion(c, scene, now) {
+    const cols = this.footerCols()
+    this.footerLine(c)
+    this.drawComms(c, scene, now, cols.x1, cols.top, cols.widths[0], cols.h)
+  },
+
+  drawMapRegion(c, scene) {
+    const cols = this.footerCols()
+    this.footerLine(c)
+    this.drawMap(c, scene, cols.x2, cols.top, cols.widths[1], cols.h)
+  },
+
+  drawLogRegion(c, scene, ui, now) {
+    const cols = this.footerCols()
+    this.footerLine(c)
+    if (ui.monitor) {
+      this.logMarks = []
+      this.drawMonitor(c, ui, cols.x3, cols.top, cols.widths[2])
+    } else this.drawLog(c, scene, now, cols.x3, cols.top, cols.widths[2], cols.h)
+  },
+
+  // the key hints: every one is also a button
+  drawHints(c, ui) {
+    const { F, M } = this.footerCols()
+    const u = (value) => this.u(value)
     const y = F.y + F.h - u(18)
     let x = F.x + M
     for (const [key, name] of HINTS) {
@@ -195,11 +247,14 @@ export const hud = {
 
   // Left column. A thread that needs the operator rings here as a call: which pane it is on, how
   // long it has waited, what it asked, and the way to answer. Under it, everything else flagged.
+  // Every line knows where its marker stands (commsMarks), so the moving layer can answer on it:
+  // a flag that is raised ripples here last, after its thread and the phase lamp.
   drawComms(c, scene, now, x, top, w, h) {
     const u = (value) => this.u(value)
     const calls = scene.calls.filter((alert) => !alert.muted)
     const others = scene.alerts.filter((alert) => !calls.includes(alert))
     this.codec = null
+    this.commsMarks = new Map()
     let y = top
     this.run(c, x, y, [
       ["COMMS", { size: 12.5, family: FAMILY.label, weight: "600", color: calls.length ? INK.warn : INK.dim, spacing: 2.6 }],
@@ -220,17 +275,18 @@ export const hud = {
       this.text(c, pane || "no pane", box.x + u(18), box.y + u(78), { size: 44, family: FAMILY.display, color: INK.warn })
       this.text(c, `waiting ${agoOf(now - call.since)}`, box.x + u(18), box.y + u(102), { size: 13, color: INK.soft })
       this.codec = { x: box.x + u(24), y: box.y + box.h - u(14) }
+      this.commsMarks.set(call.key, { x: box.x + u(6), y: box.y + u(6), level: call.level, call: true })
       // who is calling, and what it asked
       const tx = box.x + u(200)
       const tw = box.w - u(200) - u(16)
       const titleStyle = { size: 20, family: FAMILY.label, weight: "600", color: INK.text }
-      this.text(c, this.fit(c, `${row ? `${String(row.index + 1).padStart(2, "0")}  ` : ""}${call.title}`, tw, titleStyle), tx, box.y + u(34), titleStyle)
+      this.text(c, this.fitWords(c, `${row ? `${String(row.index + 1).padStart(2, "0")}  ` : ""}${call.title}`, tw, titleStyle), tx, box.y + u(34), titleStyle)
       const charW = this.width(c, "M", { size: 13.5 })
       const asked = wrap(call.detail || "it asked you something", Math.max(12, Math.floor(tw / charW)))
       asked.slice(-3).forEach((line, index) => this.text(c, line, tx, box.y + u(60) + index * u(21), { size: 13.5, color: INK.soft }))
       const bw = this.chip(c, pane ? "ENTER  ANSWER IN PANE" : "ENTER  FOCUS", tx, box.y + box.h - u(16), { color: INK.warn, solid: true })
       this.hit("answer", call.sid, { x: tx, y: box.y + box.h - u(32), w: bw, h: u(22) }, { tip: pane ? `click to go to pane ${pane} and answer` : "click to focus this thread" })
-      this.hit("alert", call.key, box, { alert: call })
+      this.hit("alert", call.key, box, { alert: call, sid: call.sid })
       if (calls.length > 1) this.text(c, `+${calls.length - 1} more`, tx + bw + u(14), box.y + box.h - u(16), { size: 12.5, color: INK.warn })
       y += box.h + u(12)
     } else y += u(10)
@@ -249,6 +305,7 @@ export const hud = {
         c.lineWidth = 1.5
         c.strokeRect(x + 1, lineY - u(9), u(7), u(7))
       }
+      this.commsMarks.set(alert.key, { x: x + u(4.5), y: lineY - u(5.5), level: alert.level, muted: alert.muted })
       const row = alert.sid ? scene.rowOf.get(alert.sid) : null
       const lead = alert.sid ? `${row ? String(row.index + 1).padStart(2, "0") : "··"}  ` : "    "
       this.text(c, lead, x + u(18), lineY, { size: 13, color: INK.faint })
@@ -256,10 +313,11 @@ export const hud = {
       const since = alert.muted ? "muted" : alert.kind === "context" || alert.kind === "account" ? "" : agoOf(now - alert.since)
       const sinceW = since ? this.width(c, since, { size: 12.5 }) + u(12) : 0
       const style = { size: 13.5, color: alert.muted ? INK.faint : alert.level === "notice" ? INK.soft : INK.text }
-      const body = alert.sid ? `${clean(alert.title).slice(0, 26)}: ${alert.text}` : `${alert.text}${alert.detail ? `, ${alert.detail}` : ""}`
-      this.text(c, this.fit(c, body, w - u(18) - leadW - sinceW, style), x + u(18) + leadW, lineY, style)
+      // a line never stops inside a word; its card says it in full
+      const body = alert.sid ? `${shortWords(alert.title, 26)}: ${alert.text}` : `${alert.text}${alert.detail ? `, ${alert.detail}` : ""}`
+      this.text(c, this.fitWords(c, body, w - u(18) - leadW - sinceW, style), x + u(18) + leadW, lineY, style)
       if (since) this.text(c, since, x + w, lineY, { size: 12.5, color: INK.dim, align: "right" })
-      this.hit("alert", alert.key, { x, y: lineY - u(18), w, h: lineH }, { alert })
+      this.hit("alert", alert.key, { x, y: lineY - u(18), w, h: lineH }, { alert, sid: alert.sid })
     })
     if (others.length > room && room > 0) this.text(c, `+${others.length - room} more`, x + w, top, { size: 12, color: INK.dim, align: "right" })
   },
@@ -357,14 +415,20 @@ export const hud = {
     }
   },
 
-  // Right column: the last things that happened, anywhere.
+  // Right column: the last things that happened, anywhere. What is new is bright and hazes
+  // over as it ages. A tool call that still runs counts its seconds, and under its line runs a
+  // track: the tick stands at that equipment's usual time, the moving layer runs a head along
+  // it (logMarks says where). Every line is a target: its card is the call's own.
   drawLog(c, scene, now, x, top, w, h) {
     const u = (value) => this.u(value)
     this.label(c, "LOG", x, top)
     const lineH = u(25)
+    const marks = []
     scene.log.slice(0, Math.floor(h / lineH)).forEach((entry, index) => {
       const lineY = top + (index + 1) * lineH + u(2)
       const row = scene.rowOf?.get(entry.sid)
+      const running = entry.span === null && entry.tone === "run"
+      const age = now - entry.at
       const tone = entry.tone === "bad" ? INK.bad : entry.tone === "warn" ? INK.warn : entry.tone === "ok" ? INK.good : entry.tone === "run" ? INK.live : INK.soft
       const lead = `${clockOf(entry.at)}  ${row ? String(row.index + 1).padStart(2, "0") : "··"}  `
       this.text(c, lead, x, lineY, { size: 13, color: INK.faint })
@@ -372,13 +436,24 @@ export const hud = {
       const name = `${bare(entry.name)}  `
       this.text(c, name, x + leadW, lineY, { size: 13, family: FAMILY.monoMedium, color: tone })
       const nameW = this.width(c, name, { size: 13, family: FAMILY.monoMedium })
-      const span = entry.span === null ? (entry.tone === "run" ? "running" : "") : spanOf(entry.span)
+      const span = running ? spanOf(Math.max(1000, Math.floor(age / 1000) * 1000)) : entry.span === null ? "" : spanOf(entry.span)
       const spanW = span ? this.width(c, span, { size: 13 }) + u(12) : 0
-      const style = { size: 13, color: INK.dim }
-      this.text(c, this.fit(c, clean(entry.detail), w - leadW - nameW - spanW, style), x + leadW + nameW, lineY, style)
-      if (span) this.text(c, span, x + w, lineY, { size: 13, color: entry.tone === "run" ? INK.live : INK.dim, align: "right" })
-      if (row) this.hit("thread", entry.sid, { x, y: lineY - u(18), w, h: lineH })
+      const style = { size: 13, color: running || age < 20e3 ? INK.soft : age < 300e3 ? INK.dim : INK.faint }
+      const tx = x + leadW + nameW
+      this.text(c, this.fitWords(c, clean(entry.detail), w - leadW - nameW - spanW, style), tx, lineY, style)
+      if (span) this.text(c, span, x + w, lineY, { size: 13, color: running ? INK.live : INK.dim, align: "right" })
+      let track = null
+      const usual = running && entry.port ? (scene.ports.get(entry.port)?.p50 ?? 0) : 0
+      if (usual > 0 && x + w - spanW - tx > u(80)) {
+        track = { x0: tx, x1: x + w - spanW, y: lineY + u(6), usual }
+        this.line(c, track.x0, track.y, track.x1, track.y, INK.ghost)
+        const tick = Math.round(track.x0 + (track.x1 - track.x0) * LOG_USUAL_AT)
+        this.line(c, tick, track.y - u(3), tick, track.y + u(3), INK.dim)
+      }
+      marks.push({ key: entry.key, sid: entry.sid, x: x + leadW + u(4), y: lineY - u(5), x1: x + w, tone, start: entry.at, track })
+      this.hit("log", entry.key, { x, y: lineY - u(18), w, h: lineH }, { entry, sid: entry.sid })
     })
+    this.logMarks = marks
     if (!scene.log.length) this.text(c, "nothing has happened since this started", x, top + lineH, { size: 13, color: INK.faint })
   },
 
@@ -662,9 +737,9 @@ export const hud = {
         tone: tool.status === "error" ? INK.bad : PORT_COLOR[portOf(tool.name)],
         kicker: "TOOL CALL",
         title: `${bare(tool.name)}  ${clean(tool.label)}`,
-        lines: [["THREAD", threadOf(target.sid)], ["TOOL", bare(tool.name)], ["TARGET", clean(tool.label) || "not recorded"], ["STARTED", `${clockOf(tool.start)}  ·  ${agoOf(now - tool.start)} ago`], ["TOOK", running ? `running for ${spanOf(now - tool.start)}` : spanOf(Math.max(1, tool.end - tool.start)), running ? INK.live : undefined], ["RESULT", running ? "not back yet" : tool.status === "error" ? "failed" : "came back", tool.status === "error" ? INK.bad : undefined], ["GOES TO", scene.ports.get(portOf(tool.name)).label]],
+        lines: [["THREAD", threadOf(target.sid)], ["TOOL", bare(tool.name)], ["TARGET", clean(tool.label) || "not recorded", undefined, "wrap"], ["STARTED", `${clockOf(tool.start)}  ·  ${agoOf(now - tool.start)} ago`], ["TOOK", running ? `running for ${spanOf(now - tool.start)}` : spanOf(Math.max(1, tool.end - tool.start)), running ? INK.live : undefined], ["RESULT", running ? "not back yet" : tool.status === "error" ? "failed" : "came back", tool.status === "error" ? INK.bad : undefined], ["GOES TO", scene.ports.get(portOf(tool.name)).label]],
         pin: true,
-        foot: "a spoke on the clock and a diamond on the axon are the same call",
+        foot: "a pillar on the clock, a diamond on the axon and a line of the log are the same call",
       }
     }
     if (target.kind === "step") {
@@ -678,10 +753,22 @@ export const hud = {
         foot: "a bar inside the ring and a tick on the axon are the same call",
       }
     }
-    if (target.kind === "alert") {
+    if (target.kind === "log") {
+      const entry = scene.log.find((candidate) => candidate.key === target.id) ?? target.entry
+      if (!entry) return null
+      const session = scene.byId.get(entry.sid)
+      // a tool call's line is the same call as its pillar and its diamond: the same card
+      if (entry.port && session) for (const step of session.steps) for (const tool of step.tools) if (tool.id === entry.key) return this.inspect({ kind: "tool", id: tool.id, sid: entry.sid, tool }, scene, now)
+      const what = { turn: "a turn began", done: "the turn ended", failed: "the turn failed", interrupted: "the turn was interrupted", call: "it began to wait on you", dispatch: "a subagent was dispatched" }[entry.name] ?? bare(entry.name)
+      const tone = entry.tone === "bad" ? INK.bad : entry.tone === "warn" ? INK.warn : entry.tone === "ok" ? INK.good : entry.tone === "run" ? INK.live : INK.soft
+      const lines = [["WHAT", what, tone], ["THREAD", threadOf(entry.sid)], ["WHEN", `${clockOf(entry.at)}  ·  ${agoOf(now - entry.at)} ago`]]
+      if (entry.span !== null) lines.push(["TOOK", spanOf(Math.max(1, entry.span))])
+      lines.push(["TEXT", clean(entry.detail) || "n/a", undefined, "wrap"])
+      return { tone, kicker: "LOG", title: `${bare(entry.name)}  ·  ${clockOf(entry.at)}`, lines, pin: true, foot: "click: focus this thread, or pin this line when it is in focus" }
+    }    if (target.kind === "alert") {
       const alert = scene.alerts.find((entry) => entry.key === target.id) ?? target.alert
       if (!alert) return null
-      return { tone: LEVEL_COLOR[alert.level], kicker: alert.kind === "call" ? "CALL" : alert.level.toUpperCase(), title: alert.sid ? threadOf(alert.sid) : alert.text, lines: [["WHAT", alert.text], ["DETAIL", clean(alert.detail) || "n/a"], ["SINCE", alert.kind === "context" || alert.kind === "account" ? "now" : `${clockOf(alert.since)}  ·  ${agoOf(now - alert.since)} ago`], ["LEVEL", alert.muted ? `${alert.level}, muted` : alert.level]], foot: alert.sid ? "click: focus this thread  ·  x: mute or unmute" : "an account flag clears when the window resets" }
+      return { tone: LEVEL_COLOR[alert.level], kicker: alert.kind === "call" ? "CALL" : alert.level.toUpperCase(), title: alert.sid ? threadOf(alert.sid) : alert.text, lines: [["WHAT", alert.text, undefined, "wrap"], ["DETAIL", clean(alert.detail) || "n/a", undefined, "wrap"], ["SINCE", alert.kind === "context" || alert.kind === "account" ? "now" : `${clockOf(alert.since)}  ·  ${agoOf(now - alert.since)} ago`], ["LEVEL", alert.muted ? `${alert.level}, muted` : alert.level]], foot: alert.sid ? "click: focus this thread  ·  x: mute or unmute" : "an account flag clears when the window resets" }
     }
     return null
   },

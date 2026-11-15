@@ -204,7 +204,7 @@ export class Scene {
             const port = portOf(tool.name)
             if (!was) {
               this.signal({ type: "tool-start", sid, at: now, port, tool })
-              this.note({ key: tool.id, at: tool.start, sid, name: tool.name, detail: tool.label, span: tool.end === null ? null : tool.end - tool.start, tone: tool.end === null ? "run" : tool.status === "error" ? "bad" : "plain" })
+              this.note({ key: tool.id, at: tool.start, sid, name: tool.name, detail: tool.label, port, span: tool.end === null ? null : tool.end - tool.start, tone: tool.end === null ? "run" : tool.status === "error" ? "bad" : "plain" })
               if (is !== "running") this.signal({ type: "tool-end", sid, at: now, port, tool, failed: is === "error" })
             } else if (was === "running" && is !== "running") {
               this.signal({ type: "tool-end", sid, at: now, port, tool, failed: is === "error" })
@@ -330,7 +330,7 @@ export class Scene {
     }
     for (const alert of alerts) {
       alert.muted = this.muted.get(alert.key) === alert.level
-      if (!this.known.has(alert.key) && this.primed && !alert.muted) this.signal({ type: "alarm", sid: alert.sid, at: now, level: alert.level })
+      if (!this.known.has(alert.key) && this.primed && !alert.muted) this.signal({ type: "alarm", sid: alert.sid, at: now, level: alert.level, key: alert.key })
     }
     this.known = new Set(alerts.map((alert) => alert.key))
     for (const key of this.muted.keys()) if (!this.known.has(key)) this.muted.delete(key)

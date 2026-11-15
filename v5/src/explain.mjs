@@ -101,7 +101,7 @@ export const explain = {
     const add = (region, target) => groups.get(region)?.push(target)
     for (const [name, list] of this.hits) {
       if (name.startsWith("over:")) continue
-      const region = name === "layout" || name === "top" || name === "rest" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name
+      const region = name === "layout" || name === "top" || name === "rest" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name === "comms" || name === "log" || name === "hints" ? "footer" : name
       for (const target of list) {
         if (target.kind === "terrain" || target.kind === "tail" || target.kind === "clock" || target.kind === "key") continue
         if (target.kind === "port") add("ports", target)

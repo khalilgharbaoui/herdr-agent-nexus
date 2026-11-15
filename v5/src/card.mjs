@@ -7,7 +7,7 @@
 // card and the same leader; a pinned one is cyan.
 
 import { createCanvas } from "@napi-rs/canvas"
-import { inside } from "./theme.mjs"
+import { inside, shortWords, wrap } from "./theme.mjs"
 import { INK, clamp } from "./util.mjs"
 
 const FOLLOW = 20 // how eagerly the card closes the distance to its place, per second
@@ -35,12 +35,31 @@ export const card = {
     return null
   },
 
+  // A value marked "wrap" that is too long for one line goes on at the next, cut at words, eight
+  // lines at most: the card says in full what the screen had to shorten.
+  wrapCard(content) {
+    if (!content) return null
+    const perLine = Math.max(16, Math.floor((this.u(500) - this.u(168)) / this.width(this.base, "M", { size: 13.5 })))
+    const lines = []
+    for (const line of content.lines) {
+      const value = String(line[1])
+      if (line[3] !== "wrap" || value.length <= perLine) {
+        lines.push(line)
+        continue
+      }
+      const parts = wrap(value, perLine)
+      const shown = parts.slice(0, 8)
+      if (parts.length > 8) shown[7] = shortWords(parts.slice(7).join(" "), perLine - 1)
+      shown.forEach((part, index) => lines.push([index ? "" : line[0], part, line[2]]))
+    }
+    return { ...content, lines }
+  },
   // Brings the card up to date: what it says, where its mark is, where it stands. Called once
   // a frame, before the sprites are listed.
   layCard(scene, ui, now) {
     const u = (value) => this.u(value)
     const subject = ui.help ? null : (ui.pinned ?? ui.card)
-    const content = subject ? this.inspect(subject.target, scene, now) : null
+    const content = subject ? this.wrapCard(this.inspect(subject.target, scene, now)) : null
     if (!content) {
       this.card = null
       this.cardAt = null

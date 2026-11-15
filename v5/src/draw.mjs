@@ -19,7 +19,7 @@ import { hud } from "./hud.mjs"
 import { PORTS, portOf } from "./model.mjs"
 import { stage } from "./stage.mjs"
 import { terrain } from "./terrain.mjs"
-import { LEVEL_COLOR, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
+import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
 import { FAMILY, INK, TAU, clamp, fontOf, modelColor } from "./util.mjs"
 
 export class Renderer {
@@ -339,7 +339,12 @@ export class Renderer {
     const restY = last ? last.y + last.h : G.rowsTop
     add("rest", { x: left, y: restY, w: right - left, h: C.y + C.h - restY }, (scene) => `${scene.rows.length}|${G.below}`, (c, scene) => this.drawRest(c, scene), true)
     add("ports", { x: right, y: C.y, w: C.x + C.w - right, h: C.h }, (scene, ui, now) => this.signPorts(scene, now), (c, scene, ui, now) => this.drawPorts(c, scene, now), true)
-    add("footer", G.footer, (scene, ui, now) => this.signFooter(scene, ui, now), (c, scene, ui, now) => this.drawFooter(c, scene, ui, now))
+    // the footer in four parts; the sector map keeps the name "footer" (its blips are looked up by it)
+    const cols = this.footerCols()
+    add("comms", cols.comms, (scene, ui, now) => this.signComms(scene, now), (c, scene, ui, now) => this.drawCommsRegion(c, scene, now))
+    add("footer", cols.map, (scene) => this.signMap(scene), (c, scene) => this.drawMapRegion(c, scene))
+    add("log", cols.log, (scene, ui, now) => this.signLog(scene, ui, now), (c, scene, ui, now) => this.drawLogRegion(c, scene, ui, now))
+    add("hints", cols.hints, (scene, ui) => ui.tip, (c, scene, ui) => this.drawHints(c, ui))
     this.regions = regions
   }
 
@@ -632,6 +637,17 @@ export class Renderer {
     return result
   }
 
+  // The same, for prose: the cut falls at the end of a word, never inside one. A line that is
+  // one long word (a path) is still cut where the room ends.
+  fitWords(c, value, maxWidth, style) {
+    const cut = this.fit(c, value, maxWidth, style)
+    if (cut === value || !cut) return cut
+    const body = cut.slice(0, -1)
+    if (!value.startsWith(body) || /\s/.test(value[body.length] ?? " ")) return cut
+    const at = body.lastIndexOf(" ")
+    if (at < body.length * 0.5) return cut
+    return `${body.slice(0, at).replace(/[\s,;:.·-]+$/, "")}…`
+  }
   // A run of differently styled pieces on one baseline. Returns where it ended.
   run(c, x, y, pieces) {
     let at = x
@@ -871,7 +887,35 @@ export class Renderer {
       const level = Math.floor(((Math.sin(now / 220) + 1) / 2) * 3.999)
       if (level) out.push({ key: `bp:${hit.id}`, kind: `breath${level}|${INK.warn}`, x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 })
     }
-    this.terrainSprites(scene, now, out)
+    // Comms: a flag that needs you now breathes red on its marker until it is dealt with or muted
+    // (a call has its own ring: the level meter in its box).
+    for (const [key, mark] of this.commsMarks ?? []) {
+      if (mark.level !== "alert" || mark.muted || mark.call) continue
+      const level = Math.floor(((Math.sin(now / 260) + 1) / 2) * 3.999)
+      if (level) out.push({ key: `cm:${key}`, kind: `breath${level}|${INK.bad}`, x: mark.x, y: mark.y })
+    }
+    // The log: a running call's head runs along the track under its line. It reaches the tick
+    // when the call has run as long as its equipment usually takes, turns amber there, and
+    // stops at the end of the track (at 1 / LOG_USUAL_AT times the usual).
+    for (const mark of this.logMarks ?? []) {
+      if (!mark.track) continue
+      const elapsed = now - mark.start
+      const share = Math.min(1, (elapsed / mark.track.usual) * LOG_USUAL_AT)
+      out.push({ key: `lg:${mark.key}`, kind: `dot|${elapsed > mark.track.usual ? INK.warn : INK.live}`, x: mark.track.x0 + (mark.track.x1 - mark.track.x0) * share, y: mark.track.y })
+    }
+    // A flag in comms or a line of the log points at what it is about while the pointer (or a
+    // pin) is on it: a ring on its thread's cell body, on its pane in the sector map and, for a
+    // tool call, on the equipment it went through.
+    const pointing = [ui.hover, ui.pinned?.target].find((target) => target && (target.kind === "alert" || target.kind === "log"))
+    if (pointing && !ui.help) {
+      const sid = pointing.sid ?? pointing.alert?.sid ?? pointing.entry?.sid
+      const row = sid ? G.rowOf.get(sid) : null
+      if (row) out.push({ key: "link-row", kind: `ring2|${INK.text}`, x: row.somaX, y: row.axonY, top: true })
+      const blip = sid ? this.blipOf(sid) : null
+      if (blip) out.push({ key: "link-pane", kind: `ring|${INK.text}`, x: blip.x, y: blip.y, top: true })
+      const box = pointing.entry?.port ? G.ports.get(pointing.entry.port) : null
+      if (box) out.push({ key: "link-port", kind: `ring2|${INK.text}`, x: box.x, y: box.y, top: true })
+    }    this.terrainSprites(scene, now, out)
     // the inspection card follows its mark, tied to it by a leader
     this.layCard(scene, ui, now)
     // explain mode: a ring on the one mark each tag is about
@@ -978,6 +1022,23 @@ export class Renderer {
     const flow = this.flow
     const u = (value) => this.u(value)
     for (const signal of signals) {
+      // A flag that is raised arrives in comms last: after the ripple from its thread (now) and
+      // the one at the phase lamp (a quarter of a second later), a ripple and a flash on its
+      // own line, half a second after it was raised.
+      if (signal.type === "alarm") {
+        const mark = signal.key ? this.commsMarks?.get(signal.key) : null
+        const tone = signal.level === "alert" ? INK.bad : signal.level === "caution" ? INK.warn : INK.text
+        if (mark) {
+          this.ripple(mark.x, mark.y, tone, now + 520)
+          flow.flash(mark.x, mark.y, tone, now + 520, 700)
+        }
+      }
+      // The log answers a tool call that comes back: a flash at the end of its line, in the
+      // equipment's colour, red when it failed.
+      if (signal.type === "tool-end") {
+        const mark = (this.logMarks ?? []).find((entry) => entry.key === signal.tool?.id)
+        if (mark) flow.flash(mark.x1 - u(16), mark.y, signal.failed ? INK.bad : spriteHex(PORT_COLOR[signal.port]), now, 420)
+      }
       if (signal.type === "alarm" && !signal.sid) {
         for (const rail of G.rails) flow.flash(rail.x, G.railBottom + u(20), LEVEL_COLOR[signal.level] === INK.soft ? INK.text : LEVEL_COLOR[signal.level], now, 900)
         continue
@@ -1049,6 +1110,13 @@ export class Renderer {
       // a failed tool call ripples from its thread in red
       if (signal.type === "tool-end" && signal.failed) this.ripple(g.somaX, g.axonY, INK.bad, now)
     }
+    // A line that is new in the log lights up where it begins, in its own tone.
+    const logged = new Set()
+    for (const mark of this.logMarks ?? []) {
+      logged.add(mark.key)
+      if (this.logKnown && !this.logKnown.has(mark.key) && now - mark.start < 10e3) flow.flash(mark.x, mark.y, spriteHex(mark.tone), now, 520)
+    }
+    if (scene.primed) this.logKnown = logged
     const streams = []
     for (const stream of scene.streams) {
       if (stream.type === "tool") streams.push({ key: stream.key, path: `syn:${stream.sid}:${stream.port}`, kind: `tail|${spriteHex(PORT_COLOR[stream.port])}`, speed: u(64), gap: u(34) })

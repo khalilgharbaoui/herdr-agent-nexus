@@ -14,7 +14,7 @@ import { inside } from "./theme.mjs"
 import { WINDOWS } from "./terrain.mjs"
 import { clockOf } from "./util.mjs"
 
-const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge"])
+const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge", "log"])
 const DWELL_MS = 140 // how long the pointer rests on something before its card opens
 const GONE_MS = 8000 // no mouse report for this long: the pointer is taken to have left the pane
 const MODE = { 0: "not known", 1: "on", 2: "off", 3: "always on", 4: "always off" }
@@ -94,6 +94,7 @@ export class Controller {
         tool: "click: pin this call",
         step: "click: pin this call",
         alert: "click: focus the flagged thread",
+        log: "a line of the log  ·  click: focus its thread, or pin the line",
         tail: "wheel: scroll the live tail",
         clock: "the turn clock: a bar under the ring is a model call, a pillar on it a tool call",
         dot: "one dot of the flock  ·  click: pin it",
@@ -190,6 +191,9 @@ export class Controller {
       }
       case "ridge":
         if (target.sid !== scene.focus.id && scene.lock(target.sid, now)) return "focused the thread of that ridge"
+        return this.pin(target)
+      case "log":
+        if (target.sid && target.sid !== scene.focus.id && scene.rowOf.has(target.sid) && scene.lock(target.sid, now)) return "focused the thread of that line"
         return this.pin(target)
       case "dot":
       case "charge":
