@@ -1,7 +1,7 @@
 #!/bin/sh
 # Restarts v5 in its herdr pane, in place: q, then the same command line again.
 #   v5/tools/restart.sh [pane id]
-PANE="${1:-wE:p1Q1}"
+PANE="${1:-wE:p1QF}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -f "$HERE/nexus.pid" ] && kill -0 "$(cat "$HERE/nexus.pid")" 2>/dev/null; then
   herdr pane send-text "$PANE" q

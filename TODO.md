@@ -5,8 +5,8 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-15 02:10: v5 runs live in herdr pane `wE:p1Q1` on the sprite transport (restart it in
-  place with `v5/tools/restart.sh`). The sprite layer had vanished because herdr keeps 64 MiB of
+- 2026-11-15 04:45: v5 runs live in herdr pane `wE:p1QF` on the sprite transport (a new pane split
+  from `wE:pP0`; the old pane `wE:p1Q1` is gone; restart it in place with `v5/tools/restart.sh`). The sprite layer had vanished because herdr keeps 64 MiB of
   images per pane and drops the oldest when full, which was the 39 MB atlas; the atlas is now 2
   to 4 MB of small pages, each acknowledged by the terminal, and `v5/stats.json` says under
   `graphics` whether the terminal holds them. The operator looked at the live pane at about
