@@ -1,7 +1,9 @@
-// The time terrain: every listed thread's output over the last minutes as a ridge, the focused
-// thread in front and the others receding behind it. Height is tokens per second, time runs
-// from the left to now at the right edge, and the whole terrain moves with the clock. Tool
-// calls, failures, flags and dispatches are marked on the ridge they belong to.
+// The time terrain: every listed thread's output over the last minutes as a ridge on a ground
+// plane in perspective, the focused thread at the front edge and the others receding behind it,
+// smaller and hazier. Height is tokens per second, time runs from the left to now at the right
+// edge, and the whole terrain moves with the clock. Tool calls, failures, flags and dispatches
+// are marked on the ridge they belong to. What an open model call probably writes is drawn
+// dashed and hollow: an estimate, marked as one.
 //
 // It is drawn into the still layer by the stage; the heads of the ridges (the newest reading of
 // a working thread) and the charge of a model call that has not said its first word yet are
@@ -9,11 +11,12 @@
 
 import { portOf, wroteOf } from "./model.mjs"
 import { LEVEL_COLOR, PORT_COLOR, clean, spriteHex } from "./theme.mjs"
-import { FAMILY, INK, clamp, modelColor, rgba, spanOf } from "./util.mjs"
+import { FAMILY, INK, clamp, mix, modelColor, rgba, spanOf } from "./util.mjs"
 
 export const WINDOWS = [60e3, 5 * 60e3, 30 * 60e3]
 const BINS = 150
 const MAX_RIDGES = 7
+const HAZE = "#4c5c70" // the air between the eye and a far ridge
 const windowWord = (ms) => (ms >= 60e3 ? `${Math.round(ms / 60e3)} MIN` : `${Math.round(ms / 1000)} S`)
 
 export const terrain = {
@@ -46,8 +49,28 @@ export const terrain = {
   signTerrain(scene, ui, now) {
     const span = ui.window ?? WINDOWS[1]
     const parts = [span, Math.floor(now / (span / BINS)), scene.focus.id]
-    for (const row of scene.threads.slice(0, 24)) parts.push(row.session.id, row.session.steps.length, row.session.steps[row.session.steps.length - 1]?.end ?? 0, row.session.alerts.length)
+    for (const row of scene.threads.slice(0, 24)) parts.push(row.session.id, row.session.steps.length, row.session.steps[row.session.steps.length - 1]?.end ?? 0, row.session.alerts.length, row.session.phase?.key ?? "", Math.round(scene.rateOf(row.session.id, now) / 4))
     return parts.join("|")
+  },
+
+  // The ground is a plane seen from in front and above: the focused thread's ridge stands at
+  // the front edge at full size, every ridge behind it is smaller, narrower and hazier, and the
+  // lines of the ground run to one vanishing point. A ridge slot at depth k (0 in front) is
+  // scaled by 1 / (1 + 1.9 k / 6).
+  terrainPlane() {
+    const u = (value) => this.u(value)
+    const T = this.G.terrain
+    const frontY = T.y + T.h - u(24)
+    const horizon = T.y + u(40)
+    const frontLeft = T.x + u(190)
+    const frontRight = T.x + T.w - u(34)
+    const vanish = frontLeft + (frontRight - frontLeft) * 0.5
+    const full = Math.min(u(190), (frontY - horizon) * 0.66)
+    const place = (index) => {
+      const s = 1 / (1 + 1.9 * (index / (MAX_RIDGES - 1)))
+      return { s, base: Math.round(horizon + (frontY - horizon) * s), left: vanish + (frontLeft - vanish) * s, right: vanish + (frontRight - vanish) * s, height: full * s }
+    }
+    return { frontY, horizon, frontLeft, frontRight, place }
   },
 
   drawTerrain(c, scene, ui, now) {
@@ -84,26 +107,36 @@ export const terrain = {
     }
     const top = [10, 20, 40, 60, 80, 120, 160, 240, 320, 480, 640, 1000].find((value) => value >= peak) ?? Math.ceil(peak / 500) * 500
     const count = ridges.length
-    const frontY = T.y + T.h - u(24)
-    const backY = T.y + u(70)
-    const stepY = count > 1 ? Math.min(u(30), (frontY - backY) / (count - 1)) : 0
-    const gutter = u(170)
+    const plane = this.terrainPlane()
+    const { frontY } = plane
     const geo = { from, span, slice, top, ridges: [] }
+
+    // the ground: lines of equal time running back to the vanishing point, one line of ground
+    // per ridge slot, and the edge where time is now
+    const front = plane.place(0)
+    const back = plane.place(MAX_RIDGES - 1)
+    for (let tick = 0; tick <= 5; tick += 1) {
+      const a = front.left + (tick / 5) * (front.right - front.left)
+      const b = back.left + (tick / 5) * (back.right - back.left)
+      this.line(c, a, front.base, b, back.base, tick === 5 ? rgba(INK.live, 0.42) : rgba(INK.faint, 0.3))
+    }
+    for (let slot = count; slot < MAX_RIDGES; slot += 1) {
+      const at = plane.place(slot)
+      this.line(c, at.left, at.base, at.right, at.base, rgba(INK.faint, 0.22 * at.s + 0.06))
+    }
+
     // far to near, so a nearer ridge is drawn over a farther one
     for (let index = count - 1; index >= 0; index -= 1) {
       const ridge = ridges[index]
-      const depth = count > 1 ? index / (MAX_RIDGES - 1) : 0
-      const shrink = 1 - depth * 0.3
-      const left = T.x + gutter + index * u(20)
-      const right = T.x + T.w - u(8) - index * u(9)
-      const base = Math.round(frontY - index * stepY)
-      const height = u(104) * shrink
-      const color = ridge.session.state === "waiting" ? INK.warn : modelColor(ridge.session.model, ridge.session.provider)
-      const alpha = index === 0 ? 1 : 0.72 - depth * 0.4
+      const { s, base, left, right, height } = plane.place(index)
+      const tone = ridge.session.state === "waiting" ? INK.warn : modelColor(ridge.session.model, ridge.session.provider)
+      // haze: a far ridge loses colour and contrast to the air in between
+      const color = index === 0 ? tone : mix(tone, HAZE, (1 - s) * 0.8)
+      const alpha = index === 0 ? 1 : 0.2 + 0.72 * s * s
       const xOf = (bin) => left + ((bin + 0.5) / BINS) * (right - left)
       const yOf = (value) => base - (Math.min(value, top) / top) * height
-      // the ground line, then the ridge with a light under it
-      this.line(c, left, base, right, base, rgba(INK.faint, index === 0 ? 0.9 : 0.45))
+      const xAt = (time) => left + ((time - from) / span) * (right - left)
+      this.line(c, left, base, right, base, rgba(INK.faint, index === 0 ? 0.95 : 0.25 + 0.4 * s))
       const smooth = (bin) => (ridge.values[Math.max(0, bin - 1)] + 2 * ridge.values[bin] + ridge.values[Math.min(BINS - 1, bin + 1)]) / 4
       if (!ridge.empty) {
         c.beginPath()
@@ -112,12 +145,12 @@ export const terrain = {
         c.lineTo(right, base)
         c.closePath()
         const gradient = c.createLinearGradient(0, base - height, 0, base)
-        gradient.addColorStop(0, rgba(color, 0.34 * alpha))
-        gradient.addColorStop(1, rgba(color, 0.02))
+        gradient.addColorStop(0, rgba(color, 0.4 * alpha))
+        gradient.addColorStop(1, rgba(color, 0.03))
         c.fillStyle = gradient
         c.fill()
         c.strokeStyle = rgba(color, alpha)
-        c.lineWidth = index === 0 ? 2 : 1.25
+        c.lineWidth = Math.max(1, 2.2 * s)
         c.lineJoin = "round"
         c.beginPath()
         for (let bin = 0; bin < BINS; bin += 1) {
@@ -128,18 +161,38 @@ export const terrain = {
         }
         c.stroke()
       }
+      // An open model call has reported nothing yet. What it probably writes is drawn as an
+      // estimate, and marked as one: a dashed, hollow step at the thread's last measured rate
+      // from the call's start to now.
+      const session = ridge.session
+      const newest = session.steps[session.steps.length - 1]
+      const phase = session.phase?.key
+      const rate = session.state === "working" && (phase === "thinking" || phase === "writing") ? scene.rateOf(session.id, now) : 0
+      if (rate > 0 && newest && newest.end === null) {
+        const x0 = xAt(Math.max(from, newest.start))
+        const y = yOf(rate)
+        c.strokeStyle = rgba(color, Math.max(0.45, alpha))
+        c.lineWidth = Math.max(1, 1.5 * s)
+        c.setLineDash([u(4) * s + 1, u(4) * s + 1])
+        c.beginPath()
+        c.moveTo(x0, base)
+        c.lineTo(x0, y)
+        c.lineTo(right, y)
+        c.stroke()
+        c.setLineDash([])
+        if (index === 0 && right - x0 > u(46)) this.text(c, "estimate", x0 + u(6), y - u(5), { size: 10, color: rgba(INK.soft, 0.9) })
+      }
       // events on the ridge: tool calls (a failure stands taller, in red), flags, a dispatch
-      const xAt = (time) => left + ((time - from) / span) * (right - left)
       const near = index < 3
-      for (const step of ridge.session.steps) {
+      for (const step of session.steps) {
         for (const tool of step.tools) {
           if (tool.start < from) continue
           const failed = tool.status === "error"
           if (!near && !failed) continue
           const x = Math.round(xAt(tool.start))
-          const size = u(failed ? 4 : 3) * shrink
+          const size = u(failed ? 4 : 3) * Math.max(0.6, s)
           c.fillStyle = failed ? INK.bad : rgba(PORT_COLOR[portOf(tool.name)], alpha * (tool.end === null ? 1 : 0.8))
-          if (failed) c.fillRect(x - 1, base - u(14) * shrink, 2, u(14) * shrink)
+          if (failed) c.fillRect(x - 1, base - u(14) * s, 2, u(14) * s)
           c.beginPath()
           c.moveTo(x, base - size)
           c.lineTo(x + size, base)
@@ -147,49 +200,53 @@ export const terrain = {
           c.lineTo(x - size, base)
           c.closePath()
           c.fill()
-          if (index === 0) this.hit("tool", tool.id, { x: x - u(6), y: base - u(7), w: u(12), h: u(14) }, { sid: ridge.session.id, tool, step })
+          if (index === 0) this.hit("tool", tool.id, { x: x - u(6), y: base - u(7), w: u(12), h: u(14) }, { sid: session.id, tool, step })
         }
       }
-      for (const alert of ridge.session.alerts) {
+      for (const alert of session.alerts) {
         if (!alert.since || alert.since < from || alert.muted) continue
         const x = Math.round(xAt(alert.since))
         c.fillStyle = LEVEL_COLOR[alert.level] ?? INK.soft
         c.beginPath()
-        c.moveTo(x, base - u(20) * shrink)
-        c.lineTo(x + u(7) * shrink, base - u(16) * shrink)
-        c.lineTo(x, base - u(12) * shrink)
+        c.moveTo(x, base - u(20) * s)
+        c.lineTo(x + u(7) * s, base - u(16) * s)
+        c.lineTo(x, base - u(12) * s)
         c.closePath()
         c.fill()
-        c.fillRect(x - 1, base - u(20) * shrink, 1, u(20) * shrink)
-        this.hit("alert", alert.key, { x: x - u(4), y: base - u(22) * shrink, w: u(14), h: u(22) * shrink }, { alert })
+        c.fillRect(x - 1, base - u(20) * s, 1, u(20) * s)
+        this.hit("alert", alert.key, { x: x - u(4), y: base - u(22) * s, w: u(14), h: u(22) * s }, { alert })
       }
-      if (ridge.session.parentId && ridge.session.created >= from) {
-        const x = Math.round(xAt(ridge.session.created))
+      if (session.parentId && session.created >= from) {
+        const x = Math.round(xAt(session.created))
         c.strokeStyle = PORT_COLOR.agent
         c.lineWidth = 1.5
         c.beginPath()
-        c.arc(x, base, u(5) * shrink, 0, Math.PI * 2)
+        c.arc(x, base, u(5) * s, 0, Math.PI * 2)
         c.stroke()
       }
-      // who this ridge is
-      const focused = index === 0 && ridge.session.id === scene.focus.id
+      // who this ridge is: its name ends where its ground begins, so the names recede with it
+      const focused = index === 0 && session.id === scene.focus.id
       const number = String(ridge.row.index + 1).padStart(2, "0")
-      const nameStyle = { size: index === 0 ? 12.5 : 11.5, color: focused ? INK.text : rgba(INK.soft, 0.5 + alpha * 0.5) }
-      this.text(c, number, T.x + index * u(6), base + u(4), { size: 11.5, color: rgba(color, Math.max(0.5, alpha)) })
-      this.text(c, this.fit(c, clean(ridge.session.title), gutter - u(40) - index * u(6) + index * u(20), nameStyle), T.x + u(24) + index * u(6), base + u(4), nameStyle)
-      this.hit("thread", ridge.session.id, { x: T.x, y: base - u(12), w: gutter + index * u(20) - u(8), h: u(18) })
-      geo.ridges.push({ sid: ridge.session.id, index: ridge.row.index, left, right, base, height, values: ridge.values, color, empty: ridge.empty, depth: index })
+      const size = 10 + 2.5 * s
+      const nameStyle = { size, color: focused ? INK.text : rgba(INK.soft, 0.35 + alpha * 0.6), align: "right" }
+      const nameRight = left - u(14)
+      const name = this.fit(c, clean(session.title), nameRight - T.x - u(34), nameStyle)
+      this.text(c, name, nameRight, base + u(4), nameStyle)
+      const nameW = this.width(c, name, nameStyle)
+      this.text(c, number, nameRight - nameW - u(8), base + u(4), { size, color: rgba(tone, Math.max(0.5, alpha)), align: "right" })
+      this.hit("thread", session.id, { x: nameRight - nameW - u(30), y: base - u(12), w: nameW + u(34), h: u(18) })
+      geo.ridges.push({ sid: session.id, index: ridge.row.index, left, right, base, height, values: ridge.values, color: tone, empty: ridge.empty, depth: index, s })
     }
     geo.ridges.reverse() // nearest first, for hit testing
     // the time axis under the front ridge, and what the height stands for
-    const front = geo.ridges[0]
-    if (front) {
+    if (geo.ridges[0]) {
       for (let tick = 0; tick <= 5; tick += 1) {
         const x = front.left + (tick / 5) * (front.right - front.left)
         this.line(c, x, frontY, x, frontY + u(4), INK.faint)
         this.text(c, tick === 5 ? "now" : `-${spanOf(span * (1 - tick / 5))}`, x, frontY + u(18), { size: 11, color: tick === 5 ? INK.live : INK.faint, align: tick === 5 ? "right" : tick === 0 ? "left" : "center" })
       }
-      this.text(c, peak > 0 ? `a ridge at full height is ${top} tok/s  ·  peak ${peak >= 10 ? Math.round(peak) : peak.toFixed(1)}` : "no output in this window", T.x + T.w, T.y + u(44), { size: 11, color: INK.faint, align: "right" })
+      this.text(c, peak > 0 ? `the front ridge at full height is ${top} tok/s  ·  peak ${peak >= 10 ? Math.round(peak) : peak.toFixed(1)}` : "no output in this window", T.x + T.w, T.y + u(44), { size: 11, color: INK.faint, align: "right" })
+      this.text(c, "solid: what calls reported, spread evenly over each call  ·  dashed: an open call at its last rate, an estimate", T.x + T.w, T.y + u(60), { size: 10.5, color: rgba(INK.faint, 0.9), align: "right" })
     }
     this.hit("terrain", "terrain", { x: T.x, y: T.y + u(26), w: T.w, h: T.h - u(26) })
     this.terrainGeo = geo
@@ -226,11 +283,12 @@ export const terrain = {
       const hex = spriteHex(modelColor(session.model, session.provider))
       const rate = scene.rateOf(session.id, now)
       const y = ridge.base - (Math.min(rate, geo.top) / geo.top) * ridge.height
-      out.push({ key: `rh:${ridge.sid}`, kind: `head|${hex}`, x: ridge.right, y })
+      // the head at now: the front ridge's glows, the ones behind it are smaller with distance
+      out.push({ key: `rh:${ridge.sid}`, kind: `${ridge.depth === 0 ? "pulse" : ridge.depth <= 2 ? "dot" : "mote"}|${hex}`, x: ridge.right, y })
       const newest = session.steps[session.steps.length - 1]
       if (newest && newest.end === null && newest.streamed === null && !newest.tools.length) {
         const motes = clamp(Math.floor((now - newest.start) / 5000), 0, 9)
-        for (let mote = 0; mote < motes; mote += 1) out.push({ key: `rc:${ridge.sid}:${mote}`, kind: `mote|${INK.live}`, x: ridge.right + u(9), y: ridge.base - u(5) - mote * u(7) * (1 - ridge.depth * 0.05) })
+        for (let mote = 0; mote < motes; mote += 1) out.push({ key: `rc:${ridge.sid}:${mote}`, kind: `mote|${INK.live}`, x: ridge.right + u(11), y: ridge.base - u(5) - mote * u(7) * ridge.s })
       }
     }
   },
