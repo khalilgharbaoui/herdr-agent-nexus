@@ -35,6 +35,7 @@ export const STREAK_FROM = 3 // from this depth layer on a flying dot shows its 
 export const CHARGE_SOCKETS = 8 // the charge at the tip fills this many sockets, then fires one dot
 const GHOST_MS = 700
 const SIPHON_MS = 1400 // how long a dot takes from the orbit into the globe
+const MAX_RATE = 120 // tokens a second: the most an open call is taken to write
 const smooth = (value, low, high) => {
   const t = clamp((value - low) / (high - low), 0, 1)
   return t * t * (3 - 2 * t)
@@ -113,8 +114,11 @@ export class Flock {
     this.openSince = 0 // when the model call that is open now began, 0 when none is
     this.callRate = 0 // tokens a second that call is taken to write: the thread's last measured rate
     this.outAtOpen = 0
-    this.estimate = 0 // tokens the open call has probably written and not reported yet
-    this.estimateAt = 0
+    this.estimate = 0 // tokens written and not reported yet: the open call's and the carried ones
+    this.own = 0 // the open call's part of it
+    this.carry = 0 // the part of calls that closed and have not reported yet
+    this.carryAt = 0
+    this.outSeen = 0
     this.target = 0
     // A dot's life: fired at the tip it joins the flock that circles the ring system (1), when
     // its model call has reported it spirals into the globe (2), and there it stays (3).
@@ -219,7 +223,9 @@ export class Flock {
     const dt = Math.min(0.05, input.dt)
     const u = (value) => value * S
     const out = session.turn?.out ?? session.lastOut ?? 0
-    const turnKey = session.turn?.start ?? 0
+    // a turn that ended is still the same turn: its last dots come in from the orbit and the
+    // globe forms up. Only another thread or a new turn starts the flock afresh.
+    const turnKey = session.turn?.start ?? (session.id === this.sid ? this.turn : 0)
     const fresh = session.id !== this.sid || turnKey !== this.turn
     const fill = session.context.limit && session.context.used ? clamp(session.context.used / session.context.limit, 0, 1) : 0
     const ease = (rate) => 1 - Math.exp(-rate * dt)
@@ -230,16 +236,37 @@ export class Flock {
     // call has been open: an estimate. Its dots circle the ring system and enter the globe only
     // when the call reports; then the estimate is replaced by the call's own count.
     const openSince = working && (phase === "thinking" || phase === "writing") ? (session.phase.since ?? now) : 0
-    if (openSince !== this.openSince || fresh) {
-      const elapsed = session.turn ? (now - session.turn.start) / 1000 : 0
-      if (openSince) this.callRate = rate > 0 ? rate : out > 0 && elapsed > 5 ? out / elapsed : 0
-      if (openSince) this.outAtOpen = out
+    if (fresh) {
+      this.carry = 0
+      this.own = 0
+      this.openSince = 0
+      this.outSeen = out
+    }
+    if (out !== this.outSeen) {
+      // a call reported: whatever was carried for calls that had closed is in that count now
+      this.outSeen = out
+      this.carry = 0
+    }
+    if (openSince !== this.openSince) {
+      // the call that was open has closed. Until its report comes in, its estimate is carried,
+      // so its dots stay in orbit; a report that never comes is given up after six seconds.
+      if (this.openSince && this.own > 0 && out === this.outAtOpen) {
+        this.carry += this.own
+        this.carryAt = now
+      }
+      this.own = 0
+      if (openSince) {
+        const elapsed = session.turn ? (now - session.turn.start) / 1000 : 0
+        // its pace: the thread's last measured rate, else this turn's average so far; never
+        // more than a model can write (a first reading right after start can be far too high)
+        this.callRate = Math.min(MAX_RATE, rate > 0 ? rate : out > 0 && elapsed > 5 ? out / elapsed : 0)
+        this.outAtOpen = out
+      }
       this.openSince = openSince
     }
-    if (openSince) {
-      this.estimate = ((now - openSince) / 1000) * this.callRate
-      this.estimateAt = now
-    } else if (this.estimate > 0 && (out !== this.outAtOpen || now - this.estimateAt > 5000)) this.estimate = 0
+    if (openSince) this.own = ((now - openSince) / 1000) * this.callRate
+    if (this.carry > 0 && now - this.carryAt > 6000) this.carry = 0
+    this.estimate = this.carry + this.own
     const target = out + this.estimate
     this.target = target
     const unit = flockUnit(target)
@@ -814,7 +841,7 @@ export class Flock {
       const X = pr[0] + pr[2] * this.parX
       const Y = pr[1] + pr[2] * this.parY
       let level = 1 + Math.floor(clamp((pr[2] + span) / (2 * span), 0, 0.999) * LEVELS)
-      if (resting) level = Math.max(1, level - 2)
+      if (resting && this.stage[i] === 3) level = Math.max(1, level - 2) // settled and at rest: dimmer
       const under = this.z[i] < 0 ? 1 : 0
       // a far dot is small and slow on screen: it is brought up to date every other frame
       if (level <= 2 && ((i ^ odd) & 1) && this.level[i] === level && this.under[i] === under && !this.squad[i]) {

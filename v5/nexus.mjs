@@ -158,7 +158,7 @@ async function runHeadless() {
     }
     const name = OPTIONS.name ? `${OPTIONS.name}${OPTIONS.frames > 1 ? `-${frame}` : ""}.png` : `frame-${frame}${OPTIONS.demo ? "-demo" : ""}${width > height ? "-wide" : ""}.png`
     const file = saveShot(renderer, result.sprites, atlas, name)
-    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}  atlas ${atlas.state.pages} pages ${atlas.state.mb} MB  rss ${Math.round(process.memoryUsage().rss / 1048576)} MB  flock: ${renderer.flock.state}`)
+    console.log(`${file}  worst step ${worst.toFixed(1)} ms  poll ${state.pollMs.toFixed(1)} ms  rows ${scene.rows.length}  sprites ${result.sprites.length}  phase ${scene.phase.level}  atlas ${atlas.state.pages} pages ${atlas.state.mb} MB  rss ${Math.round(process.memoryUsage().rss / 1048576)} MB  flock: ${renderer.flock.state}  ·  ${renderer.flock.stage.subarray(0, renderer.flock.count).reduce((sum, stage) => sum + (stage === 2 ? 1 : 0), 0)} siphoning`)
   }
   for (const line of said) console.log(`  ${line}`)
   source.close()
