@@ -56,6 +56,8 @@ const SHAPES = {
   breath1: [44, 44, (c, hex) => halo(c, 22, 22, 13, hex, 0.2)],
   breath2: [44, 44, (c, hex) => halo(c, 22, 22, 17, hex, 0.27)],
   breath3: [44, 44, (c, hex) => halo(c, 22, 22, 21, hex, 0.34)],
+  // the same at its fullest: the peak of the pulse of a charge that is about to fire
+  breath4: [44, 44, (c, hex) => halo(c, 22, 22, 22, hex, 0.5)],
   // a chevron for the alert strip
   chev: [12, 18, (c, hex) => {
     c.strokeStyle = hex
@@ -210,7 +212,7 @@ const FAMILIES = {
   dots: Object.keys(SHAPES).filter((name) => /^f\d$/.test(name)),
   streaks: Object.keys(SHAPES).filter((name) => /^s[ab]\d+$/.test(name)),
   travel: ["pulse", "dot", "tail", "mote", "bar1", "bar2", "bar3", "pip", "head", "lead"],
-  glow: ["glow", "glow2", "breath1", "breath2", "breath3"],
+  glow: ["glow", "glow2", "breath1", "breath2", "breath3", "breath4"],
   frame: ["cornerA", "cornerB", "cornerC", "cornerD", "ring", "ring2", "chev", "seg", "sat", "moon"],
 }
 const FAMILY_OF = {}

@@ -102,6 +102,17 @@ export class Flock {
     this.firedAt = 0
     this.tip = null
     this.frame = 0
+    this.form = 0 // 0 a murmuration (the model reasons), 1 drawn up in rings (it writes)
+    this.bank = 0 // how far the murmuration's orbit has precessed about the globe's axis
+    this.lead = 0 // where the head of the murmuration is on that orbit
+    this.ringTurn = 0 // how far the rings have turned
+    this.arrive = 0 // 1 while tokens are arriving at the tip, 0 when none are
+    this.pulse = 0 // beats of the charge's corona so far
+    this.swirl = 0 // how far the gathered motes have circled the tip
+    this.ringOf = new Uint8Array(n)
+    this.placeIn = new Uint16Array(n)
+    this.ringSize = new Uint16Array(16)
+    this.rings = 1
   }
 
   random() {
@@ -375,9 +386,36 @@ export class Flock {
     }
     const windSpeed = (u(20) + u(1.5) * Math.min(rate, 90)) * this.pace
     this.speed = windSpeed
+    // The formation says what the model is doing. While it reasons (a call is open and no part
+    // of it has ended) the flock is a murmuration: loose, bunched, banking round the globe on a
+    // leaning orbit. Once a part has ended and the next is being written, it draws up in rings.
+    const formWant = working && phase === "writing" ? 1 : 0
+    this.form += (formWant - this.form) * ease(2.4)
+    // everything that turns, turns by the distance flown: no clock of its own
+    const turned = (windSpeed / Math.max(1, this.rs)) * (1 - lock) * dt * this.slow
+    this.lead += turned
+    this.bank += turned * 0.27
+    this.ringTurn += turned
+    // the charge at the tip: its motes circle and its corona beats only while tokens arrive,
+    // faster the fuller the charge is and the faster they come
+    const arriving = working && (this.shown < out - 1e-6 || rate > 0.5)
+    this.arrive += ((arriving ? 1 : 0) - this.arrive) * ease(arriving ? 6 : 2.5)
+    const hurry = 0.7 + 0.3 * Math.min(1, rate / 40)
+    this.swirl += dt * (1.6 + 8.4 * this.charge * this.charge) * hurry * this.arrive
+    this.pulse += dt * (1.3 + 5.7 * this.charge * this.charge) * hurry * this.arrive
     const fails = session.failStreak ?? 0
     const jitter = u(26) * Math.min(3, fails) + (scattering ? u(220) : 0)
-    this.state = !working ? (session.state === "waiting" ? "formed up, waiting on you" : session.state === "stalled" ? "locked, silent" : session.state === "failed" ? "formed up, the turn failed" : "formed up, at rest") : scattering ? "scattered by a failed call" : phase === "tool" ? "locked, stepping while a tool runs" : this.lock > 0.6 ? "locked, nothing heard" : this.pace < 0.75 ? "slowing, nothing heard" : "flying"
+    this.state = !working ? (session.state === "waiting" ? "formed up, waiting on you" : session.state === "stalled" ? "locked, silent" : session.state === "failed" ? "formed up, the turn failed" : "formed up, at rest") : scattering ? "scattered by a failed call" : phase === "tool" ? "locked, stepping while a tool runs" : this.lock > 0.6 ? "locked, nothing heard" : this.pace < 0.75 ? "slowing, nothing heard" : phase === "writing" ? "in rings while it writes" : phase === "thinking" ? "a murmuration while it reasons" : "a murmuration while the model is called"
+    // the rings: the turn's output cut into parallels, oldest at the south, newest at the north
+    const rings = clamp(Math.round(Math.sqrt(count) / 1.7), 2, 9)
+    this.rings = rings
+    this.ringSize.fill(0)
+    for (let i = 0; i < count; i += 1) {
+      const ring = Math.min(rings - 1, Math.floor(((i + 0.5) / count) * rings))
+      this.ringOf[i] = ring
+      this.placeIn[i] = this.ringSize[ring]
+      this.ringSize[ring] += 1
+    }
     this.simulate({ count, now, dt: dt * this.slow, lock, windSpeed, jitter, breath, S, scattering })
   }
 
@@ -394,6 +432,24 @@ export class Flock {
     const inner = rs * 0.82
     const outer = rs * 1.14
     const cruise = Math.max(windSpeed * 2, u(64)) + (scattering ? u(300) : 0)
+    const form = this.form
+    const loose = 1 - form
+    // The murmuration's orbit: about an axis that leans 34 degrees off the globe's own and
+    // precesses round it, so the flock climbs over the north, dives under the south and passes
+    // behind and in front of the rings. Its head leads on that orbit; the rest is drawn to it.
+    const LEAN = 0.6
+    const Ax = Math.sin(LEAN) * Math.cos(this.bank)
+    const Ay = Math.sin(LEAN) * Math.sin(this.bank)
+    const Az = Math.cos(LEAN)
+    const e1x = -Math.sin(this.bank)
+    const e1y = Math.cos(this.bank)
+    const e2x = -Az * e1y
+    const e2y = Az * e1x
+    const e2z = Ax * e1y - Ay * e1x
+    const headX = rs * (Math.cos(this.lead) * e1x + Math.sin(this.lead) * e2x)
+    const headY = rs * (Math.cos(this.lead) * e1y + Math.sin(this.lead) * e2y)
+    const headZ = rs * Math.sin(this.lead) * e2z
+    const rings = this.rings
     for (let i = 0; i < count; i += 1) {
       if (wake[i] > now) continue
       let fx = 0
@@ -444,9 +500,9 @@ export class Flock {
             }
           }
           if (seen) {
-            fx += (sumX / seen) * 0.8 + (velX / seen - vx[i]) * 2 // cohesion, alignment
-            fy += (sumY / seen) * 0.8 + (velY / seen - vy[i]) * 2
-            fz += (sumZ / seen) * 0.8 + (velZ / seen - vz[i]) * 2
+            fx += ((sumX / seen) * 0.8 + (velX / seen - vx[i]) * 2) * loose // cohesion, alignment
+            fy += ((sumY / seen) * 0.8 + (velY / seen - vy[i]) * 2) * loose
+            fz += ((sumZ / seen) * 0.8 + (velZ / seen - vz[i]) * 2) * loose
           }
           fx += apartX * u(430) // separation
           fy += apartY * u(430)
@@ -455,26 +511,45 @@ export class Flock {
           const nx = px / r
           const ny = py / r
           const nz = pz / r
-          const rho = Math.hypot(px, py) || 1
-          // the stream: round the axis, clockwise as the eye sees it, at the speed the tokens
-          // set. Slower toward the poles, and newer output a little faster than older, so the
-          // strata shear into streams.
-          const tx = py / rho
-          const ty = -px / rho
-          const along = vx[i] * tx + vy[i] * ty
-          const want = windSpeed * (0.84 + (0.32 * (i + 0.5)) / count) * Math.min(1, rho / rs + 0.25)
-          fx += tx * (want - along) * 2.1
-          fy += ty * (want - along) * 2.1
+          if (loose > 0.02) {
+            // the stream: round the leaning axis at the speed the tokens set, newer output a
+            // little faster than older, so the newest leads the murmuration and the oldest trails
+            let tx = Ay * pz - Az * py
+            let ty = Az * px - Ax * pz
+            let tz = Ax * py - Ay * px
+            const rho = Math.hypot(tx, ty, tz) || 1
+            tx /= rho
+            ty /= rho
+            tz /= rho
+            const along = vx[i] * tx + vy[i] * ty + vz[i] * tz
+            const want = windSpeed * (0.84 + (0.32 * (i + 0.5)) / count) * Math.min(1, rho / rs + 0.25)
+            const drive = (want - along) * 2.1 * loose
+            fx += tx * drive
+            fy += ty * drive
+            fz += tz * drive
+            // the gathering: every dot is drawn to the head, so the flock travels as one body
+            fx += (headX - px) * 0.42 * loose
+            fy += (headY - py) * 0.42 * loose
+            fz += (headZ - pz) * 0.42 * loose
+          }
           // the skin: the flock keeps to a band from 0.82 to 1.14 of the globe's radius
           const across = vx[i] * nx + vy[i] * ny + vz[i] * nz
           let push = -across * 1.6
           if (r < inner) push += (inner - r) * 26
           else if (r > outer) push -= (r - outer) * (r > outer * 1.5 ? 9 : 26)
-          fx += nx * push
-          fy += ny * push
-          fz += nz * push
-          // strata: newer output keeps north, older south
-          fz += (rs * 0.9 * (((i + 0.5) / count) * 2 - 1) - pz) * 1.4 - vz[i] * 0.6
+          fx += nx * push * loose
+          fy += ny * push * loose
+          fz += nz * push * loose
+          if (form > 0.02) {
+            // drawn up: its place on its ring, the rings turning against each other
+            const ring = this.ringOf[i]
+            const lift = rs * 0.9 * (((ring + 0.5) / rings) * 2 - 1)
+            const wide = Math.sqrt(Math.max(0, rs * rs - lift * lift))
+            const angle = (this.placeIn[i] / Math.max(1, this.ringSize[ring])) * TAU + (ring & 1 ? -1 : 1) * this.ringTurn * (rs / Math.max(rs * 0.45, wide)) + ring * 0.7
+            fx += ((Math.sin(angle) * wide - px) * 30 - vx[i] * 9) * form
+            fy += ((Math.cos(angle) * wide - py) * 30 - vy[i] * 9) * form
+            fz += ((lift - pz) * 30 - vz[i] * 9) * form
+          }
           if (jitter) {
             fx += (this.random() - 0.5) * jitter * 16
             fy += (this.random() - 0.5) * jitter * 16
@@ -596,20 +671,35 @@ export class Flock {
     this.emitCharge(out, own, u, now)
   }
 
-  // The charge where the thread's wire ends: eight sockets round the tip, lit one by one as
-  // tokens arrive (a socket is an eighth of a dot), a glow that grows with them, and a flash
-  // each time the charge is full and a dot is fired into the body.
+  // The charge where the thread's wire ends. Eight sockets stand round the tip; a socket is an
+  // eighth of one dot's tokens. When a socket's tokens have arrived its mote leaves the socket
+  // and circles the tip, and the fuller the charge, the tighter and faster the motes circle,
+  // the larger the corona and the quicker its beat; near full the tip trembles. At eight of
+  // eight the charge is one dot: it is released with a flash and a ring that runs outward, the
+  // dot flies into the globe and the corona glows on for a moment. Nothing here moves unless
+  // tokens are arriving.
   emitCharge(out, hex, u, now) {
     const tip = this.tip
     if (!tip || !this.out) return
-    const lit = Math.floor(this.charge * CHARGE_SOCKETS + 1e-6)
+    const charge = this.charge
+    const lit = Math.floor(charge * CHARGE_SOCKETS + 1e-6)
+    const since = now - this.firedAt
+    const after = clamp(1 - since / 700, 0, 1) // the afterglow of the last release
+    const shake = u(2.6) * charge * charge * charge * this.arrive
+    const cx = tip.x + Math.sin(now * 0.093) * shake
+    const cy = tip.y + Math.cos(now * 0.127) * shake
+    const orbit = u(24 - 14 * charge)
     for (let socket = 0; socket < CHARGE_SOCKETS; socket += 1) {
-      const angle = -Math.PI / 2 + (socket / CHARGE_SOCKETS) * TAU
-      out.push({ key: `ch${socket}`, kind: `${socket < lit ? "f7" : "f3"}|${hex}`, x: tip.x + Math.cos(angle) * u(19), y: tip.y + Math.sin(angle) * u(19), z: 6 })
+      const base = -Math.PI / 2 + (socket / CHARGE_SOCKETS) * TAU
+      if (socket < lit) out.push({ key: `ch${socket}`, kind: `f7|${hex}`, x: cx + Math.cos(base + this.swirl) * orbit, y: cy + Math.sin(base + this.swirl) * orbit, z: 6 })
+      else out.push({ key: `ch${socket}`, kind: `f2|${hex}`, x: tip.x + Math.cos(base) * u(24), y: tip.y + Math.sin(base) * u(24), z: 6 })
     }
-    const glow = this.charge > 0.66 ? 3 : this.charge > 0.33 ? 2 : this.charge > 0.04 ? 1 : 0
-    if (glow) out.push({ key: "ch-glow", kind: `breath${glow}|${hex}`, x: tip.x, y: tip.y, z: 5 })
-    if (now - this.firedAt < 240) out.push({ key: "ch-fire", kind: `${now - this.firedAt < 110 ? "glow" : "glow2"}|${INK.text}`, x: tip.x, y: tip.y, z: 7 })
+    let glow = charge > 0.04 ? 1 + Math.floor(charge * 2.999) : 0
+    if (glow && this.arrive > 0.3 && Math.floor(this.pulse) & 1) glow += 1 // the beat: one size up
+    if (after > 0) glow = Math.max(glow, after > 0.55 ? 3 : after > 0.2 ? 2 : 1)
+    if (glow) out.push({ key: "ch-glow", kind: `breath${glow}|${hex}`, x: cx, y: cy, z: 5 })
+    if (since < 260) out.push({ key: "ch-fire", kind: `${since < 110 ? "glow" : "glow2"}|${INK.text}`, x: tip.x, y: tip.y, z: 7 })
+    if (since < 320) out.push({ key: "ch-ring", kind: `${since < 130 ? "ring" : "ring2"}|${hex}`, x: tip.x, y: tip.y, z: 7 })
   }
 
   // The dot under a point: the nearest to the eye first, then the closest. A dot that was under
