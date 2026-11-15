@@ -57,7 +57,11 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Context ring | Context used of the window; amber past 80%, red past 92% | Grows with the context | The thread's card | Pins it |
 | Moon on the outermost orbit | A subagent of the focused thread | Circles as fast as it writes; sits still when it rests; amber when it waits on you | The subagent's card | Focuses it |
 | Ridge | One thread's tokens a second over the window (a call's tokens spread evenly over the time it took; estimated from text length, 3.6 characters a token, where a call reports none) | The terrain steps left with the clock, one slice at a time | Value, time, thread, slice length | Focuses that thread; on the focused ridge, pins the point |
-| Ridge head (dot at "now") | A working thread's newest tokens a second | Rises and falls with the rate | n/a | n/a |
+| Ridge head (dot at "now") | A working thread's newest tokens a second | Rises and falls with the rate | n/a | n/a || Ground of the terrain | A plane in perspective: the focused thread's ridge at the front edge at full size, each ridge behind it scaled by 1 / (1 + 1.9 k / 6) for depth k, hazier with distance. The lines running back are equal times; the cyan edge is now | Steps with the clock | n/a | n/a |
+| Dashed step on a ridge | An open model call: what it probably writes, at the thread's last measured rate, from the call's start to now. An estimate, and named "estimate" on the front ridge | Grows to the right until the call reports | The ridge point | Pins it |
+| CONTEXT chart | The focused thread's context at every model call, against its limit; the dashed lines are 80% and 92%, where the context ring turns amber and red. "n/a" until a call reports its tokens | Steps with the terrain's window | The model call | Pins it |
+| LATENCY chart | Every tool call of the focused thread as a stem (height is how long it took, log scale from 0.1 s to 10 min, the equipment's colour, red when it failed, hollow while it runs) and every model call as a thin bar; the dotted line is the median tool call | Steps with the terrain's window; a running call grows | The tool call | Pins it |
+| WINDOW chart | The focused thread's account: used share of its five-hour window over the window's own time, against an even pace (the diagonal). Solid: what this program has seen since it started. Dashed: where it goes at this pace, an estimate. Hollow diamond: when it runs dry | Redrawn with every reading | The account | Pins it |
 | Motes above a ridge head | One per 5 s a model call has run without a first word | The stack grows while the model has not spoken yet | The terrain card | n/a |
 | Diamond on a ridge | A tool call, coloured by equipment; red and taller when it failed | Moves left with time | The call | Pins it |
 | Flag on a ridge | An alert raised for that thread | Moves left with time | The alert | Focuses the thread |
@@ -140,16 +144,25 @@ Seen only in this program's own snapshots, never by me in the pane: everything v
 terminal answered (not a snapshot): 13 to 19 sprite pages held of as many sent, a deleted page
 noticed and sent again, the fallback after three losses.
 
-Not done yet, in the order the brief gives: the live charts beside the core (`charts.mjs` is
-empty, so the space between the numbers and the live tail is blank), live latency lines in the
-equipment boxes, a livelier sector map, a tool call as a packet with a shape per tool, scrubbing
-the terrain by dragging, the demo's missing project directories.
+Since then: three live charts beside the core (context, latency, the account's window), the
+terrain in real perspective with an open call's estimate drawn dashed, wire streams that are
+seen at a glance (solid motes, every fourth a glowing head; a faint sparse stream when the rate
+is not known).
+
+Not done yet, in the order the brief gives: live latency lines in the equipment boxes, a
+livelier sector map, a tool call as a packet with a shape per tool, calls in flight and a flash
+on failure there, phase ripples, the cache cooling, scrubbing the terrain by dragging, the
+remaining v4 marks as targets, explain-mode tags that overlap, the demo's missing project
+directories.
 
 Not verified: the ring formation once it has settled (seen only while forming), a pane wider
 than 105 columns with the paged atlas (the arithmetic says 30.4 MB of tiles plus 4 MB of pages
 at 206 columns), landscape, a quiet machine.
 
-Measured at 105 columns by 82 rows, three to four threads working: 30 frames a second, 205 to
-370 kB/s, 4 to 11% of a core, 257 to 270 MB physical footprint (resident size swings from 130 to
-400 MB with the machine's memory pressure), 16 to 17 MB of the terminal's 67 MB store. Painted
+Measured at 105 columns by 82 rows, three to four threads working, with the charts and the
+perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the
+focused thread runs tools, 500 to 540 kB/s and 6 to 11% while its whole flock flies; 257 to 270
+MB physical footprint (resident size swings from 130 to 450 MB with the machine's memory
+pressure); 16 to 18 MB of the terminal's 67 MB store. `stats.json` says what costs it:
+`repaintsPerSecond` by region of the still layer and `movedPerFrameBy` by kind of mark. Painted
 fallback: 1.5 to 4.7 MB/s and about one core.

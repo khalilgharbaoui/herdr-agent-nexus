@@ -12,8 +12,9 @@ is done or dropped.
   `graphics` whether the terminal holds them. **The operator has not yet said that he sees the
   dots in the pane again**: only he can. Built since: flat dots, the charge that builds at the
   tip, the flock in orbit round the rings and the siphon into the globe (fourth and sixth
-  addenda). Not built from `BRIEF-v5.md`: the live charts beside the core, equipment latency
-  lines, the sector map, tool calls as packets, scrubbing the terrain. `v5/README.md` ends with
+  addenda), three live charts beside the core, the terrain in perspective, wire streams seen at a
+  glance. Not built from `BRIEF-v5.md`: equipment latency lines, the sector map, tool calls as
+  packets, phase ripples, the cache cooling, scrubbing the terrain. `v5/README.md` ends with
   what is done, what was only seen in a snapshot, and the measurements.
 
 ## Open from the operator

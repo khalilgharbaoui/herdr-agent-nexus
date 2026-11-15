@@ -1006,14 +1006,22 @@ export class Renderer {
     // 80 tokens a second); the focused thread's stream also runs up into its flock. An account
     // that is being drawn on drains: motes sink through its reservoir, closer together the
     // further its burn is above an even pace.
+    // The stream is made to be seen from across the room: solid motes, every fourth one a
+    // glowing head, and the focused thread's feed into its flock all glowing heads. A working
+    // thread whose rate is not known (no call of it reported in the last 45 s) still shows that
+    // it works: a thin, faint stream, the sparsest there is.
     for (const g of G.rows) {
       if (!g.row || g.row.session.state !== "working") continue
       const rate = scene.rateOf(g.sid, now)
-      if (!rate) continue
       const hex = spriteHex(modelColor(g.row.session.model, g.row.session.provider))
+      if (!rate) {
+        streams.push({ key: `tok:${g.sid}`, path: `axon:${g.sid}`, kind: `mote|${hex}`, speed: u(70), gap: u(240) })
+        continue
+      }
       const gap = u(rate >= 80 ? 44 : rate >= 40 ? 66 : rate >= 15 ? 104 : 180)
-      streams.push({ key: `tok:${g.sid}`, path: `axon:${g.sid}`, kind: `mote|${hex}`, speed: u(110), gap })
-      if (g.sid === scene.focus.id) streams.push({ key: `feed:${g.sid}`, path: `focus:${g.sid}`, kind: `mote|${hex}`, speed: u(150), gap })
+      streams.push({ key: `tok:${g.sid}`, path: `axon:${g.sid}`, kind: `tail|${hex}`, speed: u(110), gap })
+      streams.push({ key: `tokh:${g.sid}`, path: `axon:${g.sid}`, kind: `dot|${hex}`, speed: u(110), gap: gap * 4 })
+      if (g.sid === scene.focus.id) streams.push({ key: `feed:${g.sid}`, path: `focus:${g.sid}`, kind: `dot|${hex}`, speed: u(150), gap })
     }
     for (const rail of G.rails ?? []) {
       const account = scene.world.accounts.find((candidate) => candidate.name === rail.name)
