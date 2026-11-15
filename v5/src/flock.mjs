@@ -34,6 +34,7 @@ export const LEVELS = 7 // depth layers of a dot: 1 is the farthest
 export const STREAK_FROM = 3 // from this depth layer on a flying dot shows its streak
 export const CHARGE_SOCKETS = 8 // the charge at the tip fills this many sockets, then fires one dot
 const GHOST_MS = 700
+const SIPHON_MS = 1400 // how long a dot takes from the orbit into the globe
 const smooth = (value, low, high) => {
   const t = clamp((value - low) / (high - low), 0, 1)
   return t * t * (3 - 2 * t)
@@ -115,6 +116,20 @@ export class Flock {
     this.estimate = 0 // tokens the open call has probably written and not reported yet
     this.estimateAt = 0
     this.target = 0
+    // A dot's life: fired at the tip it joins the flock that circles the ring system (1), when
+    // its model call has reported it spirals into the globe (2), and there it stays (3).
+    this.stage = new Uint8Array(n)
+    this.joined = new Float64Array(n) // when it reached the orbit
+    this.sipAt = new Float64Array(n) // when it left the orbit
+    this.sipR = new Float32Array(n) // where it left it: radius, angle, height
+    this.sipA = new Float32Array(n)
+    this.sipZ = new Float32Array(n)
+    this.siphonAt = 0
+    this.orbitR = 1
+    this.orbitLead = 0 // where the head of the orbiting flock is on the ring
+    this.orbitSpeed = 0
+    this.inOrbit = 0
+    this.sure = 0 // dots that stand for reported tokens; the rest are the open call's estimate
     this.ringOf = new Uint8Array(n)
     this.placeIn = new Uint16Array(n)
     this.ringSize = new Uint16Array(16)
@@ -204,13 +219,31 @@ export class Flock {
     const dt = Math.min(0.05, input.dt)
     const u = (value) => value * S
     const out = session.turn?.out ?? session.lastOut ?? 0
-    const unit = flockUnit(out)
     const turnKey = session.turn?.start ?? 0
     const fresh = session.id !== this.sid || turnKey !== this.turn
     const fill = session.context.limit && session.context.used ? clamp(session.context.used / session.context.limit, 0, 1) : 0
     const ease = (rate) => 1 - Math.exp(-rate * dt)
     const working = session.state === "working"
     const phase = session.phase.key
+    // Tokens are counted when a model call reports, once per call. While a call is open, what it
+    // has probably written so far is taken from the thread's last measured rate and the time the
+    // call has been open: an estimate. Its dots circle the ring system and enter the globe only
+    // when the call reports; then the estimate is replaced by the call's own count.
+    const openSince = working && (phase === "thinking" || phase === "writing") ? (session.phase.since ?? now) : 0
+    if (openSince !== this.openSince || fresh) {
+      const elapsed = session.turn ? (now - session.turn.start) / 1000 : 0
+      if (openSince) this.callRate = rate > 0 ? rate : out > 0 && elapsed > 5 ? out / elapsed : 0
+      if (openSince) this.outAtOpen = out
+      this.openSince = openSince
+    }
+    if (openSince) {
+      this.estimate = ((now - openSince) / 1000) * this.callRate
+      this.estimateAt = now
+    } else if (this.estimate > 0 && (out !== this.outAtOpen || now - this.estimateAt > 5000)) this.estimate = 0
+    const target = out + this.estimate
+    this.target = target
+    const unit = flockUnit(target)
+    this.orbitR = (core.RB + core.RA) / 2
     this.frame += 1
     this.laneGap = u(26)
 
@@ -275,23 +308,6 @@ export class Flock {
     // wire ends: the charge grows with every token that arrived, and each time it holds one
     // dot's worth of tokens it fires that dot into the body. A dot takes at least 0.4 s to
     // charge, and a backlog (a call that reports all it wrote at its end) clears in 2.4 s.
-    // Tokens are counted when a model call reports, once per call. While a call is open, what it
-    // has probably written so far is taken from the thread's last measured rate and the time the
-    // call has been open: an estimate, drawn as dimmer dots, and replaced by the call's own
-    // count the moment it reports.
-    const openSince = working && (phase === "thinking" || phase === "writing") ? (session.phase.since ?? now) : 0
-    if (openSince !== this.openSince || fresh) {
-      const elapsed = session.turn ? (now - session.turn.start) / 1000 : 0
-      if (openSince) this.callRate = rate > 0 ? rate : out > 0 && elapsed > 5 ? out / elapsed : 0
-      if (openSince) this.outAtOpen = out
-      this.openSince = openSince
-    }
-    if (openSince) {
-      this.estimate = ((now - openSince) / 1000) * this.callRate
-      this.estimateAt = now
-    } else if (this.estimate > 0 && (out !== this.outAtOpen || now - this.estimateAt > 5000)) this.estimate = 0
-    const target = out + this.estimate
-    this.target = target
     if (fresh || unit !== this.unit) this.shown = target
     else if (target > this.shown) {
       const backlog = target - this.shown
@@ -303,7 +319,22 @@ export class Flock {
     this.unit = unit
     this.out = out
     this.assign(session, turn, out, unit, count, now)
+    const sure = Math.min(count, Math.floor(out / unit + 1e-9))
+    this.sure = sure
 
+    // dots that left: the call reported less than was estimated. They drift off and fade.
+    if (count < this.count && !fresh && !this.ghosts) {
+      const ghosts = { at: now, n: 0, x: [], y: [], kind: [], level: [] }
+      for (let index = count; index < this.count; index += 1) {
+        if (!this.level[index]) continue
+        ghosts.x.push(this.sx[index])
+        ghosts.y.push(this.sy[index])
+        ghosts.kind.push(this.kind[index].split("|")[1] ?? INK.text)
+        ghosts.level.push(this.level[index])
+        ghosts.n += 1
+      }
+      this.ghosts = ghosts.n ? ghosts : null
+    }
     // dots that joined since the last frame
     const spot = [0, 0, 0]
     if (count > this.count) {
@@ -314,9 +345,24 @@ export class Flock {
         if (now - (this.flashAt ?? 0) > 380) this.flashAt = now
       }
       const from = toPlane(view, entry.x, entry.y, [0, 0])
+      const reach = Math.hypot(from[0], from[1]) || 1
       for (let index = this.count; index < count; index += 1) {
-        if (fresh) {
+        if (fresh && index >= sure) {
+          // a change of focus while a call is open: its dots are already in orbit
+          const angle = this.orbitLead - this.random() * 1.1
+          const radius = this.orbitR + (this.random() - 0.5) * u(22)
+          spot[0] = Math.sin(angle) * radius
+          spot[1] = Math.cos(angle) * radius
+          spot[2] = (this.random() - 0.5) * u(14)
+          this.vx[index] = Math.cos(angle) * u(110)
+          this.vy[index] = -Math.sin(angle) * u(110)
+          this.vz[index] = 0
+          this.wake[index] = now + this.random() * 260
+          this.stage[index] = 1
+          this.joined[index] = now
+        } else if (fresh) {
           // a change of focus: the new thread's flock gathers from all around and forms up
+          this.stage[index] = 3
           const angle = this.random() * TAU
           const lift = (this.random() - 0.5) * 1.6
           const far = core.Rm * (1.5 + this.random() * 0.7)
@@ -328,18 +374,20 @@ export class Flock {
           this.vy[index] = 0
           this.vz[index] = 0
         } else {
-          // fired from the tip toward the north pole: the charge reached one dot's worth
+          // released at the tip: the charge reached one dot's worth. It flies to the nearest
+          // point of the ring system and joins the flock that circles it.
           spot[0] = from[0] + (this.random() - 0.5) * u(6)
           spot[1] = from[1]
           spot[2] = 0
-          const dx = -spot[0]
-          const dy = -spot[1]
-          const dz = this.rs
-          const length = Math.hypot(dx, dy, dz) || 1
+          const dx = from[0] * (this.orbitR / reach) - spot[0]
+          const dy = from[1] * (this.orbitR / reach) - spot[1]
+          const length = Math.hypot(dx, dy) || 1
           this.vx[index] = (dx / length) * u(520)
           this.vy[index] = (dy / length) * u(520)
-          this.vz[index] = (dz / length) * u(520)
+          this.vz[index] = 0
           this.wake[index] = now + (index - this.count) * 60
+          this.stage[index] = 1
+          this.joined[index] = this.wake[index] + 450
         }
         this.x[index] = spot[0]
         this.y[index] = spot[1]
@@ -348,6 +396,29 @@ export class Flock {
       }
     }
     this.count = count
+
+    // The siphon. A dot in orbit whose call has reported leaves the flock and spirals up into
+    // the globe. They go one after another, oldest first, so they draw a thread from the ring to
+    // the globe; a dot circles for at least 0.9 s first, so even a burst is seen to pass by.
+    let waiting = 0
+    let next = -1
+    let circling = 0
+    for (let index = 0; index < count; index += 1) {
+      if (this.stage[index] !== 1) continue
+      circling += 1
+      if (index >= sure || this.wake[index] > now) continue
+      waiting += 1
+      if (next < 0 && now - this.joined[index] > 900) next = index
+    }
+    this.inOrbit = circling
+    if (next >= 0 && now - this.siphonAt > clamp(1600 / waiting, 25, 90)) {
+      this.siphonAt = now
+      this.stage[next] = 2
+      this.sipAt[next] = now
+      this.sipR[next] = Math.hypot(this.x[next], this.y[next])
+      this.sipA[next] = Math.atan2(this.x[next], this.y[next])
+      this.sipZ[next] = this.z[next]
+    }
 
     // squads: the dots of a running tool call leave the globe as a satellite on its lane
     const running = new Map()
@@ -375,11 +446,11 @@ export class Flock {
     for (const [id, tool] of running) {
       if (this.squads.has(id) || !count) continue
       const members = []
-      for (let index = 0; index < count; index += 1) if (this.meta[index]?.tool?.id === id) members.push(index)
+      for (let index = 0; index < count; index += 1) if (this.stage[index] === 3 && this.meta[index]?.tool?.id === id) members.push(index)
       if (!members.length) {
         // its input is smaller than one dot: the newest free dot of that call goes, or the newest of all
-        for (let index = count - 1; index >= 0 && !members.length; index -= 1) if (!this.squad[index] && this.meta[index]?.step?.tools.some((entry) => entry.id === id)) members.push(index)
-        for (let index = count - 1; index >= 0 && !members.length; index -= 1) if (!this.squad[index]) members.push(index)
+        for (let index = count - 1; index >= 0 && !members.length; index -= 1) if (this.stage[index] === 3 && !this.squad[index] && this.meta[index]?.step?.tools.some((entry) => entry.id === id)) members.push(index)
+        for (let index = count - 1; index >= 0 && !members.length; index -= 1) if (this.stage[index] === 3 && !this.squad[index]) members.push(index)
       }
       members.slice(0, 12).forEach((index, place) => {
         this.squad[index] = id
@@ -423,8 +494,12 @@ export class Flock {
     // The formation says what the model is doing. While it reasons (a call is open and no part
     // of it has ended) the flock is a murmuration: loose, bunched, banking round the globe on a
     // leaning orbit. Once a part has ended and the next is being written, it draws up in rings.
-    const formWant = working && phase === "writing" ? 1 : 0
+    // (NEXUS_FORM=rings shows the ring formation on any flying thread, for looking at it)
+    const formWant = working && (phase === "writing" || (process.env.NEXUS_FORM === "rings" && phase !== "tool")) ? 1 : 0
     this.form += (formWant - this.form) * ease(2.4)
+    // the flock in orbit circles the ring system as fast as the open call writes
+    this.orbitSpeed = (u(70) + u(2.4) * Math.min(Math.max(rate, this.callRate), 90)) * this.pace
+    this.orbitLead += (this.orbitSpeed / this.orbitR) * dt * this.slow
     // everything that turns, turns by the distance flown: no clock of its own
     const turned = (windSpeed / Math.max(1, this.rs)) * (1 - lock) * dt * this.slow
     this.lead += turned
@@ -439,7 +514,8 @@ export class Flock {
     this.pulse += dt * (1.3 + 5.7 * this.charge * this.charge) * hurry * this.arrive
     const fails = session.failStreak ?? 0
     const jitter = u(26) * Math.min(3, fails) + (scattering ? u(220) : 0)
-    this.state = !working ? (session.state === "waiting" ? "formed up, waiting on you" : session.state === "stalled" ? "locked, silent" : session.state === "failed" ? "formed up, the turn failed" : "formed up, at rest") : scattering ? "scattered by a failed call" : phase === "tool" ? "locked, stepping while a tool runs" : this.lock > 0.6 ? "locked, nothing heard" : this.pace < 0.75 ? "slowing, nothing heard" : phase === "writing" ? "in rings while it writes" : phase === "thinking" ? "a murmuration while it reasons" : "a murmuration while the model is called"
+    this.formation = !working ? (session.state === "waiting" ? "formed up, waiting on you" : session.state === "stalled" ? "locked, silent" : session.state === "failed" ? "formed up, the turn failed" : "formed up, at rest") : scattering ? "scattered by a failed call" : phase === "tool" ? "locked, stepping while a tool runs" : this.lock > 0.6 ? "locked, nothing heard" : this.pace < 0.75 ? "slowing, nothing heard" : phase === "writing" ? "in rings while it writes" : phase === "thinking" ? "a murmuration while it reasons" : "a murmuration while the model is called"
+    this.state = this.inOrbit ? `${this.formation}  ·  ${this.inOrbit} in orbit` : this.formation
     // the rings: the turn's output cut into parallels, oldest at the south, newest at the north
     const rings = clamp(Math.round(Math.sqrt(count) / 1.7), 2, 9)
     this.rings = rings
@@ -484,6 +560,13 @@ export class Flock {
     const headY = rs * (Math.cos(this.lead) * e1y + Math.sin(this.lead) * e2y)
     const headZ = rs * Math.sin(this.lead) * e2z
     const rings = this.rings
+    const stage = this.stage
+    // the flock in orbit: its head leads on the ring, between the context ring and the turn clock
+    const orbitR = this.orbitR
+    const orbitSpeed = this.orbitSpeed
+    const leadX = Math.sin(this.orbitLead) * orbitR
+    const leadY = Math.cos(this.orbitLead) * orbitR
+    const step = Math.max(dt, 1e-3)
     for (let i = 0; i < count; i += 1) {
       if (wake[i] > now) continue
       let fx = 0
@@ -492,6 +575,82 @@ export class Flock {
       const px = x[i]
       const py = y[i]
       const pz = z[i]
+      if (stage[i] === 2) {
+        // The siphon: a spiral from where it left the orbit, 0.85 of a turn on in the orbit's
+        // own sense, inward and up to where its place on the globe is. Every dot follows the
+        // same curve a moment after the one before, which is what draws the thread.
+        const s = clamp((now - this.sipAt[i]) / SIPHON_MS, 0, 1)
+        const e = s * s * (3 - 2 * s)
+        this.lattice(i, count, rs * breath, turnBy, spot)
+        const radius = this.sipR[i] + (Math.hypot(spot[0], spot[1]) - this.sipR[i]) * e
+        const angle = this.sipA[i] + 1.7 * Math.PI * s
+        vx[i] = (Math.sin(angle) * radius - px) / step
+        vy[i] = (Math.cos(angle) * radius - py) / step
+        vz[i] = (this.sipZ[i] + (spot[2] - this.sipZ[i]) * e * e - pz) / step
+        ax[i] = 0
+        ay[i] = 0
+        az[i] = 0
+        if (s >= 1) stage[i] = 3
+        continue
+      }
+      if (stage[i] === 1) {
+        // In orbit: a murmuration that keeps to the ring's plane. It flies round the ring as
+        // fast as the open call writes, bunches behind its head, and rides a wave that lifts it
+        // over the ring plane and dips it under, so it passes in front of the rings and behind.
+        let sumX = 0
+        let sumY = 0
+        let sumZ = 0
+        let velX = 0
+        let velY = 0
+        let velZ = 0
+        let seen = 0
+        for (let j = 0; j < count; j += 1) {
+          if (j === i || stage[j] !== 1 || wake[j] > now) continue
+          const dx = x[j] - px
+          const dy = y[j] - py
+          const dz = z[j] - pz
+          const d2 = dx * dx + dy * dy + dz * dz
+          if (d2 >= R2) continue
+          seen += 1
+          sumX += dx
+          sumY += dy
+          sumZ += dz
+          velX += vx[j]
+          velY += vy[j]
+          velZ += vz[j]
+          if (d2 < RS2 && d2 > 0.0001) {
+            const d = Math.sqrt(d2)
+            const push = ((1 - d / RS) / d) * u(430)
+            fx -= dx * push
+            fy -= dy * push
+            fz -= dz * push
+          }
+        }
+        if (seen) {
+          fx += (sumX / seen) * 0.8 + (velX / seen - vx[i]) * 2
+          fy += (sumY / seen) * 0.8 + (velY / seen - vy[i]) * 2
+          fz += (sumZ / seen) * 0.8 + (velZ / seen - vz[i]) * 2
+        }
+        const rho = Math.hypot(px, py) || 1
+        const ox = px / rho
+        const oy = py / rho
+        const tx = oy
+        const ty = -ox
+        const along = vx[i] * tx + vy[i] * ty
+        const want = orbitSpeed * (0.88 + 0.24 * ((i * 0.618) % 1))
+        fx += tx * (want - along) * 2.4
+        fy += ty * (want - along) * 2.4
+        const outward = vx[i] * ox + vy[i] * oy
+        const pull = (orbitR - rho) * 9 - outward * 4
+        fx += ox * pull + (leadX - px) * 0.5
+        fy += oy * pull + (leadY - py) * 0.5
+        const wave = u(13) * Math.sin(2 * Math.atan2(px, py) + this.orbitLead)
+        fz += (wave - pz) * 9 - vz[i] * 4
+        ax[i] = fx
+        ay[i] = fy
+        az[i] = fz
+        continue
+      }
       const mine = squad[i] ? this.squads.get(squad[i]) : null
       if (mine) {
         // out with a tool call: in line behind its satellite, on that equipment's lane
@@ -512,7 +671,7 @@ export class Flock {
           let apartZ = 0
           let seen = 0
           for (let j = 0; j < count; j += 1) {
-            if (j === i || wake[j] > now || squad[j]) continue
+            if (j === i || wake[j] > now || squad[j] || stage[j] !== 3) continue
             const dx = x[j] - px
             const dy = y[j] - py
             const dz = z[j] - pz
@@ -609,7 +768,16 @@ export class Flock {
       vx[i] += ax[i] * dt
       vy[i] += ay[i] * dt
       vz[i] += az[i] * dt
-      if (!squad[i] && free > 0.5) {
+      if (stage[i] === 1) {
+        const speed = Math.hypot(vx[i], vy[i], vz[i])
+        const most = Math.max(orbitSpeed * 2.4, u(560))
+        if (speed > most) {
+          const k = most / speed
+          vx[i] *= k
+          vy[i] *= k
+          vz[i] *= k
+        }
+      } else if (stage[i] === 3 && !squad[i] && free > 0.5) {
         const speed = Math.hypot(vx[i], vy[i], vz[i])
         const most = Math.hypot(x[i], y[i], z[i]) > outer + u(12) ? u(560) : cruise
         if (speed > most) {
@@ -646,7 +814,7 @@ export class Flock {
       const X = pr[0] + pr[2] * this.parX
       const Y = pr[1] + pr[2] * this.parY
       let level = 1 + Math.floor(clamp((pr[2] + span) / (2 * span), 0, 0.999) * LEVELS)
-      if (resting || this.meta[i]?.pending) level = Math.max(1, level - 2) // at rest, or only estimated: dimmer
+      if (resting) level = Math.max(1, level - 2)
       const under = this.z[i] < 0 ? 1 : 0
       // a far dot is small and slow on screen: it is brought up to date every other frame
       if (level <= 2 && ((i ^ odd) & 1) && this.level[i] === level && this.under[i] === under && !this.squad[i]) {

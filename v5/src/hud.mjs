@@ -544,7 +544,7 @@ export const hud = {
           ["WRITTEN", meta.seq === null ? "n/a" : `${clockOf(meta.at)}  ·  ${agoOf(now - meta.at)} ago`],
           ["ON THE GLOBE", `${Math.round(((target.index + 0.5) / Math.max(1, flock.count)) * 180 - 90)}° latitude: the south pole is the turn's first output, the north pole its newest`],
           ["DEPTH", `layer ${flock.level[target.index]} of ${LEVELS}: nearer is larger and brighter${flock.under[target.index] ? ", behind the rings" : ", in front of the rings"}`],
-          ["DOING", out ? `out with ${bare(out.tool.name)}, in line behind its satellite` : flock.state, out ? PORT_COLOR[portOf(out.tool.name)] : undefined],
+          ["DOING", out ? `out with ${bare(out.tool.name)}, in line behind its satellite` : flock.stage[target.index] === 1 ? (meta.pending ? "in orbit round the rings: its call is still open" : "in orbit round the rings: its call has reported, it goes into the globe next") : flock.stage[target.index] === 2 ? "spiralling from the orbit into the globe" : flock.formation, out ? PORT_COLOR[portOf(out.tool.name)] : flock.stage[target.index] === 3 ? undefined : INK.live],
         ],
         pin: true,
         foot: "the split inside a call is by the length of its reasoning, reply and tool input",
