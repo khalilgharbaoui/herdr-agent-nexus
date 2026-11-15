@@ -109,6 +109,12 @@ export class Flock {
     this.arrive = 0 // 1 while tokens are arriving at the tip, 0 when none are
     this.pulse = 0 // beats of the charge's corona so far
     this.swirl = 0 // how far the gathered motes have circled the tip
+    this.openSince = 0 // when the model call that is open now began, 0 when none is
+    this.callRate = 0 // tokens a second that call is taken to write: the thread's last measured rate
+    this.outAtOpen = 0
+    this.estimate = 0 // tokens the open call has probably written and not reported yet
+    this.estimateAt = 0
+    this.target = 0
     this.ringOf = new Uint8Array(n)
     this.placeIn = new Uint16Array(n)
     this.ringSize = new Uint16Array(16)
@@ -126,7 +132,9 @@ export class Flock {
   // Which model call and which part of it each dot stands for. The turn's steps are laid end to
   // end by the tokens they wrote, and dot i is the stretch from i units to i + 1 units.
   assign(session, turn, out, unit, count, now) {
-    const key = `${session.id}|${turn?.start ?? 0}|${count}|${unit}|${session.steps.length}|${session.steps[session.steps.length - 1]?.end ?? "open"}|${session.steps[session.steps.length - 1]?.items.length ?? 0}`
+    // dots past what the calls have reported stand for the open call's estimate
+    const sure = Math.min(count, Math.floor(out / unit + 1e-9))
+    const key = `${session.id}|${turn?.start ?? 0}|${count}|${sure}|${unit}|${session.steps.length}|${session.steps[session.steps.length - 1]?.end ?? "open"}|${session.steps[session.steps.length - 1]?.items.length ?? 0}`
     if (key === this.metaKey) return
     this.metaKey = key
     const segments = []
@@ -156,8 +164,9 @@ export class Flock {
     for (let index = 0; index < count; index += 1) {
       const from = index * unit
       let entry = { kind: "unknown", seq: null, step: null, tool: null, at: turn?.start ?? 0, from, to: Math.min(out, from + unit) }
-      if (total > 0) {
-        const want = ((index + 0.5) / count) * total
+      if (index >= sure) entry = { kind: "unknown", seq: null, step: null, tool: null, at: now, from, to: from + unit, pending: true }
+      else if (total > 0) {
+        const want = ((index + 0.5) / sure) * total
         while (at < segments.length - 1 && passed + segments[at].share < want) passed += segments[at++].share
         const segment = segments[at]
         const within = clamp((want - passed) / Math.max(1e-6, segment.share), 0, 1)
@@ -200,6 +209,8 @@ export class Flock {
     const fresh = session.id !== this.sid || turnKey !== this.turn
     const fill = session.context.limit && session.context.used ? clamp(session.context.used / session.context.limit, 0, 1) : 0
     const ease = (rate) => 1 - Math.exp(-rate * dt)
+    const working = session.state === "working"
+    const phase = session.phase.key
     this.frame += 1
     this.laneGap = u(26)
 
@@ -264,8 +275,28 @@ export class Flock {
     // wire ends: the charge grows with every token that arrived, and each time it holds one
     // dot's worth of tokens it fires that dot into the body. A dot takes at least 0.4 s to
     // charge, and a backlog (a call that reports all it wrote at its end) clears in 2.4 s.
-    if (fresh || unit !== this.unit || out < this.shown) this.shown = out
-    else if (out > this.shown) this.shown = Math.min(out, this.shown + Math.max(unit / 0.4, (out - this.shown) / 2.4) * dt)
+    // Tokens are counted when a model call reports, once per call. While a call is open, what it
+    // has probably written so far is taken from the thread's last measured rate and the time the
+    // call has been open: an estimate, drawn as dimmer dots, and replaced by the call's own
+    // count the moment it reports.
+    const openSince = working && (phase === "thinking" || phase === "writing") ? (session.phase.since ?? now) : 0
+    if (openSince !== this.openSince || fresh) {
+      const elapsed = session.turn ? (now - session.turn.start) / 1000 : 0
+      if (openSince) this.callRate = rate > 0 ? rate : out > 0 && elapsed > 5 ? out / elapsed : 0
+      if (openSince) this.outAtOpen = out
+      this.openSince = openSince
+    }
+    if (openSince) {
+      this.estimate = ((now - openSince) / 1000) * this.callRate
+      this.estimateAt = now
+    } else if (this.estimate > 0 && (out !== this.outAtOpen || now - this.estimateAt > 5000)) this.estimate = 0
+    const target = out + this.estimate
+    this.target = target
+    if (fresh || unit !== this.unit) this.shown = target
+    else if (target > this.shown) {
+      const backlog = target - this.shown
+      this.shown = Math.min(target, this.shown + Math.max(backlog > unit ? unit / 0.4 : 0, backlog / 2.4, this.callRate) * dt)
+    } else if (target < this.shown) this.shown += (target - this.shown) * ease(5)
     const count = Math.min(FLOCK_CAP, Math.floor(this.shown / unit + 1e-9))
     this.charge = clamp(this.shown / unit - Math.floor(this.shown / unit + 1e-9), 0, 1)
     this.tip = entry
@@ -276,7 +307,12 @@ export class Flock {
     // dots that joined since the last frame
     const spot = [0, 0, 0]
     if (count > this.count) {
-      if (!fresh) this.firedAt = now
+      if (!fresh) {
+        this.firedAt = now
+        // the flash and the ring show at most some three times a second: a burst of dots is a
+        // steady release, never a strobe
+        if (now - (this.flashAt ?? 0) > 380) this.flashAt = now
+      }
       const from = toPlane(view, entry.x, entry.y, [0, 0])
       for (let index = this.count; index < count; index += 1) {
         if (fresh) {
@@ -314,7 +350,6 @@ export class Flock {
     this.count = count
 
     // squads: the dots of a running tool call leave the globe as a satellite on its lane
-    const working = session.state === "working"
     const running = new Map()
     if (working) for (const tool of session.phase.tools) running.set(tool.id, tool)
     for (const [id, squad] of this.squads) {
@@ -358,7 +393,6 @@ export class Flock {
 
     // how free the flock is: 0 flying, 1 locked into the lattice
     const silent = (now - (session.last || now)) / 1000
-    const phase = session.phase.key
     let lockWant = 1
     let paceWant = 1
     if (working && phase !== "tool") {
@@ -398,9 +432,9 @@ export class Flock {
     this.ringTurn += turned
     // the charge at the tip: its motes circle and its corona beats only while tokens arrive,
     // faster the fuller the charge is and the faster they come
-    const arriving = working && (this.shown < out - 1e-6 || rate > 0.5)
+    const arriving = working && (this.shown < this.target - 1e-6 || (this.openSince > 0 && this.callRate > 0))
     this.arrive += ((arriving ? 1 : 0) - this.arrive) * ease(arriving ? 6 : 2.5)
-    const hurry = 0.7 + 0.3 * Math.min(1, rate / 40)
+    const hurry = 0.7 + 0.3 * Math.min(1, Math.max(rate, this.callRate) / 40)
     this.swirl += dt * (1.6 + 8.4 * this.charge * this.charge) * hurry * this.arrive
     this.pulse += dt * (1.3 + 5.7 * this.charge * this.charge) * hurry * this.arrive
     const fails = session.failStreak ?? 0
@@ -612,7 +646,7 @@ export class Flock {
       const X = pr[0] + pr[2] * this.parX
       const Y = pr[1] + pr[2] * this.parY
       let level = 1 + Math.floor(clamp((pr[2] + span) / (2 * span), 0, 0.999) * LEVELS)
-      if (resting) level = Math.max(1, level - 2)
+      if (resting || this.meta[i]?.pending) level = Math.max(1, level - 2) // at rest, or only estimated: dimmer
       const under = this.z[i] < 0 ? 1 : 0
       // a far dot is small and slow on screen: it is brought up to date every other frame
       if (level <= 2 && ((i ^ odd) & 1) && this.level[i] === level && this.under[i] === under && !this.squad[i]) {
@@ -681,10 +715,13 @@ export class Flock {
   emitCharge(out, hex, u, now) {
     const tip = this.tip
     if (!tip || !this.out) return
-    const charge = this.charge
+    // a backlog of more than a dot and a half (a call just reported all it wrote): the charge
+    // stays full and tight while the dots stream out of it
+    const flooding = this.target - this.shown > this.unit * 1.5
+    const charge = flooding ? 1 : this.charge
     const lit = Math.floor(charge * CHARGE_SOCKETS + 1e-6)
-    const since = now - this.firedAt
-    const after = clamp(1 - since / 700, 0, 1) // the afterglow of the last release
+    const since = now - (this.flashAt ?? 0)
+    const after = clamp(1 - (now - this.firedAt) / 700, 0, 1) // the afterglow of the last release
     const shake = u(2.6) * charge * charge * charge * this.arrive
     const cx = tip.x + Math.sin(now * 0.093) * shake
     const cy = tip.y + Math.cos(now * 0.127) * shake
@@ -725,6 +762,6 @@ export class Flock {
 
   // True while anything in the flock is still moving on its own.
   get moving() {
-    return this.lock < 0.995 || this.squads.size > 0 || this.spin > 0.01 || this.ghosts !== null || this.sparks.length > 0 || this.shown < this.out
+    return this.lock < 0.995 || this.squads.size > 0 || this.spin > 0.01 || this.ghosts !== null || this.sparks.length > 0 || Math.abs(this.shown - this.target) > 1e-6 || this.arrive > 0.01
   }
 }

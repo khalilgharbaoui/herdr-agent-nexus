@@ -536,7 +536,9 @@ export const hud = {
         title: `dot ${target.index + 1} of ${flock.count}  ·  ${KIND_WORD[meta.kind]}`,
         lines: [
           ["THREAD", threadOf(target.sid)],
-          ["STANDS FOR", `${compactOf(meta.to - meta.from)} tok: ${compactOf(meta.from)} to ${compactOf(meta.to)} of the turn's ${compactOf(flock.out)}`],
+          meta.pending
+            ? ["STANDS FOR", `about ${compactOf(flock.unit)} tok the open call has probably written: an estimate from the thread's last measured rate (${flock.callRate >= 10 ? Math.round(flock.callRate) : flock.callRate.toFixed(1)} tok/s), replaced when the call reports`, INK.soft]
+            : ["STANDS FOR", `${compactOf(meta.to - meta.from)} tok: ${compactOf(meta.from)} to ${compactOf(meta.to)} of the turn's ${compactOf(flock.out)}`],
           ["PART", `${KIND_WORD[meta.kind]}${meta.tool ? ` for ${bare(meta.tool.name)}` : ""}`, tone],
           ["MODEL CALL", meta.seq === null ? "not known: the call has not reported yet" : `call ${meta.seq}`],
           ["WRITTEN", meta.seq === null ? "n/a" : `${clockOf(meta.at)}  ·  ${agoOf(now - meta.at)} ago`],
@@ -557,10 +559,12 @@ export const hud = {
         ["HOLDS", `${Math.round(flock.charge * flock.unit)} of ${compactOf(flock.unit)} tok toward the next dot`, session.state === "working" ? INK.live : INK.soft],
         ["SOCKETS", `${lit} of ${CHARGE_SOCKETS} lit  ·  one socket is ${Math.round((flock.unit / CHARGE_SOCKETS) * 10) / 10} tok`],
         ["FIRES AT", `${compactOf(flock.unit)} tok: one dot goes into the body`],
-        ["TAKEN IN", `${compactOf(Math.round(flock.shown))} of ${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}`],
+        ["REPORTED", `${compactOf(flock.out)} tok ${session.turn ? "this turn" : "last turn"}, counted when a model call ends`],
+        ["OPEN CALL", flock.openSince ? (flock.callRate > 0 ? `about ${compactOf(Math.round(flock.estimate))} tok so far: ${Math.round((now - flock.openSince) / 1000)} s at ${flock.callRate >= 10 ? Math.round(flock.callRate) : flock.callRate.toFixed(1)} tok/s, the thread's last measured rate. An estimate until the call reports` : "open, its rate is not known yet: nothing is estimated") : "no model call is open", flock.openSince && flock.callRate > 0 ? INK.live : INK.soft],
         ["FIRED", `${flock.count} dot${flock.count === 1 ? "" : "s"} so far`],
+        ["ENERGY", flock.arrive > 0.3 ? `motes circle at ${Math.round(24 - 14 * flock.charge)} px, ${(1.6 + 8.4 * flock.charge ** 2).toFixed(1)} rad/s; the corona beats ${(1.3 + 5.7 * flock.charge ** 2).toFixed(1)} times a second` : "still: no tokens are arriving"],
       ]
-      return { tone: modelColor(session.model, session.provider), kicker: "CHARGE AT THE TIP", title: threadOf(session.id), lines, pin: true, foot: "what the thread writes rises up its wire and gathers here until it is one dot" }
+      return { tone: modelColor(session.model, session.provider), kicker: "CHARGE AT THE TIP", title: threadOf(session.id), lines, pin: true, foot: "tokens gather here; eight sockets make one dot, and a full charge fires it into the globe" }
     }
     if (target.kind === "flock" || target.kind === "lean") {
       const flock = this.flock
