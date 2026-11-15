@@ -5,25 +5,25 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-15 22:45: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
+- 2026-11-16 00:10: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
   transport, the terminal holds every sprite page; restart it in place with
-  `v5/tools/restart.sh`). It was not running from about 05:00 to 21:38: the third designer
-  session was cut off by a network failure while the Mac slept, and a fourth one (on `default`,
-  started 21:31) put it back. Built by the fourth session: the prompt cache cooling (an axis under the turn's
-  time, an arc round every cell body; the lifetime measured from the thread's Claude Code
-  transcript, found by the plugin's record or by timing, and marked ASSUMED where it is not);
-  the context ring closing (gate, head, dashed estimate, call ticks, caption), with the
-  context read at every model call from the transcript; three faults fixed (circuit rows
-  showed stale data between layout changes; the core was painted every other frame for a turn
-  past its usual length; chart titles collided in landscape); the painted transport at 15
-  frames a second. The event-driven marks are now counted when the
-  terminal places them (`eventsPlaced` in `v5/stats.json`): packets, flashes and ripples, red
-  ones after a failure, all seen placed in the live pane. First thing next: memory is over its class
-  (408 MB physical footprint at 22:45 against 294 MB at 22:07; the transcript worker's heap is
-  the suspect). Then, in the brief's order: a wide
-  pane and a live resize in the real terminal; the remaining small marks as targets and the
-  explain tags that overlap; scrubbing the terrain. `v5/README.md` ends with what is done, what was only seen in a snapshot, and the
-  measurements.
+  `v5/tools/restart.sh`). A fifth designer session (on `appical`, 22:47 to 00:10) did the ninth
+  addendum's first two items and part of the third, and stopped at a committed step because
+  `appical` neared 80% of its window. Done: memory is under its class, 171 to 176 MB physical
+  footprint where it was 420 to 433 (four causes, each measured: the transcript reader read
+  files whole; the encoder made a deflate stream per tile; the young generation's flag was set
+  too late to count; tile pixels left dead blocks of odd sizes in the allocator). The prompt
+  cache has a ramp of its own: rose, orchid, cold blue, grey when cold. The header's marks,
+  the turn readout and the lines of THIS TURN are targets with cards (bare ink on the still
+  layer: 16.3% of inked cells to 10.0%, counted by `v5/tools/coverage.mjs`). Next, in the
+  brief's order: the rest of the small marks (focus header, section labels, sector map names,
+  the wires), the explain-mode tags that overlap, scrubbing the terrain by dragging, the
+  context head running back after a compaction (provoke it in the demo), then the last look
+  at the whole screen; its weakest part in a headless frame is the left column between THIS
+  TURN and the terrain, about 380 by 540 px with only a wire in it. Seen and not chased: the
+  core is at times painted 6 times a second (1.0 to 1.9 MB/s, 11 to 15% of a core for those
+  seconds). `v5/README.md` has a "Memory" section and ends with what is done, what was only
+  seen in a snapshot, and the measurements.
 
 ## Open from the operator
 

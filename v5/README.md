@@ -85,6 +85,13 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Log line | One thing that happened: when, which thread, what (a tool call, a turn that began or ended, a call for you, a dispatch), how long it took. Bright for 20 s, dimmer for five minutes, faint after that | A new line lights up where it begins, in its own tone. When a tool call comes back, the end of its line flashes in the equipment's colour, red when it failed | A tool call: the same card as its pillar and its diamond. Anything else: the line in full | Focuses its thread; on the focused thread, pins the line |
 | Track under a running log line | A tool call that has not come back: the line counts its seconds, the tick on the track stands at that equipment's usual time (the median of the last 8 minutes), the end of the track at 1.67 times it. No track when the equipment has no usual time yet | The head runs along the track with the call's own elapsed time, cyan up to the tick, amber past it, and stops at the end | The tool call | As the line |
 | Rings from a flag or a log line | Control: what the line under the pointer (or the pinned one) is about | A ring on its thread's cell body, on its pane in the sector map and, for a tool call, on the equipment it went through, for as long as the pointer is on the line | n/a | n/a |
+| Source lamp beside the title | LIVE (cyan) or DEMO (amber): where the data comes from | Still | What is read, how often, and that nothing is written | Pins it |
+| Clock and date | This machine's clock: every "ago", countdown and time axis is measured against it | Ticks | What it is | Pins it |
+| Phase line beside the lamps | The headline of the phase and the flag it names | Changes with the phase | The flag itself when it names one; otherwise what each phase means | Focuses the flagged thread, or pins it |
+| A count in the header | One figure each: working, calls, silent, listed, panes, cost in 24 h, tokens out a minute | Changes with the data | What exactly is counted, and from where | Pins it |
+| This program's line (right of the counts) | The pane's size, frames a second, sprites and whether the terminal holds them, kB/s, CPU | Rewritten every 2 s | What each figure is | Pins it |
+| Turn readout under the core | The state word, the turn's time and its usual length (median; "3 in 4 end by" is the third quartile) | The timer runs with real time | The thread's card | Pins it |
+| A line of THIS TURN | Model calls, then each kind of equipment the turn called: how often, how long together, how many failed | Changes when a call lands | The equipment's card; for model calls, what one is | Pins it |
 | Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
 ### What the flock does, and when
@@ -166,6 +173,51 @@ what decides whether going back to a resting thread is cheap.
   of that call, not from the session's "updated" time, which moves for other reasons.
 - `node --no-warnings v5/tools/cache-probe.mjs` prints what is found for every thread.
 
+## Memory
+
+Measured with `tools/mem-watch.mjs` (the physical footprint as macOS counts it, split into the
+allocator's large and small blocks and V8's heaps) in the live pane at 84 columns by 82 rows.
+
+| | Before (22:50 to 22:57, five working) | After (23:53 to 00:03, six working, four from 00:02) |
+| --- | --- | --- |
+| Footprint | 420 MB rising to 433 | 206 MB at start, 171 to 176 from the fifth minute on |
+| Large blocks | 141 MB | 64 MB, the same in every sample |
+| Small blocks | 129 to 140 MB | 39 to 43 MB once settled |
+| V8, three threads | 114 to 118 MB | 47 to 52 MB |
+
+Four causes, each measured on its own before it was changed:
+
+- **The transcript reader** read each transcript's last 4 MB and the plugin's 9 MB record whole
+  and parsed the record: 110 MB the moment it ran (`tools/mem-source.mjs`: the data side alone
+  was 153 to 164 MB with it and 41 to 55 without). Both now pass through one 256 KB buffer;
+  the record is walked byte by byte for its four fields and never parsed. 72 to 82 MB for the
+  data side, the reader's own heap 8 of 13 MB where it was 32 of 63. Same answers on all 49
+  threads (`tools/cache-probe.mjs`, old against new).
+- **The encoder** called `zlib.deflateSync` per tile. Each call leaves a stream wrapper that
+  keeps a 16 KB output buffer cut from a 64 KB slab until V8 collects in full, which a thread
+  that small does only when some 60 MB of them have piled up: 721 dead slabs (46 MB) in the
+  live process, 178 to 772 in a test by itself. One stream per level is kept and reset: 16
+  slabs, constant. Its output is byte for byte what `deflateSync` gives (420 of 420), it is
+  checked against `inflateSync` when the worker starts, and `stats.json` says which path runs
+  (`deflate`).
+- **The young generation** of the main thread was meant to be 4 MB and was 34: the flag was
+  set after the start, where it changes nothing. The program now replaces itself with the same
+  command and the flag (`process.execve`: same pid, same terminal). 8 MB held, and the main
+  heap is 21 to 26 MB where it was 78 to 143.
+- **Tile pixels** went to the encoder in one buffer of exactly the bytes needed, so every large
+  repaint freed a block of a new size (2 to 13 MB), and the allocator keeps up to sixteen such
+  dead blocks: large blocks climbed from 79 to 130 MB in fifteen minutes. They now travel in
+  buffers of fixed sizes (32 KB to 1 MB, several of 1 MB for a large repaint), and a frame
+  leaves the encoder through one kept buffer.
+
+`stats.json` carries `heaps` (V8 per thread, and the main thread's by space), `cacheWorker`
+(what the reader keeps) and `deflate`. `NEXUS_ALLOC=120 node v5/nexus.mjs` writes
+`v5/alloc.json`: who allocates on the main thread, in MB a second (22 MB/s before; the sprite
+diff, a quarter of it, no longer makes an object per sprite per frame).
+
+Not flat by the letter of the brief: six threads worked for the first eight and a half minutes
+of that watch and four after. The line did not move when they dropped.
+
 ## Files
 
 As v4, plus `src/flock.mjs` (the swarm: a dot's life from the tip to the globe, simulation,
@@ -174,7 +226,9 @@ projection, hit test), `src/body.mjs` (the view of the core: projection, rings, 
 `src/explain.mjs` (explain mode and the keyboard walk), `src/charts.mjs` (the three live charts), `src/cache.mjs` (the prompt cache as the screen
 shows it), `src/cache-worker.mjs` (reads the transcripts off the main thread), `tools/cache-probe.mjs`
 (what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
-`tools/gfx-probe.mjs`. `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
+`tools/gfx-probe.mjs`, `tools/mem-watch.mjs` and `tools/mem-source.mjs` (see "Memory"),
+`tools/coverage.mjs` (which ink on the still layer no target covers) and `src/allocations.mjs`
+(the allocation sampler). `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
 `src/encoder.mjs` send a z per placement, the page a sprite sits on, and the heartbeat.
 
 ## State of the build
@@ -241,10 +295,7 @@ Looked at since (2026-11-15, 22:30 to 22:40), from the brief's third item:
   terminal holding 28 of 28 pages, none lost. What a counter cannot say is how they look: that
   is still the operator's eye.
 
-Not done yet, in the order the brief gives: a wide pane in the real terminal and a resize while
-running (see above), the remaining v4 marks as targets, explain-mode tags that overlap, and
-scrubbing the terrain by dragging. In landscape the stage still has empty space above the
-terrain.
+In landscape the stage still has empty space above the terrain.
 
 Verified since, in a snapshot: the ring formation once it has settled (parallels turning against
 each other), and a 206 column frame in the landscape layout (28 pages, 3.9 MB; its tiles are at
@@ -264,10 +315,31 @@ ring's own line answered a hover and a click in a simulated run only. Seen in sn
 the head, the dashed stretch and the ticks. Not seen at all: the head running back after a
 compaction (no thread compacted while this was built).
 
-Memory is over its class and the cause is not isolated: 294 MB physical footprint at 22:07 with
-the cache marks in, 408 MB at 22:45 (84 columns, five threads working, 28 sprite pages against
-19). The suspect is the transcript worker's own heap (it parses the plugin's 9 MB record each
-time a turn ends); the page count is the other candidate. First thing to look at next.
+Memory (2026-11-15 night, fifth session): back under its class, 171 to 176 MB where it was 420
+to 433. See "Memory" above for the four causes and the numbers.
+
+The cache has its own ramp (rose, orchid, cold blue; grey when cold), seen in headless frames
+of live data only: the axis, and "cache 1h", "cache 34m" and "cache 5m40" on three rows in
+three colours of it.
+
+Small marks: `tools/coverage.mjs` counted 474 of 2909 inked cells of the still layer with no
+target under them (16.3%), and 298 of 2988 (10.0%) after the header, the turn readout and the
+lines of THIS TURN became targets. Through herdr in the live pane a hover answered on a count
+("note count-working") and on the source lamp ("note mode"); the rest was poked headless.
+Still bare: the focus header (title, path line, the row of figures under it), the section
+labels (TIME TERRAIN, ACCOUNTS, CIRCUIT, EQUIPMENT, COMMS, SECTOR MAP, LOG), the workspace
+names in the sector map, the focused thread's wire up to the tip and the synapse wires to the
+equipment.
+
+Seen while measuring, not chased: the core is at times painted 6 times a second instead of
+1.5 to 2.5, and for those seconds the program writes 1.0 to 1.9 MB/s at 11 to 15% of a core
+(the median over the watch was 7.3% and 630 kB/s).
+
+Not done, in the brief's order: the rest of the small marks (above), the explain-mode tags
+that overlap, scrubbing the terrain by dragging, the context head running back after a
+compaction (not provoked in the demo yet), and the last look at the whole screen. In a
+headless frame the weakest part is the left column between THIS TURN and the terrain: about
+380 by 540 px with only the focused thread's wire in it.
 
 Not verified: a 206 column pane in the real terminal, a resize while it runs, a quiet machine,
 and how the event-driven marks look in the pane (that they are placed there is counted, see
@@ -277,8 +349,9 @@ Measured at 105 columns by 82 rows, three to four threads working, with the char
 perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the
 focused thread runs tools, 450 to 650 kB/s and 5 to 11% while its whole flock flies; for a
 second or two after the focus moves to another thread, up to 1.6 MB/s and 18% (the core and the
-tail are drawn afresh); 300 to 340 MB physical footprint (resident size swings from 130 to 500
-MB with the machine's memory pressure); 16 to 18 MB of the terminal's 67 MB store.
+tail are drawn afresh); 300 to 340 MB physical footprint then, 171 to 176 MB since the fifth
+session (see "Memory"; resident size is not the measure: it read 354 MB while the footprint
+was 209); 16 to 18 MB of the terminal's 67 MB store.
 `stats.json` says what costs it:
 `repaintsPerSecond` by region of the still layer and `movedPerFrameBy` by kind of mark. Painted
 fallback: 1.5 to 4.7 MB/s and about one core.
