@@ -137,7 +137,9 @@ export const stage = {
       const elapsed = turn.end - turn.start
       const scale = this.turnScale(session, elapsed)
       // the arc is repainted when its head has moved two pixels, and never more than once a second
-      parts.push(Math.round(scale / 1000), turn.live ? Math.floor(Math.min(now / 1000, (elapsed / scale) * (this.G.core.RA * 3))) : 0)
+      // (a turn past its usual length has a scale that grows with it, so its head stands still: the
+      // small term keeps rounding noise from flipping the figure, and the core with it, every frame)
+      parts.push(Math.round(scale / 1000), turn.live ? Math.floor(Math.min(now / 1000, (elapsed / scale) * (this.G.core.RA * 3)) + 1e-4) : 0)
       for (const tool of session.phase.tools) parts.push(tool.id, Math.floor(Math.log10(Math.max(1, now - tool.start)) * 16))
       const newest = session.steps[session.steps.length - 1]
       if (newest) parts.push(newest.end === null ? "open" : "closed", newest.tools.length, newest.tools[newest.tools.length - 1]?.status ?? "")
