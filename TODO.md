@@ -14,9 +14,9 @@ is done or dropped.
   tip, the flock in orbit round the rings and the siphon into the globe (fourth and sixth
   addenda), three live charts beside the core, the terrain in perspective, wire streams seen at a
   glance. Also in: packets with a sign per
-  equipment, latency lines under the equipment boxes, a sector map that answers, the demo with
-  project directories. Not built from `BRIEF-v5.md`: comms and the log coming alive, phase
-  ripples, the cache cooling, scrubbing the terrain, remaining v4 marks as targets, explain-mode
+  equipment, latency lines under the equipment boxes, a sector map that answers, ripples from the thread that raised an alert, the demo with
+  project directories. Not built from `BRIEF-v5.md`: comms and the log coming alive, the
+  cache cooling, scrubbing the terrain, remaining v4 marks as targets, explain-mode
   tags that overlap, a better landscape stage. `v5/README.md` ends with
   what is done, what was only seen in a snapshot, and the measurements.
 

@@ -858,6 +858,13 @@ export class Renderer {
         slot += 1
       }
     }
+    if (this.ripples?.length) {
+      this.ripples = this.ripples.filter((entry) => now - entry.at < 620)
+      for (const entry of this.ripples) {
+        const age = now - entry.at
+        if (age >= 0) out.push({ key: `rp:${entry.at}:${Math.round(entry.x)}`, kind: `${age < 210 ? "ring" : "ring2"}|${entry.hex}`, x: entry.x, y: entry.y })
+      }
+    }
     // a pane that waits on the operator rings on the sector map as its row does: an amber breath
     for (const hit of this.hits.get("footer") ?? []) {
       if (hit.kind !== "blip" || hit.pane?.status !== "blocked") continue
@@ -951,6 +958,12 @@ export class Renderer {
     }
   }
 
+  // A ripple: two rings that run outward from a point, 0.6 s.
+  ripple(x, y, hex, at) {
+    this.ripples ??= []
+    if (this.ripples.length < 40) this.ripples.push({ x, y, hex, at })
+  }
+
   // Where a thread's pane stands on the sector map: the middle of its square, or null.
   blipOf(sid) {
     for (const hit of this.hits.get("footer") ?? []) {
@@ -1028,7 +1041,13 @@ export class Renderer {
       } else if (signal.type === "alarm") {
         const tone = signal.level === "alert" ? INK.bad : signal.level === "caution" ? INK.warn : INK.text
         flow.flash(g.somaX, g.axonY, tone, now, 1100)
+        // The phase strip changed because of this thread: a ripple leaves its cell body, and a
+        // moment later one arrives at the strip's lamp, so cause and effect are seen together.
+        this.ripple(g.somaX, g.axonY, tone, now)
+        if (this.lamp) this.ripple(this.lamp.x, this.lamp.y, tone, now + 260)
       }
+      // a failed tool call ripples from its thread in red
+      if (signal.type === "tool-end" && signal.failed) this.ripple(g.somaX, g.axonY, INK.bad, now)
     }
     const streams = []
     for (const stream of scene.streams) {

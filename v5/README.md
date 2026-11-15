@@ -64,7 +64,7 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | WINDOW chart | The focused thread's account: used share of its five-hour window over the window's own time, against an even pace (the diagonal). Solid: what this program has seen since it started. Dashed: where it goes at this pace, an estimate. Hollow diamond: when it runs dry | Redrawn with every reading | The account | Pins it || Packet on a synapse | One tool call leaving for its equipment and its result coming back, as a flat sign: a prompt for the shell, a page for a read, a stroke for a write, a globe for the web, two squares for an agent, a block for anything else. Red when the result is a failure | Travels the synapse once: out when the call starts, back when it ends | n/a | n/a |
 | Red flash on an equipment box | A call through it just failed | 0.5 s | n/a | n/a |
 | Latency line under an equipment box | Every call through that equipment in the last 8 minutes: a stem where it started, as tall as it took (log scale, 0.1 s to 10 min), red when it failed, capped while it still runs. The dotted line is the usual time | Moves left with time | The equipment's card | Pins it || Flash on a pane of the sector map | Its thread just did something: the model's colour when a call reported, cyan when a turn started, green when it ended, red when a tool call or the turn failed, amber when it began to wait on you | 0.4 s, 0.9 s for the end of a turn | n/a | n/a |
-| Amber breath on a pane of the sector map | That pane waits on you | Breathes until it is answered, as its row does | The pane | As in v4 |
+| Amber breath on a pane of the sector map | That pane waits on you | Breathes until it is answered, as its row does | The pane | As in v4 || Ripple from a cell body | The phase strip changed because of this thread (an alert was raised), in the alert's colour, and a quarter of a second later the same ripple arrives at the strip's lamp; or one of its tool calls failed, in red | Two rings run outward, 0.6 s | n/a | n/a |
 | Motes above a ridge head | One per 5 s a model call has run without a first word | The stack grows while the model has not spoken yet | The terrain card | n/a |
 | Diamond on a ridge | A tool call, coloured by equipment; red and taller when it failed | Moves left with time | The call | Pins it |
 | Flag on a ridge | An alert raised for that thread | Moves left with time | The alert | Focuses the thread |
@@ -157,8 +157,7 @@ is not known), a tool call that travels as a packet with a sign per equipment, a
 the equipment when a call fails, a latency line under every equipment box, a sector map whose
 panes answer to their threads, and project directories in the demo.
 
-Not done yet, in the order the brief gives: comms and the log coming alive, phase ripples, the
-cache cooling (how long a thread's prompt cache lives is not in the data this program reads, so
+Not done yet, in the order the brief gives: comms and the log coming alive, the cache cooling (how long a thread's prompt cache lives is not in the data this program reads, so
 it would be a guess), context closing a ring, scrubbing the terrain by dragging, the remaining
 v4 marks as targets, explain-mode tags that overlap. In landscape the three charts are cramped
 and the stage has empty space above the terrain.
@@ -171,7 +170,7 @@ plot and an equipment's latency line answered in a synthetic run only.
 
 Not verified: a 206 column pane in the real terminal, a quiet machine, and the marks that need
 an event to fire while someone looks: a packet in flight, the red flash on a failure, a pane of
-the sector map lighting up.
+the sector map lighting up, a ripple. They ran for 16 s of simulated work without an error.
 
 Measured at 105 columns by 82 rows, three to four threads working, with the charts and the
 perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the
