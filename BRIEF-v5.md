@@ -225,3 +225,29 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 > "looking good carry on"
 
 Said while looking at the pane after the paged atlas, the flat dots, the charge at the tip, the orbit and siphon, and the three live charts were in. Nothing was singled out. This is the first check of the real pane since the sprites vanished, so the sprite layer counts as seen by the operator again. No change of direction: carry on with the order of work.
+
+## Eighth addendum: the operator's go-ahead (verbatim, 2026-11-15, between 02:45 and 04:30)
+
+> "sofare so good now do the most recommended and move forward with it"
+
+Then "go", several times. It answers the four questions the director had put to him at 02:45. He left the choice to the director, so these are the director's decisions, each the recommended one:
+
+1. **Continue now.** On `default`, which had room at 04:31 (6% of its five-hour window, to 08:40). `appical` was at 86% until 06:50.
+2. **Cache cooling: build it, from data where the data has it.** Claude Code's own transcripts record, per model call, how much was written to the cache under each lifetime (`usage.cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`), and when the call was made. If this program can reach those (or the same numbers through opencode's store), the lifetime is measured and the signal is exact: time since the thread's last model call against that lifetime. Where it cannot, assume one hour (what a Claude Code session on a subscription uses) and mark the signal as assumed on the mark, on its card and in the table of marks. Never show an assumed lifetime as a measured one.
+3. **The orbit's meaning stays.** Dots circle the rings on an open call's estimated output and siphon into the globe when the call reports, labelled as an estimate wherever it shows.
+4. **The old v4 questions.** Fix the comms line that cuts mid-word now (cut at a word boundary with an ellipsis, the full line on its card). The demo's project directories are already in. Look at landscape, pane resize, `z` zoom and the painted transport in this session and fix what is broken. Go to pane with a real hand stays the operator's to try.
+
+### State at 04:31, and the order of work
+
+v5 is not running: its process ended and the pane `wE:p1Q1` no longer exists. The last commit is `a06e40b` (02:42), tree clean. So the first step is to put v5 back on screen: split a new right-hand pane from `wE:pP0` in tab `wE:tC` as before, start v5 there, and correct `v5/tools/restart.sh` and `TODO.md` to the new pane id.
+
+Then, from the end of `v5/README.md` ("Not built" and "Not verified"), in this order:
+
+1. Comms and the log come alive, and the comms truncation fix.
+2. Cache cooling (decision 2) and context closing a ring.
+3. Landscape: the three charts are cramped and the stage has empty space above the terrain. Then pane resize, `z` zoom, the painted transport, a 206 column pane in the real terminal.
+4. Remaining v4 marks as targets with cards; explain-mode tags that overlap.
+5. Scrubbing the terrain by dragging, if the budget allows.
+6. The marks that need an event to be seen (a packet in flight, the red flash on a failure, a sector pane lighting up, a ripple): find a way to verify each in the real pane, not only in a simulated run.
+
+Everything earlier in this brief still binds: additive, every mark a function and a target, every motion true, flat dots, the accounts part left exactly as it is, performance in v4's class.
