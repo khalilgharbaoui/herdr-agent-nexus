@@ -186,6 +186,39 @@ export class LiveSource {
     return call
   }
 
+  // The context at every model call, where the thread's transcript has it. opencode records a
+  // thread's context when a turn ends (the plugin reports nothing at a step that ends in a tool
+  // call), so in the middle of a turn its figure is one turn old, or missing in a first turn.
+  // The transcript has it for every call: a step that has no figure of its own takes the one of
+  // the newest call that began during the step, and the thread's context is then the newest
+  // step's. Only for a transcript that is up to date with the thread.
+  fillContext(session, seen, now) {
+    const trail = seen.trail
+    if (!trail?.length || !session.steps.length) return
+    const limit = session.context.limit
+    let newest = null
+    let index = 0
+    for (const step of session.steps) {
+      if (step.ctx > 0) {
+        newest = step
+        continue
+      }
+      const until = (step.end ?? now) + 1000
+      let found = 0
+      while (index < trail.length && trail[index][0] < step.start - 2000) index += 1
+      for (let at = index; at < trail.length && trail[at][0] <= until; at += 1) if (trail[at][2] > 0) found = trail[at][2]
+      if (found && (!limit || found <= limit * 1.05)) {
+        step.ctx = found
+        step.ctxFrom = "transcript"
+        newest = step
+      }
+    }
+    if (newest?.ctxFrom === "transcript") {
+      session.context.used = newest.ctx
+      session.context.from = "transcript"
+    }
+  }
+
   cacheFor(session) {
     if (!/^claude-/.test(session.model)) return null
     let started = 0
@@ -213,6 +246,7 @@ export class LiveSource {
     const seen = this.cacheSeen.get(session.id)
     const found = Boolean(seen) && !seen.none
     const current = found && seen.at >= ended - 120e3
+    if (current) this.fillContext(session, seen, Date.now())
     if (current && seen.lifetime) {
       return {
         measured: true,

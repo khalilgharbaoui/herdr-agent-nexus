@@ -649,6 +649,24 @@ export const hud = {
       lines.push(["WHEN COLD", "the next call writes all of it again instead of reading it back: a write costs 1.25 times the input price for five minutes and twice for an hour, a read a tenth", INK.dim, "wrap"])
       return { tone: state.cold ? INK.dim : state.color, kicker: "PROMPT CACHE", title: threadOf(session.id), lines, pin: true, foot: "the arc round its cell body is the same cache" }
     }
+    if (target.kind === "context") {
+      const session = scene.byId.get(target.id)
+      if (!session) return null
+      const { used, limit } = session.context
+      const pace = this.contextPace(session)
+      const fill = limit && used ? used / limit : 0
+      const tone = fill >= 0.92 ? INK.bad : fill >= 0.8 ? INK.warn : INK.soft
+      const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`
+      if (!pace) return { tone, kicker: "CONTEXT RING", title: threadOf(session.id), lines: [["CONTEXT", "not reported yet: the ring stays open and empty until a model call reports its context", undefined, "wrap"]], pin: true, foot: "" }
+      const lines = [[pace.exact ? "MEASURED" : "REPORTED", `${compactOf(used)} of ${compactOf(limit)} tok (${Math.round(fill * 100)}%): the solid arc, and the head at its end. ${pace.exact ? "Read from the thread's transcript at its newest model call" : "As the thread reported it when a turn ended"}`, fill >= 0.8 ? tone : undefined, "wrap"], ["LEFT", `${compactOf(pace.left)} tok: the gap between the head and the bar on the far side, where the ring closes`, undefined, "wrap"]]
+      if (pace.perCall) {
+        lines.push(["PACE", `about ${compactOf(Math.round(pace.perCall))} tok a model call: the median of its last ${plural(pace.n, "stretch").replace("stretchs", "stretches")} between two readings`, undefined, "wrap"])
+        lines.push(["SINCE", pace.since ? `${plural(pace.since, "call")} since the last reading, so about ${compactOf(Math.round(pace.estimate))} tok more: the dashed stretch, an estimate until the next reading` : "no call since the last reading: nothing is estimated", pace.since ? INK.soft : INK.dim, "wrap"])
+        lines.push(["CLOSES", `in about ${plural(pace.calls, "more call")} at this pace, an estimate. Each tick ahead of the head is one call, sixteen at most`, undefined, "wrap"])
+      } else lines.push(["PACE", "not known yet: it takes two readings of the context, with a model call between them, to tell", INK.dim, "wrap"])
+      lines.push(["NOTCHES", "80% and 92% of the window, where the ring turns amber and red", INK.dim, "wrap"])
+      return { tone, kicker: "CONTEXT RING", title: threadOf(session.id), lines, pin: true, foot: "a compaction opens the ring again" }
+    }
     if (target.kind === "charge") {
       const flock = this.flock
       const session = scene.byId.get(target.id)

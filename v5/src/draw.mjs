@@ -10,7 +10,7 @@
 // projects, threads, equipment) and hud.mjs (header, phase, footer, card, help).
 
 import { createCanvas } from "@napi-rs/canvas"
-import { ringPoint } from "./body.mjs"
+import { ringAngle, ringPoint } from "./body.mjs"
 import { card } from "./card.mjs"
 import { charts } from "./charts.mjs"
 import { circuit } from "./circuit.mjs"
@@ -453,6 +453,17 @@ export class Renderer {
         return { kind: entry.tool ? "tool" : "step", id: entry.tool ? entry.tool.id : `${clock.sid}:${entry.step.seq}`, sid: clock.sid, tool: entry.tool, step: entry.step, rect: { x: mx - u(8), y: my - h / 2, w: u(16), h } }
       }
     }
+    // the context ring itself: within reach of its line, the target sits on the ring there
+    const focused = scene.focused?.session
+    if (focused?.context.limit && focused.context.used && inside(G.coreBox, x, y)) {
+      const { view } = this.coreView(focused)
+      const at = ringAngle(view, x, y)
+      if (Math.abs(at.radius - G.core.RB) <= u(9)) {
+        const spot = ringPoint(view, G.core.RB, at.angle, 0, [0, 0, 0, 0])
+        const r = u(9)
+        return { kind: "context", id: focused.id, rect: { x: spot[0] - r, y: spot[1] - r, w: r * 2, h: r * 2 } }
+      }
+    }
     for (const g of G.rows) {
       if (!g.row || Math.abs(y - g.axonY) > u(11)) continue
       const from = g.somaX + g.r + u(4)
@@ -857,6 +868,27 @@ export class Renderer {
         const at = onRing(core.RA, Math.min(0.999, elapsed / this.turnScale(session, elapsed)) * TAU)
         out.push({ key: "ring-head", kind: `pulse|${hex}`, x: at.x, y: at.y, z: 12 })
       }
+      // The head of the context ring: where the reported context stands. When a report moves
+      // it, the head runs along the ring to its new place in half a second, and back when a
+      // compaction has opened the ring again (with a ripple where it lands).
+      const limit = session.context.limit
+      const fill = limit && session.context.used ? clamp(session.context.used / limit, 0.004, 1) : 0
+      if (fill) {
+        let head = this.contextHead
+        const ease = (entry) => entry.from + (entry.to - entry.from) * (1 - (1 - clamp((now - entry.at) / 520, 0, 1)) ** 3)
+        if (!head || head.sid !== session.id) head = this.contextHead = { sid: session.id, from: fill, to: fill, at: 0 }
+        else if (Math.abs(head.to - fill) > 1e-4) {
+          const opened = fill < head.to - 0.02
+          head = this.contextHead = { sid: session.id, from: ease(head), to: fill, at: now, opened }
+        }
+        const share = ease(head)
+        const at = onRing(core.RB, share * TAU)
+        out.push({ key: "ctx-head", kind: `head|${share >= 0.92 ? INK.bad : share >= 0.8 ? INK.warn : INK.text}`, x: at.x, y: at.y, z: 12 })
+        if (head.opened && now - head.at >= 520) {
+          this.ripple(at.x, at.y, INK.live, now)
+          head.opened = false
+        }
+      } else this.contextHead = null
       if (session.state === "working" && session.phase.key !== "tool") {
         // the comet on the context ring: the model is generating, faster when tokens stream faster
         const theta = this.theta.get(session.id) ?? 0

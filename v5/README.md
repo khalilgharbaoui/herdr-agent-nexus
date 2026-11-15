@@ -54,7 +54,10 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Turn clock arc, usual band | Elapsed time of the turn against what such turns usually take (p25 to p75, the tick is the median) | The head runs with real time | The thread's card | Pins it |
 | Bar under the turn clock | One model call; longer when it wrote more | Appears when the call lands | The call: start, first words, length, tokens, tools | Pins it |
 | Pillar on the turn clock | One tool call; taller when it took longer (log scale); colour is the equipment, red is failed | Grows while the tool runs | The call: tool, target, start, time, result | Pins it |
-| Context ring | Context used of the window; amber past 80%, red past 92% | Grows with the context | The thread's card | Pins it |
+| Context ring | The context window, closing. The ring is shut at the bar on its far side when the window is full, so the open stretch is what is left. Solid arc: the context as last read, amber past 80%, red past 92% (the two notches outside the ring). It is read at every model call where the thread's Claude Code transcript was found (the same match as for the cache), and otherwise only when a turn ends | Grows with the context | The context card: used, left, pace, how many calls fit, measured or reported | Pins it (the ring's line and its caption "CONTEXT RING 50% full · 501k left · ~141 calls to full" are both targets) |
+| Head of the context ring | Where the context stands | When a reading moves it, the head runs along the ring to its new place in half a second; after a compaction it runs back and a ripple marks where the ring opened | The context card | Pins it |
+| Dashed stretch ahead of the head | An estimate: what the model calls made since the last reading have probably added, at the thread's pace (the median growth per call over its last stretches between two readings, twelve at most). Empty for a thread read at every call | Grows with every call until the next reading replaces it | The context card | Pins it |
+| Ticks ahead of the head | One tick per further model call at that pace, sixteen at most: when the ticks reach the bar, the ring closes within the calls you see. An estimate | Move with the head | The context card | Pins it |
 | PROMPT CACHE axis under the turn's time | The focused thread's prompt cache as a time axis: the left end is its last model call, the right end the moment the cache goes cold, with a tick every ten minutes of an hour or every minute of five. The bright stretch is what is left of its lifetime, in the cache's warmth (ember when just touched, steel blue when nearly cold). The chip says MEASURED or ASSUMED. Measured: the lifetime (five minutes or an hour) is read from the thread's own Claude Code transcript. Assumed: one hour, and then the stretch is dashed and the reading starts with "~" and says "an assumed 1 h" | The head is now: it moves right in real time, and jumps back to the left end when a model call goes out. Cold: the head stands hollow at the right end | The cache card: state, lifetime, measured or assumed and why, how the transcript was found, last touched, when it goes cold, what it holds | Pins it |
 | Cache arc round a cell body | The same cache for every thread on a Claude model: the share of its lifetime that is left. A full circle when a call has just gone out, no arc when it is cold. Solid when the lifetime is measured, dashed when it is assumed. Beside it on the row: "cache 52m", "cache ~52m" when assumed, "cache cold 12m" for the first hour after it went cold, nothing after that | Shrinks with real time (painted again each minute, each ten seconds under ten minutes, each second under two) and springs back to a full circle when a model call goes out | The cache card | Pins it |
 | Moon on the outermost orbit | A subagent of the focused thread | Circles as fast as it writes; sits still when it rests; amber when it waits on you | The subagent's card | Focuses it |
@@ -202,7 +205,14 @@ two changes of the layout, the rows of the circuit showed the poll they were lai
 context, flags and the live line stood still until the focus moved or a row changed height);
 a laid-out row now follows its thread at every poll.
 
-Not done yet, in the order the brief gives: context closing a ring, scrubbing the terrain by
+Context closing a ring is in as well: the gate where the ring closes, the head that runs to
+each new reading, the dashed estimate and the call ticks, a caption with the calls that still
+fit, and the context itself read at every model call from the transcript where there is one
+(before, a thread in the middle of a turn showed the figure of its last turn's end, and a
+subagent in its first turn showed none: the ring, the CONTEXT chart, the rows and the globe
+all gain from it).
+
+Not done yet, in the order the brief gives: scrubbing the terrain by
 dragging, the remaining v4 marks as targets, explain-mode tags that overlap. In landscape the
 three charts are cramped and the stage has empty space above the terrain.
 
@@ -218,6 +228,11 @@ herdr onto the PROMPT CACHE axis opened its card ("1 h, measured", "found by tim
 thread's last 12 blocks"). Six threads working: 30 frames a second, 400 to 440 kB/s, 5.3 to
 6.6% of a core, 294 MB physical footprint, 14 MB of the terminal's store. The arc and the
 reading on a row were seen in this program's snapshot of the live pane only.
+
+The context ring (22:25): its caption answered a hover sent through herdr in the live pane; the
+ring's own line answered a hover and a click in a simulated run only. Seen in snapshots only:
+the head, the dashed stretch and the ticks. Not seen at all: the head running back after a
+compaction (no thread compacted while this was built).
 
 Not verified: a 206 column pane in the real terminal, a quiet machine, and the marks that need
 an event to fire while someone looks: a packet in flight, the red flash on a failure, a pane of

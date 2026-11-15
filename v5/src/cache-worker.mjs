@@ -158,6 +158,8 @@ function readMore(file, stat, entry) {
     call.write = usage.cache_creation_input_tokens ?? 0
     call.five = usage.cache_creation?.ephemeral_5m_input_tokens ?? 0
     call.hour = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0
+    // the context this call was given: what it read from the cache, wrote to it and sent fresh
+    call.ctx = (usage.input_tokens ?? 0) + call.read + call.write
   }
   if (entry.calls.length > 120) entry.calls.splice(0, entry.calls.length - 120)
   if (entry.stamps.length > 800) entry.stamps.splice(0, entry.stamps.length - 800)
@@ -197,6 +199,8 @@ function summary(calls) {
   }
   if (!call) return null
   return {
+    // the context at each of the last calls: [when the call began, when it ended, its context]
+    trail: calls.slice(-40).map((entry) => [entry.first, entry.at, entry.ctx]),
     at: call.at,
     first: call.first,
     read: call.read,

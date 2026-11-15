@@ -14,7 +14,7 @@ import { inside } from "./theme.mjs"
 import { WINDOWS } from "./terrain.mjs"
 import { clockOf } from "./util.mjs"
 
-const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge", "log", "cache"])
+const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge", "log", "cache", "context"])
 const DWELL_MS = 140 // how long the pointer rests on something before its card opens
 const GONE_MS = 8000 // no mouse report for this long: the pointer is taken to have left the pane
 const MODE = { 0: "not known", 1: "on", 2: "off", 3: "always on", 4: "always off" }
@@ -100,6 +100,7 @@ export class Controller {
         dot: "one dot of the flock  ·  click: pin it",
         charge: "the charge at the tip: tokens gather here until they are one dot  ·  click: pin it",
         cache: "this thread's prompt cache: how long until it goes cold  ·  click: pin it",
+        context: "the context ring: it closes when the window is full  ·  click: pin it",
         flock: "the flock: this turn's output  ·  click: pin its card",
         lean: "the axis: how far the body is tipped is how far the turn is past its usual length",
         ridge: "a point on a thread's ridge  ·  click: focus the thread, or pin the point",
@@ -199,6 +200,7 @@ export class Controller {
       case "dot":
       case "charge":
       case "cache":
+      case "context":
       case "flock":
       case "lean":
       case "terrain":

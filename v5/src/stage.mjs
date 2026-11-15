@@ -16,7 +16,7 @@ import { cacheSign, cacheState, leftWord, lifeWord } from "./cache.mjs"
 import { portOf } from "./model.mjs"
 import { FLOCK_CAP, flockUnit } from "./flock.mjs"
 import { PORT_COLOR, STATE_WORD, bare, clean, homed, wrap } from "./theme.mjs"
-import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, hourMinuteOf, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, hourMinuteOf, modelColor, moneyOf, quantile, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
 
 const easeOut = (t) => 1 - (1 - t) ** 3
 const DEG = Math.PI / 180
@@ -29,6 +29,36 @@ export const stage = {
     const mine = flock.sid === session?.id
     const degrees = mine ? Math.round(flock.pitch / DEG) : 54
     return { view: makeView(this.G.core, degrees * DEG), degrees, rs: mine && flock.rs ? Math.round(flock.rs / 4) * 4 : Math.round(this.G.core.RB * 0.66), mine }
+  },
+
+  // How the context ring closes. The context is known at every model call where the thread's
+  // Claude Code transcript was found (see live.mjs, fillContext), and otherwise only when a
+  // turn ends. Its pace is the tokens a model call added: the median over the last stretches
+  // between two readings. From that:
+  //   estimate  what the calls made since the last reading have probably added
+  //   calls     how many more calls fit before the window is full
+  // Both are estimates and are drawn and worded as such. Null when nothing was reported.
+  contextPace(session) {
+    const { used, limit } = session.context
+    if (!limit || !used) return null
+    const marks = []
+    session.steps.forEach((step, index) => {
+      if (step.ctx > 0) marks.push([index, step.ctx])
+    })
+    const rates = []
+    for (let index = 1; index < marks.length; index += 1) {
+      const calls = marks[index][0] - marks[index - 1][0]
+      const gain = marks[index][1] - marks[index - 1][1]
+      if (calls > 0 && gain > 0) rates.push(gain / calls)
+    }
+    const left = Math.max(0, limit - used)
+    const since = marks.length ? session.steps.length - 1 - marks[marks.length - 1][0] : 0
+    const exact = session.context.from === "transcript"
+    if (!rates.length) return { left, perCall: 0, n: 0, since, estimate: 0, calls: 0, exact }
+    const recent = rates.slice(-12).sort((a, b) => a - b)
+    const perCall = quantile(recent, 0.5)
+    const estimate = Math.min(left, perCall * since)
+    return { left, perCall, n: recent.length, since, estimate, calls: Math.ceil((left - estimate) / perCall), exact }
   },
 
   // A stretch of a ring, from angle a0 to a1 (clockwise from the far point), drawn in pieces so
@@ -101,6 +131,8 @@ export const stage = {
     const { degrees, rs } = this.coreView(session)
     const turn = this.turnWindow(session, now)
     const parts = [session.id, focus.index, session.state, session.phase.key, session.context.used, session.steps.length, degrees, rs, this.flock.unit, scene.threads.filter((row) => row.parent?.session.id === session.id).length]
+    const pace = this.contextPace(session)
+    if (pace) parts.push(Math.round(pace.perCall / 50), pace.since, pace.calls)
     if (turn) {
       const elapsed = turn.end - turn.start
       const scale = this.turnScale(session, elapsed)
@@ -191,6 +223,16 @@ export const stage = {
     const fill = limit && used ? used / limit : 0
     const fillColor = fill >= 0.92 ? INK.bad : fill >= 0.8 ? INK.warn : INK.soft
     const kids = scene.threads.some((row) => row.parent?.session.id === session.id)
+    // the context ring closes: what the calls since the last report have probably added, and
+    // where each further call would take it
+    const pace = this.contextPace(session)
+    const guess = pace && limit ? pace.estimate / limit : 0
+    const stride = pace?.perCall && limit ? pace.perCall / limit : 0
+    const radial = (angle, inner, outer, color, width) => {
+      ringPoint(view, inner, angle, 0, spot)
+      ringPoint(view, outer, angle, 0, tip)
+      this.line(c, spot[0], spot[1], tip[0], tip[1], color, width)
+    }
 
     // one half of the ring system: the far half before the globe, the near half after it
     const half = (far) => {
@@ -203,9 +245,33 @@ export const stage = {
         if (expect) this.ringArc(c, view, RA - u(13), (expect.p25 / scale) * TAU, Math.min(1, expect.p75 / scale) * TAU, INK.dim, 0.75 * fade, u(3.5), far)
         this.ringArc(c, view, RA, 0, Math.min(0.999, elapsed / scale) * intro * TAU, color, fade, u(4.5), far)
       }
-      // the context window
-      this.ringArc(c, view, RB, 0, TAU, INK.ghost, 1, 1, far)
-      if (fill) this.ringArc(c, view, RB, 0, clamp(fill, 0.004, 1) * intro * TAU, fill >= 0.8 ? fillColor : INK.soft, fill >= 0.8 ? 1 : 0.8, u(5), far)
+      // the context window: the track, the gate where it closes, where it turns amber and red
+      this.ringArc(c, view, RB, 0, TAU, INK.faint, 0.6, 1, far)
+      if (far) {
+        radial(0, RB - u(11), RB + u(11), rgba(INK.soft, fill ? 0.8 : 0.4), 1.5)
+        if (fill) {
+          radial(0.8 * TAU, RB + u(4), RB + u(11), rgba(INK.warn, 0.7), 1.5)
+          radial(0.92 * TAU, RB + u(4), RB + u(11), rgba(INK.bad, 0.7), 1.5)
+        }
+      }
+      if (fill) {
+        const head = clamp(fill, 0.004, 1) * intro * TAU
+        this.ringArc(c, view, RB, 0, head, fill >= 0.8 ? fillColor : INK.soft, fill >= 0.8 ? 1 : 0.8, u(5), far)
+        // dashed: what the calls made since the last report have probably added
+        const reach = clamp(fill + guess, 0, 1) * intro * TAU
+        const dash = 2.2 * DEG
+        for (let from = head + dash * 0.6; from < reach; from += dash * 2) this.ringArc(c, view, RB, from, Math.min(reach, from + dash), fill + guess >= 0.8 ? (fill + guess >= 0.92 ? INK.bad : INK.warn) : INK.soft, 0.75, u(3), far)
+        // a tick for each further call at this pace, sixteen at most
+        if (stride > 0) {
+          for (let call = 1; call <= 16; call += 1) {
+            const share = fill + guess + stride * call
+            if (share >= 1) break
+            const angle = share * intro * TAU
+            if (Math.cos(angle) > 0 !== far) continue
+            radial(angle, RB - u(4), RB + u(4), rgba(INK.dim, 0.35 + 0.45 * ((1 - Math.cos(angle)) / 2)), 1)
+          }
+        }
+      }
       for (const mark of marks) {
         if (mark.far !== far) continue
         c.strokeStyle = mark.color
@@ -268,8 +334,21 @@ export const stage = {
       }
     }
 
+    // the ring's own caption, in the corner over it: how full, how much is left, how many calls fit
+    {
+      const word = !fill ? "not reported yet" : `${Math.round(fill * 100)}% full  ·  ${compactOf(limit - used)} left${pace?.perCall ? `  ·  ~${pace.calls} call${pace.calls === 1 ? "" : "s"} to full` : ""}`
+      const style = { size: 12.5, color: fill >= 0.8 ? fillColor : INK.dim, align: "right" }
+      const labelStyle = { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6, align: "right" }
+      const x = core.right - u(14)
+      const y = core.top + u(20)
+      const w = this.width(c, word, style)
+      this.text(c, word, x, y, style)
+      this.text(c, "CONTEXT RING", x - w - u(12), y, labelStyle)
+      const full = w + u(12) + this.width(c, "CONTEXT RING", labelStyle)
+      this.hit("context", session.id, { x: x - full - u(4), y: y - u(15), w: full + u(8), h: u(21) })
+    }
     this.hit("flock", session.id, { x: cx - rs, y: cy - rs, w: rs * 2, h: rs * 2 })
-    this.coreMeta = { degrees, rs, laneRadius }
+    this.coreMeta = { degrees, rs, laneRadius, fill, guess }
   },
 
   signPlinth(scene, ui, now) {
