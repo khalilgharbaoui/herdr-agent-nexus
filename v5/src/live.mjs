@@ -338,6 +338,7 @@ export class LiveSource {
         end: row.completed ?? null,
         finish: row.finish ?? "",
         out: row.tout ?? 0,
+        ctx: plausible(row.tctx) ? row.tctx : 0, // the context this call was given: input and cache
         chars,
         reasoning,
         tools,

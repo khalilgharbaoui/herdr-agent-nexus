@@ -209,6 +209,7 @@ export class DemoSource {
     const step = session.current
     session.turnOut += step.out
     session.context += step.out + this.between(200, 4000)
+    step.ctx = session.context
     session.cost += step.out * 0.00004 + 0.01
     if (step.final) {
       step.endAt = at
@@ -317,6 +318,7 @@ export class DemoSource {
       end: step.endAt !== null && step.endAt <= now ? step.endAt : null,
       finish: step.final ? "stop" : "tool-calls",
       out: done ? step.out : 0,
+      ctx: done ? (step.ctx ?? 0) : 0,
       chars: done ? step.chars : 0,
       reasoning: step.reasoning.filter((range) => range[0] <= now).map((range) => [range[0], range[1] <= now ? range[1] : null]),
       tools,
