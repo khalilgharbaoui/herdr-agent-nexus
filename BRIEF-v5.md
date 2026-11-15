@@ -208,7 +208,7 @@ Keep v5 running in `wE:p1Q1` and restart it in place after each change so the op
 4. Memory and CPU back into the brief's class is part of the same fix: a 41 MB canvas rebuilt on every resize, plus its copies, is where much of it goes.
 5. Then carry on with the fourth addendum (flat dots, the charge that builds).
 
-## Sixth addendum: an orbit phase before the globe (verbatim, 2026-11-15 about 00:35)
+## Sixth addendum: an orbit phase before the globe (verbatim, 2026-11-15 about 01:05)
 
 > "maybe the should also have a fase where they orbit the "planetary" disk as a flock in organic movement the siphon off to the globe it self"
 
