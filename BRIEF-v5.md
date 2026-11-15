@@ -251,3 +251,21 @@ Then, from the end of `v5/README.md` ("Not built" and "Not verified"), in this o
 6. The marks that need an event to be seen (a packet in flight, the red flash on a failure, a sector pane lighting up, a ripple): find a way to verify each in the real pane, not only in a simulated run.
 
 Everything earlier in this brief still binds: additive, every mark a function and a target, every motion true, flat dots, the accounts part left exactly as it is, performance in v4's class.
+
+## Ninth addendum: state at 22:45 on 2026-11-15, and the next order of work
+
+The operator asked "what now?" after a network failure cut the third session off. The standing instruction is unchanged: "sofare so good now do the most recommended and move forward with it". A fourth session finished cache cooling (lifetime measured from the Claude Code transcript, matched by the end times of thinking and reply blocks within 250 ms, otherwise one hour shown as assumed), context closing a ring, context read at every model call, three repaint faults, the painted transport at 15 frames a second, and counters for event-driven marks. v5 runs in `wE:p1QF` at `2775159`, graphics verdict "held".
+
+### Decisions taken for the operator (he can overrule either)
+
+1. **The cache gets its own hue, away from amber.** The cache arc's ember orange sits close to the fable model colour, and a colour that can be read two ways breaks "every mark has a meaning". Let the hue itself say cooling: warm when the cache is fresh, shifting toward a cold blue as it nears its end, grey when cold. No model colour may be reused for it. Put it in the table of marks.
+2. **Do not resize the operator's split.** A wide pane and a live resize in the real terminal stay his to try by hand. Test what can be tested without moving `wE:pP0`.
+
+### Order of work
+
+1. **Memory, first and properly.** Physical footprint was 294 MB at 22:07 and 408 MB at 22:45; resident size 456 MB at 22:45, against a class of 260 to 340 MB. The transcript worker's heap is the suspect. Find what grows (take heap snapshots or count what the worker keeps per transcript), bound it (read forwards from an offset, keep only what the marks need, cap per thread), and show a flat line over at least ten minutes with five or more threads working. Put the numbers in the README.
+2. The cache hue, as decided above.
+3. The remaining small marks as hover and click targets with cards, and the explain-mode tags that overlap.
+4. Scrubbing the terrain by dragging.
+5. The context head running back after a compaction: provoke one in the demo if it cannot be seen live, and say which.
+6. Then look at the whole screen once more against the operator's first words ("everything is alive", "every movement means something", "bring it to life") and the second addendum's list, and spend what budget is left on the weakest part of the screen. Say which part that was and why.
