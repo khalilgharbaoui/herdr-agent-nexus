@@ -2,6 +2,9 @@
 
 import { contextLimit, mulberry32 } from "./util.mjs"
 
+// where each workspace of the simulation works, so the circuit shows its projects
+const DIRECTORIES = { w2: "/Users/demo/code/shop", w3: "/Users/demo/code/platform", w5: "/Users/demo/code/Private/opencode-claude-code-plugin", w6: "/Users/demo/code/docs" }
+
 const CAST = [
   { title: "Checkout: split payment intents per seller", agent: "build", model: "claude-opus-5-5", effort: "xhigh", account: "default", pane: "w2:p1", kids: ["implementor", "explore"] },
   { title: "Design system token audit", agent: "designer", model: "claude-fable-5-2", effort: "max", account: "appical", pane: "w2:p3", kids: ["designer"] },
@@ -363,7 +366,7 @@ export class DemoSource {
         expect: session.account === "local" ? null : session.parentId ? { p25: 150e3, p50: 300e3, p75: 520e3, n: 24 } : { p25: 50e3, p50: 120e3, p75: 260e3, n: 48 },
         pane: session.pane,
         paneStatus: busy ? "working" : session.blockedUntil > now ? "blocked" : "idle",
-        directory: "",
+        directory: DIRECTORIES[String(session.pane ?? "").split(":")[0]] ?? "", // a subagent has none and takes its parent's
         steps,
         marks: session.marks.filter((mark) => mark.at <= now),
       }

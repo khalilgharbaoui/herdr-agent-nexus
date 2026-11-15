@@ -858,6 +858,12 @@ export class Renderer {
         slot += 1
       }
     }
+    // a pane that waits on the operator rings on the sector map as its row does: an amber breath
+    for (const hit of this.hits.get("footer") ?? []) {
+      if (hit.kind !== "blip" || hit.pane?.status !== "blocked") continue
+      const level = Math.floor(((Math.sin(now / 220) + 1) / 2) * 3.999)
+      if (level) out.push({ key: `bp:${hit.id}`, kind: `breath${level}|${INK.warn}`, x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 })
+    }
     this.terrainSprites(scene, now, out)
     // the inspection card follows its mark, tied to it by a leader
     this.layCard(scene, ui, now)
@@ -945,6 +951,14 @@ export class Renderer {
     }
   }
 
+  // Where a thread's pane stands on the sector map: the middle of its square, or null.
+  blipOf(sid) {
+    for (const hit of this.hits.get("footer") ?? []) {
+      if (hit.kind === "blip" && hit.pane?.sessionId === sid) return { x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 }
+    }
+    return null
+  }
+
   // Turns what just happened into pulses, and what is in flight into streams.
   react(scene, signals, now) {
     const G = this.G
@@ -954,6 +968,21 @@ export class Renderer {
       if (signal.type === "alarm" && !signal.sid) {
         for (const rail of G.rails) flow.flash(rail.x, G.railBottom + u(20), LEVEL_COLOR[signal.level] === INK.soft ? INK.text : LEVEL_COLOR[signal.level], now, 900)
         continue
+      }
+      // The sector map answers too: the pane of the thread lights up in the model's colour when
+      // one of its calls reports, cyan when a turn starts, green when it ends, amber when it
+      // starts to wait on the operator, red when a tool call or the turn fails.
+      const blip = signal.sid ? this.blipOf(signal.sid) : null
+      if (blip) {
+        const owner = scene.byId.get(signal.sid)
+        const tone =
+          signal.type === "tokens" && owner ? spriteHex(modelColor(owner.model, owner.provider))
+          : signal.type === "tool-end" && signal.failed ? INK.bad
+          : signal.type === "turn-end" ? (signal.failed ? INK.bad : INK.good)
+          : signal.type === "turn-start" ? INK.live
+          : signal.type === "wait" ? INK.warn
+          : null
+        if (tone) flow.flash(blip.x, blip.y, tone, now, signal.type === "turn-end" ? 900 : 420)
       }
       const g = G.rowOf?.get(signal.sid)
       if (!g) continue
