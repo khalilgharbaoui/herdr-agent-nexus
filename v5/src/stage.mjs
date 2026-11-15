@@ -12,10 +12,11 @@
 // globe and in front of it as they would.
 
 import { LANES, lanePoint, makeView, project, ringPoint } from "./body.mjs"
+import { cacheSign, cacheState, leftWord, lifeWord } from "./cache.mjs"
 import { portOf } from "./model.mjs"
 import { FLOCK_CAP, flockUnit } from "./flock.mjs"
 import { PORT_COLOR, STATE_WORD, bare, clean, homed, wrap } from "./theme.mjs"
-import { FAMILY, INK, TAU, agoOf, clamp, compactOf, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, hourMinuteOf, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
 
 const easeOut = (t) => 1 - (1 - t) ** 3
 const DEG = Math.PI / 180
@@ -308,6 +309,89 @@ export const stage = {
     this.text(c, usual, core.cx + half + u(24), y - u(26), { size: 13.5, family: FAMILY.monoMedium, color: expect && session.turn && now - session.turn.start > expect.p75 ? INK.warn : INK.soft })
     if (expect) this.text(c, `3 in 4 end by ${spanOf(expect.p75)}`, core.cx + half + u(24), y - u(4), { size: 12.5, color: INK.dim })
     this.hit("clock", session.id, { x: core.cx - half - u(10), y: y - u(56), w: half * 2 + u(20), h: u(64) })
+  },
+
+  // Where the cache axis runs: clear of the focused thread's wire, which climbs to the tip.
+  cacheSpan() {
+    const G = this.G
+    const box = G.cacheBox
+    return { x0: (G.wide || !G.busX ? G.core.left : G.busX) + this.u(34), x1: box.x + box.w - this.u(20) }
+  },
+
+  signCache(scene, ui, now) {
+    const session = scene.focused?.session
+    if (!session) return "none"
+    const cache = session.cache
+    const state = cacheState(cache, now)
+    if (!state) return `${session.id}|n/a|${cache?.empty ?? ""}`
+    const { x0, x1 } = this.cacheSpan()
+    // the head is painted again when it has moved a pixel
+    return [session.id, cacheSign(cache, now), Math.floor(cache.at / 1000), state.cold ? 0 : Math.round((x1 - x0) * (1 - state.share)), Math.round((cache.tokens ?? 0) / 1000), cache.how, x0].join("|")
+  },
+
+  // The focused thread's prompt cache as a time axis: its last model call at the left end, the
+  // moment it goes cold at the right, and now moving between them. The stretch still ahead is
+  // drawn in the cache's warmth; it is dashed, and the reading says so, when the lifetime is
+  // assumed and not measured.
+  drawCache(c, scene, ui, now) {
+    const u = (value) => this.u(value)
+    const session = scene.focused?.session
+    const box = this.G.cacheBox
+    if (!session || !box) return
+    const { x0, x1 } = this.cacheSpan()
+    const cache = session.cache
+    const state = cacheState(cache, now)
+    const y = box.y + u(20)
+    const labelStyle = { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }
+    this.text(c, "PROMPT CACHE", x0, y, labelStyle)
+    this.hit("cache", session.id, { x: x0 - u(6), y: box.y + u(4), w: x1 - x0 + u(12), h: box.h - u(6) })
+    if (!state) {
+      this.text(c, cache?.empty ? "nothing cached: this thread has made no model call yet" : "n/a: only a thread on a Claude model has one this program can read", x0 + this.width(c, "PROMPT CACHE", labelStyle) + u(14), y, { size: 12.5, color: INK.faint })
+      return
+    }
+    this.chip(c, cache.measured ? "MEASURED" : "ASSUMED", x0 + this.width(c, "PROMPT CACHE", labelStyle) + u(14), y, { color: cache.measured ? INK.dim : INK.soft })
+    const approx = cache.measured ? "" : "~"
+    const reading = state.cold ? `cold since ${hourMinuteOf(state.coldAt)}` : `${approx}${leftWord(state.left)} left of ${cache.measured ? "" : "an assumed "}${lifeWord(cache.lifetime)}`
+    this.text(c, reading, x1, y, { size: 14.5, family: FAMILY.monoMedium, color: state.cold ? INK.dim : state.color, align: "right" })
+    // the axis: a tick every ten minutes of an hour, every minute of five
+    const ay = box.y + u(37)
+    const parts = cache.lifetime >= 3600e3 ? 6 : 5
+    this.line(c, x0, ay, x1, ay, INK.faint, 1)
+    for (let index = 0; index <= parts; index += 1) {
+      const x = Math.round(x0 + ((x1 - x0) * index) / parts)
+      const reach = index === 0 || index === parts ? u(6) : u(3)
+      this.line(c, x, ay - reach, x, ay + reach, INK.faint, 1)
+    }
+    const head = x0 + (x1 - x0) * (1 - state.share)
+    if (!state.cold) {
+      c.strokeStyle = state.color
+      c.lineWidth = u(4)
+      c.lineCap = "butt"
+      if (!cache.measured) c.setLineDash([u(7), u(5)])
+      c.beginPath()
+      c.moveTo(head, ay)
+      c.lineTo(x1, ay)
+      c.stroke()
+      c.setLineDash([])
+      this.dot(c, head, ay, u(5), state.color)
+      this.dot(c, head, ay, u(2), INK.text)
+    } else {
+      // cold: the head stands at the end, hollow
+      c.strokeStyle = INK.dim
+      c.lineWidth = 1.5
+      c.beginPath()
+      c.arc(x1, ay, u(4.5), 0, TAU)
+      c.stroke()
+    }
+    this.cacheHead = { x: state.cold ? x1 : head, y: ay }
+    const sy = box.y + u(57)
+    const small = { size: 11.5, color: INK.faint }
+    this.text(c, `last call ${clockOf(cache.at)}`, x0, sy, small)
+    this.text(c, `${state.cold ? "went cold" : "cold at"} ${clockOf(state.coldAt)}`, x1, sy, { ...small, align: "right" })
+    if (cache.tokens > 0) {
+      const holds = `${cache.measured ? "" : "about "}${compactOf(cache.tokens)} tok ${state.cold ? "to write again on the next call" : "kept warm"}`
+      this.text(c, holds, (x0 + x1) / 2, sy, { size: 11.5, color: state.cold ? INK.faint : INK.dim, align: "center" })
+    }
   },
 
   signUnder(scene, ui, now) {

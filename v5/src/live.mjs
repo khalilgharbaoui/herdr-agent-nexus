@@ -4,6 +4,7 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { Worker } from "node:worker_threads"
 import { accountOf, clamp, contextLimit, quantile, sessionTag } from "./util.mjs"
 
 // One row per message. An assistant row is one step (one model call) and lists its content
@@ -41,6 +42,7 @@ const columnsFor = (tail) => `
      from json_each(m.data, '$.content') j) as items`
 
 const TAIL_CHARS = 1600
+const CACHE_ASSUMED = 3600e3 // the lifetime taken for a thread's prompt cache when it cannot be measured
 const SUBAGENT_PREFIX = /^You are a subagent spawned by another session\.\s*/
 
 function readWindow(window, now, span) {
@@ -100,6 +102,9 @@ export class LiveSource {
     this.tracks = new Map()
     this.cost24h = { cost: 0, sessions: 0 }
     this.costAt = 0
+    this.cacheSeen = new Map() // session id -> the newest call of its transcript that touched the cache, or { none: why }
+    this.cacheThreads = []
+    this.lastCalls = new Map() // session id -> { updated, call }: its newest model call, for a thread with no recent steps
   }
 
   async open() {
@@ -122,6 +127,7 @@ export class LiveSource {
            + coalesce(json_extract(m.data, '$.tokens.cache.write'), 0) as tctx
         from session_message m where m.session_id = ? and m.type = 'assistant' order by m.seq desc limit 60`)
     this.costQuery = this.db.prepare("select coalesce(sum(cost), 0) as cost, count(*) as sessions from session_v2 where time_updated > ?")
+    this.lastCallQuery = this.db.prepare("select m.time_created as start, json_extract(m.data, '$.time.completed') as end from session_message m where m.session_id = ? and m.type = 'assistant' order by m.seq desc limit 1")
     this.pollHerdr()
     this.readFiles()
     this.readHistory()
@@ -129,12 +135,125 @@ export class LiveSource {
       setInterval(() => this.pollHerdr(), 2500),
       setInterval(() => this.readFiles(), 900),
       setInterval(() => this.readHistory(), 30e3),
+      setInterval(() => this.askCache(), 3000),
     ]
     for (const timer of this.timers) timer.unref()
+    // the transcripts are read in a worker: see cache-worker.mjs
+    try {
+      this.cacheWorker = new Worker(new URL("./cache-worker.mjs", import.meta.url))
+      this.cacheWorker.on("message", (message) => {
+        for (const [sid, call] of message.entries ?? []) this.cacheSeen.set(sid, call)
+        this.cacheBusy = false
+      })
+      this.cacheWorker.on("error", () => {
+        this.cacheWorker = null
+      })
+      this.cacheWorker.unref()
+    } catch {
+      this.cacheWorker = null
+    }
+  }
+
+  // Asks the worker for the threads whose cache could still be warm.
+  askCache() {
+    if (!this.cacheWorker || this.cacheBusy || !this.cacheThreads.length) return
+    this.cacheBusy = true
+    this.cacheWorker.postMessage({ state: this.options.state, threads: this.cacheThreads })
+  }
+
+  // A thread's prompt cache: when it was last touched and how long it lives from then.
+  //   measured  the lifetime is the one its newest writing call wrote under, read from the
+  //             thread's own Claude Code transcript, and that transcript is up to date. The
+  //             transcript is known from the plugin's record of the thread, or from timing
+  //             (see cache-worker.mjs); `how` says which
+  //   assumed   no transcript was found for it, or the transcript is behind the thread: one
+  //             hour, what a Claude Code session on a subscription uses (or what this thread's
+  //             transcript last showed)
+  // A call touches the cache when its request goes out, so the newest model call opencode
+  // itself recorded counts as soon as it starts.
+  // When a thread with no steps in the history window last called the model. A session's own
+  // "updated" and "idle" times move for other reasons too (a rename, a restart of opencode).
+  lastCall(session) {
+    const known = this.lastCalls.get(session.id)
+    if (known && known.updated === session.updated) return known.call
+    let call = null
+    try {
+      const row = this.lastCallQuery.get(session.id)
+      if (row?.start) call = { start: row.start, end: row.end ?? row.start }
+    } catch {}
+    this.lastCalls.set(session.id, { updated: session.updated, call })
+    if (this.lastCalls.size > 600) this.lastCalls.delete(this.lastCalls.keys().next().value)
+    return call
+  }
+
+  cacheFor(session) {
+    if (!/^claude-/.test(session.model)) return null
+    let started = 0
+    let ended = 0
+    // what the worker tells a transcript by: when blocks of thinking and of reply ended, and
+    // when tool calls began
+    const blocks = []
+    const tools = []
+    for (const step of session.steps) {
+      started = Math.max(started, step.start)
+      if (step.end !== null) ended = Math.max(ended, step.end)
+      for (const item of step.items) {
+        if (item.kind === "tool") tools.push(item.at)
+        else if (item.end) blocks.push(item.end)
+      }
+    }
+    if (!started) {
+      const last = this.lastCall(session)
+      if (!last) return { empty: true, measured: false, how: "", lifetime: CACHE_ASSUMED, at: 0, tokens: 0, why: "it has made no model call yet" }
+      started = last.start
+      ended = last.end
+    }
+    if (Date.now() - started > CACHE_ASSUMED + 300e3) return { measured: false, how: "", lifetime: CACHE_ASSUMED, at: started, tokens: 0, why: "it rested longer than any cache lives" }
+    this.cacheThreads.push({ id: session.id, cwd: session.directory, ended, blocks: blocks.slice(-12), tools: tools.slice(-12) })
+    const seen = this.cacheSeen.get(session.id)
+    const found = Boolean(seen) && !seen.none
+    const current = found && seen.at >= ended - 120e3
+    if (current && seen.lifetime) {
+      return {
+        measured: true,
+        how: seen.how,
+        by: seen.by ?? "",
+        matched: seen.matched ?? 0,
+        of: seen.of ?? 0,
+        lifetime: seen.lifetime,
+        at: Math.max(seen.first, started),
+        tokens: seen.read + seen.write,
+        read: seen.read,
+        wrote: seen.write,
+        five: seen.five,
+        hour: seen.hour,
+        why: "",
+      }
+    }
+    const why = !seen
+      ? "its transcript has not been looked for yet"
+      : !found
+        ? seen.none === "too little"
+          ? "the plugin has no record of it yet, and it has written too little to tell its transcript by timing"
+          : "no Claude Code transcript was found for it, by the plugin's record or by timing"
+        : current
+          ? "its transcript shows no call that wrote to the cache"
+          : "its transcript is behind the thread"
+    return {
+      measured: false,
+      how: "",
+      lifetime: (found && seen.lifetime) || CACHE_ASSUMED,
+      at: started,
+      tokens: found && current ? seen.read + seen.write : session.context.used || 0,
+      why,
+    }
   }
 
   close() {
     for (const timer of this.timers ?? []) clearInterval(timer)
+    try {
+      this.cacheWorker?.terminate()
+    } catch {}
     try {
       this.db?.close()
     } catch {}
@@ -412,9 +531,14 @@ export class LiveSource {
       }
     }
     const sessions = [...byId.values()].map((row) => this.toSession(row, now))
+    const asked = this.cacheThreads.length > 0
+    this.cacheThreads = []
     for (const session of sessions) {
       if (session.busy || session.blocked || now - session.updated < this.options.historyMs) this.timeline(session, now)
+      // a cache lives an hour at most: a thread whose last call is older is cold whatever its lifetime was
+      session.cache = this.cacheFor(session)
     }
+    if (!asked) this.askCache() // the first poll: do not wait for the timer
     for (const [id, track] of this.tracks) if (now - track.touched > 60e3) this.tracks.delete(id)
     if (now - this.costAt > 10e3) {
       this.cost24h = this.costQuery.get(now - 86400e3)

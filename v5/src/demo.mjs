@@ -329,6 +329,23 @@ export class DemoSource {
     }
   }
 
+  // A simulated prompt cache: touched when the thread's newest model call went out. Subagents
+  // write under the five minute lifetime and main threads under the hour, and every fourth
+  // thread has no transcript to measure, so its lifetime is assumed.
+  cacheOf(session, steps, busy, now) {
+    if (session.account === "local") return null
+    let at = 0
+    for (const step of steps) at = Math.max(at, step.start)
+    at ||= busy ? session.turnStart : (session.idleSince ?? session.created)
+    let tag = 0
+    for (const sign of String(session.id)) tag += sign.charCodeAt(0)
+    const tokens = Math.round(session.context)
+    if (tag % 4 === 3) return { measured: false, how: "", lifetime: 3600e3, at, tokens, why: "the demo gives this thread no transcript to measure" }
+    const five = Boolean(session.parentId)
+    const wrote = Math.round(tokens * 0.03)
+    return { measured: true, how: tag % 2 ? "timing" : "record", by: "blocks", matched: 7, of: 8, lifetime: five ? 300e3 : 3600e3, at, tokens, read: tokens - wrote, wrote, five: five ? wrote : 0, hour: five ? 0 : wrote, why: "" }
+  }
+
   poll(now) {
     this.advance(now)
     const sessions = this.sessions.map((session) => {
@@ -369,6 +386,7 @@ export class DemoSource {
         directory: DIRECTORIES[String(session.pane ?? "").split(":")[0]] ?? "", // a subagent has none and takes its parent's
         steps,
         marks: session.marks.filter((mark) => mark.at <= now),
+        cache: this.cacheOf(session, steps, busy, now),
       }
     })
     const panes = []

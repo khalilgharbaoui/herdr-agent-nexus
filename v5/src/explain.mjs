@@ -12,6 +12,9 @@ import { FAMILY, INK, compactOf } from "./util.mjs"
 export const REGION_ORDER = ["flock", "clock", "stage", "terrain", "circuit", "ports", "rails", "header", "footer"]
 export const REGION_WORD = { flock: "the flock", clock: "the turn clock", stage: "the focus stage", terrain: "the time terrain", circuit: "the threads", ports: "the equipment", rails: "the accounts", header: "the header", footer: "comms, sector map and log" }
 
+// the focus stage is painted in parts; the keyboard walks them as one region
+const STAGE_PARTS = new Set(["core", "flockline", "plinth", "cache", "under", "head", "charts", "tail"])
+
 export const explain = {
   // [title, text, anchor x, anchor y, which corner of the tag touches the anchor]
   explainList(scene) {
@@ -32,6 +35,7 @@ export const explain = {
       ["ORBIT AND SIPHON", "Dots released at the tip circle the rings while their model call is open: its output is an estimate until the call reports. Then they spiral into the globe one after another. The ring system tips further back the longer the turn runs past its usual length.", core.cx - u(30), core.cy + core.RB * 0.93, "tr"],
       ["MOON", "A subagent of this thread on the outer circle. It circles as fast as it writes and sits still when it rests. Click it to focus it.", core.cx - core.Rm * 0.72, core.cy - core.Rm * 0.69, "tl"],
     ]
+    if (this.cacheHead) list.push(["PROMPT CACHE", "What the thread has sent is kept by the provider for a set time after its last model call. The axis runs from that call to the moment it goes cold; the bright stretch is what is left, and the head is now. Dashed and marked ASSUMED when the lifetime could not be measured from the thread's own transcript. The arc round every cell body is the same cache.", this.cacheHead.x, this.cacheHead.y, "tl"])
     if (T) {
       list.push(["RIDGE", "One thread's tokens a second over the window, the focused thread in front. The dot at the right edge is its newest reading; motes above it count the seconds before a call's first word.", T.x + T.w * 0.45, T.y + u(96), "tl"])
       list.push(["MARKS ON A RIDGE", "Diamond: a tool call. Red and taller: it failed. Flag: an alert was raised. Ring: the subagent was dispatched.", T.x + T.w * 0.3, T.y + T.h - u(24), "bl"])
@@ -101,7 +105,7 @@ export const explain = {
     const add = (region, target) => groups.get(region)?.push(target)
     for (const [name, list] of this.hits) {
       if (name.startsWith("over:")) continue
-      const region = name === "layout" || name === "top" || name === "rest" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name === "comms" || name === "log" || name === "hints" ? "footer" : name
+      const region = name === "layout" || name === "top" || name === "rest" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name === "comms" || name === "log" || name === "hints" ? "footer" : STAGE_PARTS.has(name) ? "stage" : name
       for (const target of list) {
         if (target.kind === "terrain" || target.kind === "tail" || target.kind === "clock" || target.kind === "key") continue
         if (target.kind === "port") add("ports", target)

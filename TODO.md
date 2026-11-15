@@ -5,27 +5,26 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-15 04:45: v5 runs live in herdr pane `wE:p1QF` on the sprite transport (a new pane split
-  from `wE:pP0`; the old pane `wE:p1Q1` is gone; restart it in place with `v5/tools/restart.sh`). The sprite layer had vanished because herdr keeps 64 MiB of
-  images per pane and drops the oldest when full, which was the 39 MB atlas; the atlas is now 2
-  to 4 MB of small pages, each acknowledged by the terminal, and `v5/stats.json` says under
-  `graphics` whether the terminal holds them. The operator looked at the live pane at about
-  02:30 and said "looking good carry on": the dots are back. Built since: flat dots, the charge that builds at the
-  tip, the flock in orbit round the rings and the siphon into the globe (fourth and sixth
-  addenda), three live charts beside the core, the terrain in perspective, wire streams seen at a
-  glance. Also in: packets with a sign per
-  equipment, latency lines under the equipment boxes, a sector map that answers, ripples from the thread that raised an alert, the demo with
-  project directories. Not built from `BRIEF-v5.md`: comms and the log coming alive, the
-  cache cooling, scrubbing the terrain, remaining v4 marks as targets, explain-mode
-  tags that overlap, a better landscape stage. `v5/README.md` ends with
-  what is done, what was only seen in a snapshot, and the measurements.
+- 2026-11-15 22:10: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
+  transport, the terminal holds every sprite page; restart it in place with
+  `v5/tools/restart.sh`). It was not running from about 05:00 to 21:38: the third designer
+  session was cut off by a network failure while the Mac slept, and a fourth one (on `default`,
+  started 21:31) put it back. Built by the fourth session so far: the prompt cache cooling (an
+  axis under the turn's time, an arc round every cell body; the lifetime measured from the
+  thread's Claude Code transcript, found by the plugin's record or by timing, and marked
+  ASSUMED where it is not), and a fix for circuit rows that showed stale data between layout
+  changes. Next, in the brief's order: context closing a ring; landscape, pane resize, `z`
+  zoom, the painted transport and a wide pane; the remaining small marks as targets and the
+  explain tags that overlap; scrubbing the terrain; the event-driven marks seen in the real
+  pane. `v5/README.md` ends with what is done, what was only seen in a snapshot, and the
+  measurements.
 
 ## Open from the operator
 
 The operator answered the director's questions on 2026-11-15 with "do the most recommended and
 move forward with it". The decisions are in `BRIEF-v5.md`, eighth addendum. A third designer
-session (`ses_e22bbcd86ffepxmgCR4m3131yw`, on `default`, started 04:35) works from it: v5 back
-in a new pane, comms and log, cache cooling, landscape and resize, remaining marks, scrubbing.
+session (`ses_e22bbcd86ffepxmgCR4m3131yw`, on `default`, started 04:35) worked from it until it
+was cut off (comms and log are in); a fourth continues from the same list.
 
 Still the operator's own:
 

@@ -1,6 +1,7 @@
 // The head-up parts: the header with the phase, the footer (comms, sector map, log, key hints),
 // and the two overlays (the inspection card and the help sheet).
 
+import { cacheState, leftWord, lifeWord } from "./cache.mjs"
 import { explain } from "./explain.mjs"
 import { CHARGE_SOCKETS, FLOCK_CAP, KIND_WORD, LEVELS, ORBIT_CAP } from "./flock.mjs"
 import { portOf } from "./model.mjs"
@@ -592,6 +593,8 @@ export const hud = {
       lines.push(["OUTPUT", `${out ? `${compactOf(out)} tok ${session.turn ? "this turn" : "last turn"}` : "not reported"}${session.tokens?.output ? `  ·  ${compactOf(session.tokens.output)} in all` : ""}`])
       lines.push(["CONTEXT", limit && used ? `${compactOf(used)} of ${compactOf(limit)} tok  (${Math.round((used / limit) * 100)}%)` : "not reported", limit && used / limit >= 0.8 ? INK.warn : undefined])
       if (session.tokens?.cacheRead) lines.push(["CACHE", `${compactOf(session.tokens.cacheRead)} read  ·  ${compactOf(session.tokens.cacheWrite)} written`])
+      const heat = cacheState(session.cache, now)
+      if (heat) lines.push(["CACHE LIFE", heat.cold ? `cold since ${clockOf(heat.coldAt)}` : `${session.cache.measured ? "" : "about "}${leftWord(heat.left)} left of ${session.cache.measured ? `${lifeWord(session.cache.lifetime)}, measured` : `an assumed ${lifeWord(session.cache.lifetime)}`}`, heat.cold ? INK.dim : heat.color])
       lines.push(["COST", session.cost ? moneyOf(session.cost) : session.parentId ? "not reported for subagents" : "not reported"])
       if (session.kids) lines.push(["SUBAGENTS", `${session.kids}${row?.closed ? "  (folded)" : ""}`])
       for (const alert of session.alerts) lines.push([alert.muted ? "MUTED" : "FLAG", `${alert.text}${alert.detail && alert.kind !== "call" ? `  ·  ${clean(alert.detail).slice(0, 60)}` : ""}`, alert.muted ? INK.faint : LEVEL_COLOR[alert.level]])
@@ -624,6 +627,27 @@ export const hud = {
         pin: true,
         foot: "the split inside a call is by the length of its reasoning, reply and tool input",
       }
+    }
+    if (target.kind === "cache") {
+      const session = scene.byId.get(target.id)
+      if (!session) return null
+      const cache = session.cache
+      const state = cacheState(cache, now)
+      if (!state) return { tone: INK.soft, kicker: "PROMPT CACHE", title: threadOf(session.id), lines: [cache?.empty ? ["STATE", "nothing cached: this thread has made no model call yet"] : ["LIFETIME", "n/a: this thread's model is not served through Claude Code, so nothing this program reads says how long its cache lives", undefined, "wrap"]], pin: true, foot: "" }
+      const lines = [["STATE", state.cold ? `cold since ${clockOf(state.coldAt)}, ${agoOf(now - state.coldAt)} ago` : `warm: ${cache.measured ? "" : "about "}${leftWord(state.left)} left`, state.cold ? INK.dim : state.color]]
+      if (cache.measured) {
+        lines.push(["LIFETIME", `${lifeWord(cache.lifetime)}, measured`])
+        lines.push(["MEASURED FROM", `the thread's own Claude Code transcript: its newest call that wrote to the cache wrote ${compactOf(cache.hour)} tok under the 1 h lifetime and ${compactOf(cache.five)} under the 5 min one${cache.hour && cache.five ? "; the 5 min part goes cold first, so that is the lifetime shown" : ""}`, undefined, "wrap"])
+        lines.push(["TRANSCRIPT", cache.how === "timing" ? `found by timing: ${cache.matched} of the thread's last ${cache.of} ${cache.by === "tools" ? "tool calls have a record in it at the moment they were made" : "blocks of thinking and reply end within a quarter of a second of a record in it"}` : "found by the plugin's own record of which Claude session answers this thread", undefined, "wrap"])
+      } else {
+        lines.push(["LIFETIME", `${lifeWord(cache.lifetime)}, ASSUMED, not measured`, INK.soft])
+        lines.push(["WHY ASSUMED", `${cache.why}. One hour is what a Claude Code session on a subscription uses`, undefined, "wrap"])
+      }
+      lines.push(["LAST TOUCHED", `${clockOf(cache.at)}, ${agoOf(now - cache.at)} ago: its newest model call went out then`, undefined, "wrap"])
+      lines.push(["GOES COLD", state.cold ? `went cold at ${clockOf(state.coldAt)}` : `at ${clockOf(state.coldAt)}, unless a call goes out first`, undefined, "wrap"])
+      lines.push(["HOLDS", cache.measured ? `${compactOf(cache.read)} tok read back by the last call, ${compactOf(cache.wrote)} tok written by it` : cache.tokens ? `about ${compactOf(cache.tokens)} tok: the thread's context` : "not known", undefined, "wrap"])
+      lines.push(["WHEN COLD", "the next call writes all of it again instead of reading it back: a write costs 1.25 times the input price for five minutes and twice for an hour, a read a tenth", INK.dim, "wrap"])
+      return { tone: state.cold ? INK.dim : state.color, kicker: "PROMPT CACHE", title: threadOf(session.id), lines, pin: true, foot: "the arc round its cell body is the same cache" }
     }
     if (target.kind === "charge") {
       const flock = this.flock

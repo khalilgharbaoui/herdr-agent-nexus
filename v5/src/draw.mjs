@@ -112,13 +112,16 @@ export class Renderer {
     G.flockBox = { x: G.stage.x, y: G.stage.y, w: split - G.stage.x, h: u(38) }
     G.coreBox = { x: G.stage.x, y: G.stage.y + u(38), w: split - G.stage.x, h: core.bottom - G.stage.y - u(38) }
     G.plinth = { x: G.stage.x, y: core.bottom, w: split - G.stage.x, h: u(100) }
+    // under the turn's time, the thread's prompt cache: an axis from its last call to when it goes cold
+    G.cacheBox = { x: G.stage.x, y: G.plinth.y + G.plinth.h, w: split - G.stage.x, h: u(66) }
+    const underTop = G.cacheBox.y + G.cacheBox.h
     G.charts = { x: headX, y: G.stage.y + u(262), w: G.head.w, h: u(170) }
     const stageBottom = G.stage.y + G.stage.h
     if (wide) {
       // landscape: the tail runs under the core across the stage, the terrain closes the stage
       G.terrain = { x: G.stage.x + M, y: stageBottom - u(350), w: G.stage.w - 2 * M, h: u(330) }
       G.band = { x: G.stage.x, y: G.terrain.y - u(10), w: G.stage.w, h: stageBottom - (G.terrain.y - u(10)) }
-      const tailTop = G.plinth.y + G.plinth.h + u(46)
+      const tailTop = underTop + u(46)
       G.tail = { x: G.stage.x + M + u(20), y: tailTop, w: G.stage.w - 2 * M - u(20), h: G.band.y - u(20) - tailTop }
       G.under = null
       G.tailBox = { x: G.stage.x, y: tailTop - u(36), w: G.stage.w, h: G.band.y - (tailTop - u(36)) }
@@ -126,7 +129,7 @@ export class Renderer {
       G.chartsBox = { x: split, y: G.charts.y, w: G.stage.x + G.stage.w - split, h: G.tailBox.y - G.charts.y }
     } else {
       G.tail = { x: headX, y: G.stage.y + u(478), w: G.head.w, h: G.stage.h - u(478) - u(22) }
-      G.under = { x: G.stage.x, y: G.plinth.y + G.plinth.h, w: split - G.stage.x, h: stageBottom - (G.plinth.y + G.plinth.h) }
+      G.under = { x: G.stage.x, y: underTop, w: split - G.stage.x, h: stageBottom - underTop }
       G.tailBox = { x: split, y: G.tail.y - u(36), w: W - split, h: stageBottom - (G.tail.y - u(36)) }
       G.headBox = { x: split, y: G.stage.y, w: W - split, h: G.charts.y - G.stage.y }
       G.chartsBox = { x: split, y: G.charts.y, w: W - split, h: G.tailBox.y - G.charts.y }
@@ -321,6 +324,7 @@ export class Renderer {
     add("core", G.coreBox, (scene, ui, now) => this.signCore(scene, ui, now), (c, scene, ui, now) => this.drawCore(c, scene, ui, now), false, true)
     add("flockline", G.flockBox, (scene) => this.signFlockLine(scene), (c, scene) => this.drawFlockLine(c, scene))
     add("plinth", G.plinth, (scene, ui, now) => this.signPlinth(scene, ui, now), (c, scene, ui, now) => this.drawPlinth(c, scene, ui, now), false, true)
+    add("cache", G.cacheBox, (scene, ui, now) => this.signCache(scene, ui, now), (c, scene, ui, now) => this.drawCache(c, scene, ui, now), false, true)
     if (G.under) add("under", G.under, (scene, ui, now) => this.signUnder(scene, ui, now), (c, scene, ui, now) => this.drawUnder(c, scene, ui, now), false, true)
     add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
     add("charts", G.chartsBox, (scene, ui, now) => this.signCharts(scene, ui, now), (c, scene, ui, now) => this.drawCharts(c, scene, ui, now))
@@ -480,6 +484,18 @@ export class Renderer {
     this.dt = this.lastUpdate ? Math.min(0.25, (now - this.lastUpdate) / 1000) : 0
     this.lastUpdate = now
     const rearranged = this.arrange(scene, ui, now)
+    if (!rearranged && scene.rows !== this.rowsSeen) {
+      // every poll brings new row and session objects: a laid-out row follows its thread, or it
+      // would show the poll it was laid out in until the layout next changes
+      const fresh = new Map(scene.rows.map((row) => [row.key, row]))
+      for (const g of this.G.rows) {
+        const row = fresh.get(g.key)
+        if (!row) continue
+        if (g.project) g.project = row
+        else g.row = row
+      }
+    }
+    this.rowsSeen = scene.rows
     this.advance(scene, now, this.dt)
     const bands = Math.ceil(this.H / this.bandHeight)
     this.marks = new Uint8Array(bands)

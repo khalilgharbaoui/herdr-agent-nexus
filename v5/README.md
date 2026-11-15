@@ -55,16 +55,22 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Bar under the turn clock | One model call; longer when it wrote more | Appears when the call lands | The call: start, first words, length, tokens, tools | Pins it |
 | Pillar on the turn clock | One tool call; taller when it took longer (log scale); colour is the equipment, red is failed | Grows while the tool runs | The call: tool, target, start, time, result | Pins it |
 | Context ring | Context used of the window; amber past 80%, red past 92% | Grows with the context | The thread's card | Pins it |
+| PROMPT CACHE axis under the turn's time | The focused thread's prompt cache as a time axis: the left end is its last model call, the right end the moment the cache goes cold, with a tick every ten minutes of an hour or every minute of five. The bright stretch is what is left of its lifetime, in the cache's warmth (ember when just touched, steel blue when nearly cold). The chip says MEASURED or ASSUMED. Measured: the lifetime (five minutes or an hour) is read from the thread's own Claude Code transcript. Assumed: one hour, and then the stretch is dashed and the reading starts with "~" and says "an assumed 1 h" | The head is now: it moves right in real time, and jumps back to the left end when a model call goes out. Cold: the head stands hollow at the right end | The cache card: state, lifetime, measured or assumed and why, how the transcript was found, last touched, when it goes cold, what it holds | Pins it |
+| Cache arc round a cell body | The same cache for every thread on a Claude model: the share of its lifetime that is left. A full circle when a call has just gone out, no arc when it is cold. Solid when the lifetime is measured, dashed when it is assumed. Beside it on the row: "cache 52m", "cache ~52m" when assumed, "cache cold 12m" for the first hour after it went cold, nothing after that | Shrinks with real time (painted again each minute, each ten seconds under ten minutes, each second under two) and springs back to a full circle when a model call goes out | The cache card | Pins it |
 | Moon on the outermost orbit | A subagent of the focused thread | Circles as fast as it writes; sits still when it rests; amber when it waits on you | The subagent's card | Focuses it |
 | Ridge | One thread's tokens a second over the window (a call's tokens spread evenly over the time it took; estimated from text length, 3.6 characters a token, where a call reports none) | The terrain steps left with the clock, one slice at a time | Value, time, thread, slice length | Focuses that thread; on the focused ridge, pins the point |
-| Ridge head (dot at "now") | A working thread's newest tokens a second | Rises and falls with the rate | n/a | n/a || Ground of the terrain | A plane in perspective: the focused thread's ridge at the front edge at full size, each ridge behind it scaled by 1 / (1 + 1.9 k / 6) for depth k, hazier with distance. The lines running back are equal times; the cyan edge is now | Steps with the clock | n/a | n/a |
+| Ridge head (dot at "now") | A working thread's newest tokens a second | Rises and falls with the rate | n/a | n/a |
+| Ground of the terrain | A plane in perspective: the focused thread's ridge at the front edge at full size, each ridge behind it scaled by 1 / (1 + 1.9 k / 6) for depth k, hazier with distance. The lines running back are equal times; the cyan edge is now | Steps with the clock | n/a | n/a |
 | Dashed step on a ridge | An open model call: what it probably writes, at the thread's last measured rate, from the call's start to now. An estimate, and named "estimate" on the front ridge | Grows to the right until the call reports | The ridge point | Pins it |
 | CONTEXT chart | The focused thread's context at every model call, against its limit; the dashed lines are 80% and 92%, where the context ring turns amber and red. "n/a" until a call reports its tokens | Steps with the terrain's window | The model call | Pins it |
 | LATENCY chart | Every tool call of the focused thread as a stem (height is how long it took, log scale from 0.1 s to 10 min, the equipment's colour, red when it failed, hollow while it runs) and every model call as a thin bar; the dotted line is the median tool call | Steps with the terrain's window; a running call grows | The tool call | Pins it |
-| WINDOW chart | The focused thread's account: used share of its five-hour window over the window's own time, against an even pace (the diagonal). Solid: what this program has seen since it started. Dashed: where it goes at this pace, an estimate. Hollow diamond: when it runs dry | Redrawn with every reading | The account | Pins it || Packet on a synapse | One tool call leaving for its equipment and its result coming back, as a flat sign: a prompt for the shell, a page for a read, a stroke for a write, a globe for the web, two squares for an agent, a block for anything else. Red when the result is a failure | Travels the synapse once: out when the call starts, back when it ends | n/a | n/a |
+| WINDOW chart | The focused thread's account: used share of its five-hour window over the window's own time, against an even pace (the diagonal). Solid: what this program has seen since it started. Dashed: where it goes at this pace, an estimate. Hollow diamond: when it runs dry | Redrawn with every reading | The account | Pins it |
+| Packet on a synapse | One tool call leaving for its equipment and its result coming back, as a flat sign: a prompt for the shell, a page for a read, a stroke for a write, a globe for the web, two squares for an agent, a block for anything else. Red when the result is a failure | Travels the synapse once: out when the call starts, back when it ends | n/a | n/a |
 | Red flash on an equipment box | A call through it just failed | 0.5 s | n/a | n/a |
-| Latency line under an equipment box | Every call through that equipment in the last 8 minutes: a stem where it started, as tall as it took (log scale, 0.1 s to 10 min), red when it failed, capped while it still runs. The dotted line is the usual time | Moves left with time | The equipment's card | Pins it || Flash on a pane of the sector map | Its thread just did something: the model's colour when a call reported, cyan when a turn started, green when it ended, red when a tool call or the turn failed, amber when it began to wait on you | 0.4 s, 0.9 s for the end of a turn | n/a | n/a |
-| Amber breath on a pane of the sector map | That pane waits on you | Breathes until it is answered, as its row does | The pane | As in v4 || Ripple from a cell body | The phase strip changed because of this thread (an alert was raised), in the alert's colour, and a quarter of a second later the same ripple arrives at the strip's lamp; or one of its tool calls failed, in red | Two rings run outward, 0.6 s | n/a | n/a |
+| Latency line under an equipment box | Every call through that equipment in the last 8 minutes: a stem where it started, as tall as it took (log scale, 0.1 s to 10 min), red when it failed, capped while it still runs. The dotted line is the usual time | Moves left with time | The equipment's card | Pins it |
+| Flash on a pane of the sector map | Its thread just did something: the model's colour when a call reported, cyan when a turn started, green when it ended, red when a tool call or the turn failed, amber when it began to wait on you | 0.4 s, 0.9 s for the end of a turn | n/a | n/a |
+| Amber breath on a pane of the sector map | That pane waits on you | Breathes until it is answered, as its row does | The pane | As in v4 |
+| Ripple from a cell body | The phase strip changed because of this thread (an alert was raised), in the alert's colour, and a quarter of a second later the same ripple arrives at the strip's lamp; or one of its tool calls failed, in red | Two rings run outward, 0.6 s | n/a | n/a |
 | Motes above a ridge head | One per 5 s a model call has run without a first word | The stack grows while the model has not spoken yet | The terrain card | n/a |
 | Diamond on a ridge | A tool call, coloured by equipment; red and taller when it failed | Moves left with time | The call | Pins it |
 | Flag on a ridge | An alert raised for that thread | Moves left with time | The alert | Focuses the thread |
@@ -75,7 +81,8 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Flag line in comms | One alert: its level (filled red square: needs you now; amber outline: watch it; grey outline: worth a look), its thread, what it is, since when. Cut at the end of a word, never inside one | A flag that is raised arrives here last: a ripple from its thread, a quarter of a second later one at the phase lamp, half a second after it was raised a ripple and a flash on its own line. The marker of a flag that needs you now breathes red until it is dealt with or muted | The flag in full, long lines wrapped | Focuses the flagged thread |
 | Log line | One thing that happened: when, which thread, what (a tool call, a turn that began or ended, a call for you, a dispatch), how long it took. Bright for 20 s, dimmer for five minutes, faint after that | A new line lights up where it begins, in its own tone. When a tool call comes back, the end of its line flashes in the equipment's colour, red when it failed | A tool call: the same card as its pillar and its diamond. Anything else: the line in full | Focuses its thread; on the focused thread, pins the line |
 | Track under a running log line | A tool call that has not come back: the line counts its seconds, the tick on the track stands at that equipment's usual time (the median of the last 8 minutes), the end of the track at 1.67 times it. No track when the equipment has no usual time yet | The head runs along the track with the call's own elapsed time, cyan up to the tick, amber past it, and stops at the end | The tool call | As the line |
-| Rings from a flag or a log line | Control: what the line under the pointer (or the pinned one) is about | A ring on its thread's cell body, on its pane in the sector map and, for a tool call, on the equipment it went through, for as long as the pointer is on the line | n/a | n/a || Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
+| Rings from a flag or a log line | Control: what the line under the pointer (or the pinned one) is about | A ring on its thread's cell body, on its pane in the sector map and, for a tool call, on the equipment it went through, for as long as the pointer is on the line | n/a | n/a |
+| Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
 ### What the flock does, and when
 
@@ -129,13 +136,41 @@ lost, so the program asks the terminal instead.
 - `stats.json` carries the answer under `graphics` (pages, sent, held, verdict, answers,
   lostLastMinute, storeMb of storeLimitMb) and `fallback` (why the layer is painted, or null).
 
+## The prompt cache
+
+The provider keeps what a thread has sent for a set time after the thread's last model call:
+five minutes or an hour, chosen per request. While it is kept the next call reads it back
+cheaply; once it is cold the next call writes all of it again. Nobody shows this, and it is
+what decides whether going back to a resting thread is cheap.
+
+- **Measured.** Claude Code writes every model call into the thread's transcript with how many
+  tokens it wrote to the cache under each lifetime (`cache_creation.ephemeral_5m_input_tokens`
+  and `ephemeral_1h_input_tokens`). The lifetime shown is the one the thread's newest writing
+  call wrote under. `src/cache-worker.mjs` reads only those numbers and the timestamps, never
+  the text, in a worker thread, forwards from where its last read ended.
+- **Which transcript.** By the plugin's own record of which Claude session answers the thread
+  (`claude-sessions.json`, written when a turn ends), or, for a thread in its first turn and
+  for most subagents, by timing: a block of thinking or of reply ends at the same moment in
+  opencode's store and in the transcript (measured 0 to 2 ms apart), so the transcript in the
+  thread's project folder that has a record within a quarter of a second of two or more of the
+  thread's last block ends, with no runner-up matching more than half as many, is its own.
+  Measured on this machine: 12 of 12 for a subagent in its first turn and for a fresh fork.
+- **Assumed.** One hour, what a Claude Code session on a subscription uses, when no transcript
+  is found (a thread that has written fewer than two blocks, a transcript that is behind the
+  thread). The mark is then dashed, its reading starts with "~", its chip says ASSUMED and its
+  card says why. A thread on a model that is not served through Claude Code shows "n/a".
+- **Last touched** is when the thread's newest model call went out, from opencode's own record
+  of that call, not from the session's "updated" time, which moves for other reasons.
+- `node --no-warnings v5/tools/cache-probe.mjs` prints what is found for every thread.
+
 ## Files
 
 As v4, plus `src/flock.mjs` (the swarm: a dot's life from the tip to the globe, simulation,
 projection, hit test), `src/body.mjs` (the view of the core: projection, rings, lanes),
 `src/card.mjs` (the card as its own image and its leader line), `src/terrain.mjs` (the ridges),
-`src/explain.mjs` (explain mode and the keyboard walk), `src/charts.mjs` (a stub: the live charts
-are not built), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
+`src/explain.mjs` (explain mode and the keyboard walk), `src/charts.mjs` (the three live charts), `src/cache.mjs` (the prompt cache as the screen
+shows it), `src/cache-worker.mjs` (reads the transcripts off the main thread), `tools/cache-probe.mjs`
+(what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
 `tools/gfx-probe.mjs`. `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
 `src/encoder.mjs` send a z per placement, the page a sprite sits on, and the heartbeat.
 
@@ -160,16 +195,29 @@ is not known), a tool call that travels as a packet with a sign per equipment, a
 the equipment when a call fails, a latency line under every equipment box, a sector map whose
 panes answer to their threads, and project directories in the demo.
 
-Not done yet, in the order the brief gives: comms and the log coming alive, the cache cooling (how long a thread's prompt cache lives is not in the data this program reads, so
-it would be a guess), context closing a ring, scrubbing the terrain by dragging, the remaining
-v4 marks as targets, explain-mode tags that overlap. In landscape the three charts are cramped
-and the stage has empty space above the terrain.
+Since then (2026-11-15 evening): the prompt cache cooling, as an axis under the turn's time and
+an arc round every cell body, measured from the transcripts where one is found and marked as
+assumed where not (see "The prompt cache"). And a fault that was older than v5 is gone: between
+two changes of the layout, the rows of the circuit showed the poll they were laid out in (cost,
+context, flags and the live line stood still until the focus moved or a row changed height);
+a laid-out row now follows its thread at every poll.
+
+Not done yet, in the order the brief gives: context closing a ring, scrubbing the terrain by
+dragging, the remaining v4 marks as targets, explain-mode tags that overlap. In landscape the
+three charts are cramped and the stage has empty space above the terrain.
 
 Verified since, in a snapshot: the ring formation once it has settled (parallels turning against
 each other), and a 206 column frame in the landscape layout (28 pages, 3.9 MB; its tiles are at
 most 30.4 MB, so 34 MB of the 67 MB store by arithmetic). Through real herdr forwarding a hover
 answered on the charge at the tip, the turn clock, the terrain and the WINDOW chart; the LATENCY
 plot and an equipment's latency line answered in a synthetic run only.
+
+With the cache marks in (2026-11-15, 22:07): the pane is 84 columns by 82 rows now, the
+terminal answered "held" for 19 of 19 sprite pages after the restart, and a hover sent through
+herdr onto the PROMPT CACHE axis opened its card ("1 h, measured", "found by timing: 12 of the
+thread's last 12 blocks"). Six threads working: 30 frames a second, 400 to 440 kB/s, 5.3 to
+6.6% of a core, 294 MB physical footprint, 14 MB of the terminal's store. The arc and the
+reading on a row were seen in this program's snapshot of the live pane only.
 
 Not verified: a 206 column pane in the real terminal, a quiet machine, and the marks that need
 an event to fire while someone looks: a packet in flight, the red flash on a failure, a pane of

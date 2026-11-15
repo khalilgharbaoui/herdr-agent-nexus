@@ -1,6 +1,7 @@
 // The circuit: account rails on the left, projects and their threads in the middle (every thread
 // a neuron: cell body, axon, synapses), and on the right the equipment a model acts with.
 
+import { cacheSign, cacheState, cacheWord } from "./cache.mjs"
 import { FILTER_NAME } from "./model.mjs"
 import { PANEL, PORT_COLOR, bare, clean, homed } from "./theme.mjs"
 import { FAMILY, INK, TAU, agoOf, clamp, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
@@ -227,6 +228,7 @@ export const circuit = {
     if (g.row.tally) parts.push(g.row.tally.threads, g.row.tally.working)
     if (session.turn) parts.push(Math.floor((now - session.turn.start) / 1000))
     else parts.push(Math.floor((now - (session.idleSince || session.updated)) / 60e3))
+    parts.push(cacheSign(session.cache, now))
     const live = g.live ? this.liveOf(session) : null
     if (live?.kind === "tool") parts.push(live.tool.id, live.more, Math.floor((now - live.tool.start) / 1000))
     else if (live?.item) parts.push(live.item.key, this.shownOf(live.item))
@@ -265,12 +267,26 @@ export const circuit = {
       c.setLineDash([])
       if (session.unread) this.dot(c, somaX + 0.5, axonY + 0.5, u(2.5), INK.good)
     }
+    // the prompt cache cooling: an arc round the cell body, a full circle when a model call has
+    // just gone out, gone when the cache is cold. Dashed when its lifetime is assumed.
+    const cache = session.cache
+    const heat = cacheState(cache, now)
+    if (heat && !heat.cold) {
+      c.strokeStyle = heat.color
+      c.lineWidth = u(2)
+      c.lineCap = "butt"
+      if (!cache.measured) c.setLineDash([u(3), u(3)])
+      c.beginPath()
+      c.arc(somaX + 0.5, axonY + 0.5, g.r + u(4.5), -Math.PI / 2, -Math.PI / 2 + Math.max(0.06, heat.share) * TAU)
+      c.stroke()
+      c.setLineDash([])
+    }
     // a folded subtree: a second ring, and how many are inside
     if (row.closed) {
       c.strokeStyle = INK.dim
       c.lineWidth = 1
       c.beginPath()
-      c.arc(somaX + 0.5, axonY + 0.5, g.r + u(5), 0, TAU)
+      c.arc(somaX + 0.5, axonY + 0.5, g.r + (heat && !heat.cold ? u(9) : u(5)), 0, TAU)
       c.stroke()
     }
 
@@ -323,6 +339,15 @@ export const circuit = {
     }
     if (session.cost) x = this.run(c, x, metaY, [[`  ·  ${moneyOf(session.cost)}`, small]])
     if (session.context.limit && session.context.used) x = this.run(c, x, metaY, [[`  ·  ctx ${Math.round((session.context.used / session.context.limit) * 100)}%`, small]])
+    const cacheText = cacheWord(cache, heat, now)
+    if (cacheText) {
+      x = this.run(c, x, metaY, [["  ·  ", small]])
+      const style = { size: 14, color: heat.cold ? INK.faint : rgba(heat.color, working || waiting ? 1 : 0.85) }
+      const w = this.width(c, cacheText, style)
+      this.text(c, cacheText, x, metaY, style)
+      this.hit("cache", session.id, { x: x - u(3), y: metaY - u(15), w: w + u(6), h: u(20) })
+      x += w
+    }
     if (row.closed && row.tally) this.run(c, x, metaY, [[`  ·  ${row.tally.threads} subagent${row.tally.threads === 1 ? "" : "s"} folded${row.tally.working ? `, ${row.tally.working} working` : ""}`, { size: 14, color: row.tally.working ? INK.live : INK.soft }]])
     if (working) {
       const phase = session.phase
