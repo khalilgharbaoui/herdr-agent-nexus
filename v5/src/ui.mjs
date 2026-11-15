@@ -210,6 +210,7 @@ export class Controller {
       case "step":
       case "tab":
       case "clock":
+      case "note":
         return this.pin(target)
       default:
         return `nothing to do on ${target.kind}`

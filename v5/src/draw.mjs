@@ -376,6 +376,12 @@ export class Renderer {
     if (this.sink) this.sink.push({ kind, id, rect, ...more })
   }
 
+  // A small mark that is a reading or a label: a target whose card is written where the mark
+  // is drawn, so the two cannot say different things. `lines` are [name, value] pairs.
+  note(id, rect, kicker, title, lines, tone) {
+    this.hit("note", id, rect, { card: { kicker, title, lines, tone } })
+  }
+
   // What is under a point: an overlay first, then a mark on the instrument or an axon, then the
   // smallest target that holds the point.
   hitTest(x, y, scene, now) {

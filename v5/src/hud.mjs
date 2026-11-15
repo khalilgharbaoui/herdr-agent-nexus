@@ -71,9 +71,14 @@ export const hud = {
     x += u(24)
     this.dot(c, x + u(4), u(43), u(4), demo ? INK.warn : INK.live)
     this.label(c, demo ? "DEMO  ·  SIMULATED DATA" : "LIVE", x + u(16), u(48.5), demo ? INK.warn : INK.live, "left", 13)
+    this.note("mode", { x: M, y: u(26), w: x + u(demo ? 250 : 70) - M, h: u(34) }, "SOURCE", demo ? "DEMO: simulated data" : "LIVE: this machine, now", demo
+      ? [["WHAT", "threads, calls and accounts are made up by this program, to show every mark at work. Nothing here is real."], ["KEY", "d switches to live data"]]
+      : [["THREADS", "opencode's own database: every session and subagent of the last 24 hours, read four times a second"], ["ACCOUNTS", "the Claude Code plugin's state files: usage windows, turn history, which model a thread really runs as"], ["PANES", "herdr, every 2.5 s: which pane holds which thread, and its state"], ["WRITES", "nothing outside its own folder: every source is read-only"], ["KEY", "d switches to simulated data"]], demo ? INK.warn : INK.live)
     const clock = clockOf(now)
     this.text(c, clock, W - M, u(56), { size: 38, family: FAMILY.monoLight, color: INK.text, align: "right" })
-    this.label(c, dayOf(now), W - M - this.width(c, clock, { size: 38, family: FAMILY.monoLight }) - u(20), u(54), INK.dim, "right", 13)
+    const clockWidth = this.width(c, clock, { size: 38, family: FAMILY.monoLight })
+    this.label(c, dayOf(now), W - M - clockWidth - u(20), u(54), INK.dim, "right", 13)
+    this.note("clock-now", { x: W - M - clockWidth - u(120), y: u(22), w: clockWidth + u(120), h: u(42) }, "NOW", `${dayOf(now)}  ${clock}`, [["WHAT", "this machine's clock. Every \"ago\", every countdown and the right edge of every time axis on screen is measured against it."], ["READ", "four times a second with the threads; the moving layer runs at up to 30 frames a second"]])
 
     // the phase: three lamps, one lit. Alert while something needs you, caution while it cools.
     const phase = scene.phase
@@ -138,19 +143,38 @@ export const hud = {
     const mx = this.run(c, x + u(14), lampY + u(23), [[headline, { size: 15, family: FAMILY.label, weight: "600", color: tone, spacing: 2.8 }]]) + u(18)
     const detailStyle = { size: 14.5, color: phase.level === "normal" ? INK.dim : INK.text }
     this.text(c, this.fit(c, detail, W - M - mx, detailStyle), mx, lampY + u(23), detailStyle)
+    // the headline and the flag it names: the flag itself when there is one, so a click goes to its thread
+    const named = phase.level === "normal" ? live.find((alert) => alert.level === "notice") : phase.cooling ? null : live.find((alert) => alert.level === phase.level)
+    const headRect = { x: x + u(8), y: lampY, w: W - M - x - u(8), h: lampH }
+    if (named) this.hit("alert", named.key, headRect, { alert: named, sid: named.sid })
+    else this.note("phase-line", headRect, "PHASE", headline, [["NOW", detail || "nothing needs you"], ["NORMAL", "no flag that needs you or wants watching"], ["CAUTION", "a flag to watch (amber), or the 90 s after an alert cleared: the bar under the lamp drains"], ["ALERT", "a thread waits on you, or failed: the count is how many"]], tone)
+
 
     // one line of counts
     const counts = scene.counts
     const number = (value, color = INK.text) => [String(value), { size: 15, family: FAMILY.monoMedium, color }]
     const word = (value) => [value, { size: 14, color: INK.dim }]
-    const pieces = [number(counts.working, counts.working ? INK.live : INK.soft), word(" working    ")]
-    pieces.push(number(counts.waiting, counts.waiting ? INK.warn : INK.soft), word(` call${counts.waiting === 1 ? "" : "s"}    `))
-    if (counts.stalled) pieces.push(number(counts.stalled), word(" silent    "))
-    pieces.push(number(counts.threads), word(" listed    "), number(counts.panes), word(" panes    "))
-    pieces.push(number(moneyOf(scene.world?.cost24h?.cost ?? 0)), word(" in 24 h    "))
-    pieces.push(number(compactOf(scene.outPerMinute ?? 0)), word(" tok out/min"))
-    this.run(c, M, u(134), pieces)
-    if (meta?.line) this.text(c, meta.line, W - M, u(134), { size: 12.5, color: INK.dim, align: "right" })
+    // each count is a target of its own: what is counted, exactly
+    const tally = [
+      ["working", number(counts.working, counts.working ? INK.live : INK.soft), " working", "threads with a turn running now: thinking, writing, calling the model or running a tool"],
+      ["calls", number(counts.waiting, counts.waiting ? INK.warn : INK.soft), ` call${counts.waiting === 1 ? "" : "s"}`, "threads that wait on you: a question, a permission, a form. Each is a call in COMMS"],
+    ]
+    if (counts.stalled) tally.push(["silent", number(counts.stalled), " silent", "threads with a turn running that have written nothing for longer than such a step usually takes"])
+    tally.push(["listed", number(counts.threads), " listed", "threads in the circuit: every session and subagent of the last 24 hours that is not archived, folded ones included"])
+    tally.push(["panes", number(counts.panes), " panes", "herdr panes on this machine, with or without an agent in them: the sector map shows each"])
+    tally.push(["cost", number(moneyOf(scene.world?.cost24h?.cost ?? 0)), " in 24 h", `what opencode recorded as cost over the last 24 hours, in ${scene.world?.cost24h?.sessions ?? 0} sessions. On a subscription this is the list price of the tokens, not a bill`])
+    tally.push(["rate", number(compactOf(scene.outPerMinute ?? 0)), " tok out/min", "output tokens of every listed thread over the last minute, counted when a model call reports"])
+    let tx = M
+    for (const [id, figure, name, what] of tally) {
+      const end = this.run(c, tx, u(134), [figure, word(name)])
+      this.note(`count-${id}`, { x: tx - u(3), y: u(116), w: end - tx + u(6), h: u(26) }, "COUNT", `${figure[0]}${name}`, [["COUNTS", what]])
+      tx = end + this.width(c, "    ", { size: 14 })
+    }
+    if (meta?.line) {
+      this.text(c, meta.line, W - M, u(134), { size: 12.5, color: INK.dim, align: "right" })
+      const metaWidth = this.width(c, meta.line, { size: 12.5 })
+      this.note("meta", { x: W - M - metaWidth - u(4), y: u(116), w: metaWidth + u(8), h: u(26) }, "THIS PROGRAM", meta.line, [["SIZE", "the pane in pixels, drawn at the terminal's own resolution"], ["FPS", "times a second the picture is brought up to date: 30 while anything moves, 10 when all is still"], ["SPRITES", "moving marks placed this frame, and whether the terminal still holds their images (it is asked every 2 s)"], ["KB/S", "what is written to the terminal"], ["CPU", "this program's share of one core, the encoder included"], ["MORE", "v5/stats.json, rewritten every 2 s"]])
+    }
     this.line(c, M, u(146), W - M, u(146), INK.ghost)
   },
 
@@ -794,6 +818,11 @@ export const hud = {
         pin: true,
         foot: "a bar inside the ring and a tick on the axon are the same call",
       }
+    }
+    if (target.kind === "note") {
+      const card = target.card
+      if (!card) return null
+      return { tone: card.tone ?? INK.soft, kicker: card.kicker, title: card.title, lines: card.lines.map(([name, value, tone]) => [name, value, tone, "wrap"]), pin: true, foot: "click: pin this card" }
     }
     if (target.kind === "log") {
       const entry = scene.log.find((candidate) => candidate.key === target.id) ?? target.entry
