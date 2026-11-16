@@ -278,12 +278,14 @@ export const reach = {
       return
     }
     const word = turn.live ? "this turn" : "the last turn"
+    // (at a held moment: the turn of then, as far as it had come)
+    const phrase = scene.then ? (turn.live ? "what the turn had touched by then" : "what the turn before then touched") : `what ${word} touched`
     const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
     const summary = [data.files ? `${count(data.files, "file")} in ${count(data.folders, "folder")}` : "", data.programs ? count(data.programs, "program") : "", data.targets - data.files - data.programs > 0 ? count(data.targets - data.files - data.programs, data.files || data.programs ? "other target" : "target") : ""].filter(Boolean).join("  ·  ")
     const summaryW = this.width(c, summary, { size: 11.5 })
-    this.text(c, this.fitWords(c, `what ${word} touched`, x1 - summaryW - u(18) - (x0 + labelW + u(14)), { size: 12.5 }), x0 + labelW + u(14), headY, { size: 12.5, color: rgba(INK.dim, fade) })
+    this.text(c, this.fitWords(c, phrase, x1 - summaryW - u(18) - (x0 + labelW + u(14)), { size: 12.5 }), x0 + labelW + u(14), headY, { size: 12.5, color: rgba(INK.dim, fade) })
     this.text(c, summary, x1, headY, { size: 11.5, color: INK.faint, align: "right" })
-    this.note("reach", { x: x0 - u(4), y: headY - u(14), w: x1 - x0 + u(8), h: u(20) }, "REACH", `what ${word} touched, and when`, [["WHAT", what], ["COUNT", `${summary.replaceAll("  ·  ", ", ")}; ${count(data.targets, "target")} in all`], ["FROM", "the name of each tool call and the first field of its input in opencode's record: the path, the command, the pattern or the address"], ["PROGRAM", "the first word of a command after any leading cd and variable assignments, with the subcommand for git, npm and the like"]])
+    this.note("reach", { x: x0 - u(4), y: headY - u(14), w: x1 - x0 + u(8), h: u(20) }, "REACH", `${phrase}, and when`, [["WHAT", what], ["COUNT", `${summary.replaceAll("  ·  ", ", ")}; ${count(data.targets, "target")} in all`], ["FROM", "the name of each tool call and the first field of its input in opencode's record: the path, the command, the pattern or the address"], ["PROGRAM", "the first word of a command after any leading cd and variable assignments, with the subcommand for git, npm and the like"]])
 
     // the turn's time across the top: the same scale for every row
     const span = this.reachSpan(turn)
@@ -465,14 +467,14 @@ export const reach = {
       this.note("reach-more", { x: groupX - u(4), y: y - u(16), w: tx0 - groupX, h: rowH }, "REACH · NOT SHOWN", count(hidden.length, "target"), [["WHY", "the rows that fit show the targets touched most recently; these were touched longer ago"], ["WHICH", hidden.slice(0, 14).map((leaf) => leaf.name).join(", ") + (hidden.length > 14 ? ` and ${hidden.length - 14} more` : "")]])
     }
 
-    // a moment scrubbed on the terrain, when it lies in this turn: the white line
-    const held = this.scrubAt(ui)
-    if (held !== null && held >= turn.start && held <= turn.start + span) {
-      const x = Math.round(xOf(held))
-      this.line(c, x, axisY - u(6), x, bottom, rgba(INK.text, 0.8), 1)
-    }
-    // now: the cyan line through every row
-    if (turn.live) {
+    // A moment held on the terrain: REACH is drawn as of that moment (what the turn of then
+    // had touched by then, a call that was out then still out), and the white line of the
+    // moment stands where the cyan line of now would (paint draws it at full strength).
+    const held = scene.then ?? null
+    if (held !== null) {
+      if (held >= turn.start && held <= turn.start + span) this.heldLines.push({ x: Math.round(xOf(held)), y0: axisY - u(6), y1: bottom })
+    } else if (turn.live) {
+      // now: the cyan line through every row
       const second = Math.floor(now / 1000) * 1000
       const x = Math.round(xOf(second))
       this.line(c, x, axisY - u(6), x, bottom, rgba(INK.live, 0.7), 1)

@@ -26,7 +26,7 @@ export class Controller {
     this.getScene = scene
     this.actions = actions
     this.logFile = logFile
-    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, help: false, explain: false, walk: null, monitor: false, zoom: false, window: WINDOWS[1], tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
+    this.ui = { pointer: null, hover: null, hoverAt: 0, card: null, pinned: null, hold: null, help: false, explain: false, walk: null, monitor: false, zoom: false, window: WINDOWS[1], tailScroll: 0, tip: "", flashes: [], info: {}, stamp: 0, activeUntil: 0 }
     this.counts = { keys: 0, moves: 0, clicks: 0, wheels: 0 }
     this.events = []
     this.dirty = false // the scene has to be rebuilt (a fold, a filter)
@@ -70,7 +70,7 @@ export class Controller {
       return
     }
     // a scrubbed moment that has left the terrain's window is let go
-    if (ui.pinned?.target.kind === "scrub" && this.renderer.terrainGeo && ui.pinned.target.at < this.renderer.terrainGeo.from) ui.pinned = null
+    if (ui.hold && this.renderer.terrainGeo && ui.hold.target.at < this.renderer.terrainGeo.from) ui.hold = null
     if (!ui.pointer || !this.scene.world) return
     const target = this.renderer.hitTest(ui.pointer.x, ui.pointer.y, this.scene, now)
     const same = target && ui.hover && target.kind === ui.hover.kind && target.id === ui.hover.id
@@ -79,7 +79,12 @@ export class Controller {
       ui.hoverAt = now
       ui.card = null
       ui.tip = target?.tip ?? this.tipFor(target)
-    } else ui.hover.rect = target.rect
+    } else {
+      ui.hover.rect = target.rect
+      // a moment held or let go while the pointer rests on a mark: the mark's time changes with it
+      ui.hover.then = target.then
+      if (ui.card) ui.card.target.then = target.then
+    }
     if (ui.hover && !ui.card && INSPECTABLE.has(ui.hover.kind) && now - ui.hoverAt >= DWELL_MS) ui.card = { target: { ...ui.hover }, anchor: { x: ui.pointer.x, y: ui.pointer.y } }
   }
 
@@ -131,7 +136,9 @@ export class Controller {
       const at = this.renderer.terrainTimeAt(event.x, this.dragFrom.y)
       if (at !== null) {
         const r = this.renderer.u(8)
-        ui.pinned = { target: { kind: "scrub", id: "scrub", at, rect: { x: event.x - r, y: event.y - r, w: r * 2, h: r * 2 } }, anchor: { x: event.x, y: event.y } }
+        // the moment is held by itself: a card pinned before the drag gives way to the moment's own
+        ui.hold = { target: { kind: "scrub", id: "scrub", at, rect: { x: event.x - r, y: event.y - r, w: r * 2, h: r * 2 } }, anchor: { x: event.x, y: event.y } }
+        ui.pinned = null
         ui.card = null
         ui.hover = null
         ui.tip = "scrubbing the terrain  ·  escape: let the moment go"
@@ -186,6 +193,10 @@ export class Controller {
       if (ui.pinned) {
         ui.pinned = null
         return "let go of the pinned card"
+      }
+      if (ui.hold) {
+        ui.hold = null
+        return "let the held moment go"
       }
       return "nothing here"
     }
@@ -321,8 +332,12 @@ export class Controller {
     }
     if (id === "next-flag") return scene.nextAlert(1, now) ? "focused the next flagged thread" : "nothing is flagged"
     if (id === "unpin") {
-      ui.pinned = null
-      return "let go of the pinned card"
+      if (ui.pinned) {
+        ui.pinned = null
+        return "let go of the pinned card"
+      }
+      ui.hold = null
+      return "let the held moment go"
     }
     if (id === "close-help") {
       ui.help = false
@@ -348,7 +363,11 @@ export class Controller {
         ui.tip = ""
       } else if (ui.explain) ui.explain = false
       else if (ui.pinned) ui.pinned = null
-      else if (ui.tailScroll) ui.tailScroll = 0
+      else if (ui.hold) {
+        // (a card pinned during the hold goes first: the next escape lets the moment go)
+        ui.hold = null
+        return "let the held moment go"
+      } else if (ui.tailScroll) ui.tailScroll = 0
       else return "nothing to close"
       return "closed"
     }

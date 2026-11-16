@@ -23,10 +23,13 @@ import { stage } from "./stage.mjs"
 import { terrain } from "./terrain.mjs"
 import { THEN_INK, openAt } from "./replay.mjs"
 import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
-import { FAMILY, INK, TAU, clamp, fontOf, keeps, modelColor, roomFor } from "./util.mjs"
+import { FAMILY, INK, TAU, clamp, fontOf, keeps, modelColor, rgba, roomFor } from "./util.mjs"
 
 const PORTRAIT_UNITS = 2800 // the height, in layout units, an upright pane is given at least
-const THEN_REGIONS = new Set(["core", "flockline", "plinth", "under", "head"]) // what a held moment replays, see replay.mjs
+// What a held moment replays (see replay.mjs): the whole stage. Every other part of the screen
+// that carries a section label stays the present and says so with a NOW chip beside its label.
+const THEN_REGIONS = new Set(["core", "flockline", "plinth", "cache", "under", "reach", "head", "charts", "tail"])
+const NOW_REGIONS = new Set(["header", "rails", "top", "ports", "comms", "footer", "log"])
 
 export class Renderer {
   constructor(flow) {
@@ -439,19 +442,24 @@ export class Renderer {
       for (const target of this.hits.get(overlay.name) ?? []) if (inside(target.rect, x, y)) return target
       return { kind: "overlay", id: overlay.name, rect: overlay.rect }
     }
+    // While a moment is held, the moving marks of the core (a moon, the charge, a dot, a
+    // satellite, a call on the clock, the context ring) are marks of that moment: a target
+    // found there carries the moment, so its card reads then and not now.
+    const held = this.thenKept
+    const past = (target) => (held && target ? { ...target, then: held.at } : target)
     for (const moon of this.moons ?? []) {
       const r = this.u(13)
-      if (Math.abs(x - moon.x) <= r && Math.abs(y - moon.y) <= r) return { kind: "thread", id: moon.sid, moon: true, moving: true, rect: { x: moon.x - r, y: moon.y - r, w: r * 2, h: r * 2 } }
+      if (Math.abs(x - moon.x) <= r && Math.abs(y - moon.y) <= r) return past({ kind: "thread", id: moon.sid, moon: true, moving: true, rect: { x: moon.x - r, y: moon.y - r, w: r * 2, h: r * 2 } })
     }
     const tip = this.flock.tip
     if (tip && scene.focused && this.flock.sid === scene.focus.id && Math.hypot(x - tip.x, y - tip.y) <= this.u(26)) {
       const r = this.u(16)
-      return { kind: "charge", id: this.flock.sid, rect: { x: tip.x - r, y: tip.y - r, w: r * 2, h: r * 2 } }
+      return past({ kind: "charge", id: this.flock.sid, rect: { x: tip.x - r, y: tip.y - r, w: r * 2, h: r * 2 } })
     }
     const dot = this.dotAt(x, y, scene)
-    if (dot) return dot
+    if (dot) return past(dot)
     const mark = this.markAt(x, y, scene, now)
-    if (mark) return mark
+    if (mark) return mark.onStage ? past(mark) : mark
     let best = null
     for (const list of this.hits.values()) {
       for (const target of list) {
@@ -503,18 +511,19 @@ export class Renderer {
         const mx = (entry.x0 + entry.x1) / 2
         const my = (entry.y0 + entry.y1) / 2
         const h = Math.max(u(16), Math.abs(entry.y1 - entry.y0) + u(8))
-        return { kind: entry.tool ? "tool" : "step", id: entry.tool ? entry.tool.id : `${clock.sid}:${entry.step.seq}`, sid: clock.sid, tool: entry.tool, step: entry.step, rect: { x: mx - u(8), y: my - h / 2, w: u(16), h } }
+        return { kind: entry.tool ? "tool" : "step", id: entry.tool ? entry.tool.id : `${clock.sid}:${entry.step.seq}`, sid: clock.sid, tool: entry.tool, step: entry.step, onStage: true, rect: { x: mx - u(8), y: my - h / 2, w: u(16), h } }
       }
     }
     // the context ring itself: within reach of its line, the target sits on the ring there
-    const focused = scene.focused?.session
+    // (the ring of a held moment is the thread's as it stood then)
+    const focused = (this.thenKept?.scene ?? scene).focused?.session
     if (focused?.context.limit && focused.context.used && inside(G.coreBox, x, y)) {
       const { view } = this.coreView(focused)
       const at = ringAngle(view, x, y)
       if (Math.abs(at.radius - G.core.RB) <= u(9)) {
         const spot = ringPoint(view, G.core.RB, at.angle, 0, [0, 0, 0, 0])
         const r = u(9)
-        return { kind: "context", id: focused.id, rect: { x: spot[0] - r, y: spot[1] - r, w: r * 2, h: r * 2 } }
+        return { kind: "context", id: focused.id, onStage: true, rect: { x: spot[0] - r, y: spot[1] - r, w: r * 2, h: r * 2 } }
       }
     }
     for (const g of G.rows) {
@@ -545,6 +554,7 @@ export class Renderer {
   // Repaints what changed. Returns true when anything did; this.marks then flags the tile rows
   // that have to be read back.
   update(scene, ui, now, meta) {
+    this.present = now // a region that replays a held moment is drawn at that moment: this is still now
     this.dt = this.lastUpdate ? Math.min(0.25, (now - this.lastUpdate) / 1000) : 0
     this.lastUpdate = now
     const rearranged = this.arrange(scene, ui, now)
@@ -595,7 +605,9 @@ export class Renderer {
     for (const region of this.regions) {
       this.signed = null
       const past = then && THEN_REGIONS.has(region.name) ? then : null
-      const signature = past ? `then ${past.at}|${region.sign(past.scene, ui, past.at, meta)}` : region.sign(scene, ui, now, meta)
+      // a part that is not replayed says so while a moment is held: its NOW chip comes and goes
+      const present = then && !past && NOW_REGIONS.has(region.name) ? then : null
+      const signature = past ? `then ${past.at}|${region.sign(past.scene, ui, past.at, meta)}` : `${region.sign(scene, ui, now, meta)}${present ? "|now chip" : ""}`
       const signed = this.signed
       const under = stale.some((rect) => intersects(rect, region.rect))
       if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) {
@@ -617,7 +629,7 @@ export class Renderer {
       }
       region.last = signature
       if (past) this.paint(region, past.scene, ui, past.at, meta, past)
-      else this.paint(region, scene, ui, now, meta)
+      else this.paint(region, scene, ui, now, meta, null, present)
       this.repaints[region.name] = (this.repaints[region.name] ?? 0) + 1
       painted.push(region.rect)
       any = true
@@ -639,11 +651,13 @@ export class Renderer {
     return any
   }
 
-  paint(region, scene, ui, now, meta, then = null) {
+  paint(region, scene, ui, now, meta, then = null, present = null) {
     const c = this.base
     const { x, y, w, h } = region.rect
     if (w <= 0 || h <= 0) return
     this.sink = []
+    this.nowSpot = null
+    this.heldLines = []
     c.save()
     c.beginPath()
     c.rect(x, y, w, h)
@@ -657,7 +671,14 @@ export class Renderer {
       c.fillStyle = "rgba(0, 0, 0, 0.45)"
       c.fillRect(x, y, w, h)
       c.globalCompositeOperation = "source-over"
+      // the moment itself stays at full strength: the white line on a chart and on REACH
+      for (const mark of this.heldLines) this.line(c, mark.x, mark.y0, mark.x, mark.y1, rgba(INK.text, 0.85), 1)
       if (region.name === "core") this.thenTag(c, region.rect, then.at, "right")
+      // every target painted here is a mark of that moment: its card reads then
+      for (const target of this.sink) target.then = then.at
+    } else {
+      for (const mark of this.heldLines) this.line(c, mark.x, mark.y0, mark.x, mark.y1, rgba(INK.text, 0.8), 1)
+      if (present && this.nowSpot) this.nowChip(c, region, present.at)
     }
     c.restore()
     this.hits.set(region.name, this.sink)
@@ -1000,17 +1021,22 @@ export class Renderer {
       // of its turn, one more each time that doubles, eight at most); one that rests sits still.
       this.moons = []
       let slot = 0
-      // (what its subagents did at a held moment is not replayed: no moons then)
-      for (const row of then ? [] : scene.threads) {
+      // At a held moment a moon is the subagent as it stood then, in the grey of the past: it
+      // circles at its rate of that moment, rests where it rested, and is not there at all
+      // when it had not been dispatched yet.
+      for (const row of scene.threads) {
         if (row.parent?.session.id !== session.id) continue
-        const child = row.session
-        const tone = spriteHex(child.state === "waiting" ? INK.warn : modelColor(child.model, child.provider))
+        if (then && row.session.created > then.at) continue
+        const child = then ? then.scene.byId.get(row.session.id) : row.session
+        const tone = then ? THEN_INK : spriteHex(child.state === "waiting" ? INK.warn : modelColor(child.model, child.provider))
         const busy = child.state === "working"
-        const theta = busy ? (this.theta.get(child.id) ?? 0) * 0.35 + slot * 2.4 : Math.PI * 1.3 + slot * 0.2
+        // (the angle of now is turned by the thread's rate of now: the past has its own, from its rate then)
+        const spin = then ? ((now / 1000) * (1.5 + Math.min(7, this.thenRate(child.id, then.at) / 28))) % TAU : (this.theta.get(child.id) ?? 0)
+        const theta = busy ? spin * 0.35 + slot * 2.4 : Math.PI * 1.3 + slot * 0.2
         const at = onRing(core.Rm, theta)
         const wrote = child.turn?.out ?? child.lastOut ?? 0
         const minis = wrote >= 250 ? clamp(1 + Math.floor(Math.log2(wrote / 250)), 1, 8) : 0
-        const turnBy = busy ? (this.theta.get(child.id) ?? 0) * 0.8 : slot
+        const turnBy = busy ? spin * 0.8 : slot
         for (let mini = 0; mini < minis; mini += 1) {
           const angle = turnBy + (mini / minis) * TAU
           const lift = Math.sin(angle)
@@ -1282,6 +1308,11 @@ export class Renderer {
         streams.push({ key: `then:${g.sid}`, path: `axon:${g.sid}`, kind: `${rate ? "tail" : "mote"}|${THEN_INK}`, speed: u(rate ? 110 : 70), gap })
         if (g.sid === scene.focus.id && rate) streams.push({ key: `thenfeed:${g.sid}`, path: `focus:${g.sid}`, kind: `dot|${THEN_INK}`, speed: u(150), gap })
         for (const port of open.ports) streams.push({ key: `thensyn:${g.sid}:${port}`, path: `syn:${g.sid}:${port}`, kind: `tail|${THEN_INK}`, speed: u(64), gap: u(34) })
+      }
+      // and along its branch of REACH, to the target of every call that was out then
+      for (const tool of then.session.phase?.tools ?? []) {
+        const leaf = this.reachLeaves?.get(tool.id)
+        if (leaf) streams.push({ key: `thenreach:${tool.id}`, path: `reach:${leaf.key}`, kind: `tail|${THEN_INK}`, speed: u(64), gap: u(30) })
       }
       flow.setStreams(streams, now)
       return

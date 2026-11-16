@@ -78,6 +78,7 @@ export const hud = {
     this.text(c, clock, W - M, u(56), { size: 38, family: FAMILY.monoLight, color: INK.text, align: "right" })
     const clockWidth = this.width(c, clock, { size: 38, family: FAMILY.monoLight })
     this.label(c, dayOf(now), W - M - clockWidth - u(20), u(54), INK.dim, "right", 13)
+    this.nowHere(W - M - clockWidth - u(20) - this.width(c, dayOf(now), { size: 13, family: FAMILY.label, weight: "600", spacing: 2.6 }) - u(14), u(54), "right")
     this.note("clock-now", { x: W - M - clockWidth - u(120), y: u(22), w: clockWidth + u(120), h: u(42) }, "NOW", `${dayOf(now)}  ${clock}`, [["WHAT", "this machine's clock. Every \"ago\", every countdown and the right edge of every time axis on screen is measured against it."], ["READ", "four times a second with the threads; the moving layer runs at up to 30 frames a second"]])
 
     // the phase: three lamps, one lit. Alert while something needs you, caution while it cools.
@@ -285,6 +286,7 @@ export const hud = {
       ["COMMS", { size: 12.5, family: FAMILY.label, weight: "600", color: calls.length ? INK.warn : INK.dim, spacing: 2.6 }],
       [calls.length ? `   ${calls.length} call${calls.length === 1 ? "" : "s"}` : "   no calls", { size: 13, color: calls.length ? INK.warn : INK.faint }],
     ])
+    this.nowHere(commsEnd + u(14), y)
     this.note("section:comms", { x: x - u(4), y: y - u(16), w: commsEnd - x + u(8), h: u(22) }, "SECTION", "COMMS", [["WHAT", "what asks for you: a thread that waits on an answer (a call) first, then every flag that is raised, the ones that need you now on top"], ["NOW", `${calls.length ? `${calls.length} call${calls.length === 1 ? "" : "s"}` : "no calls"}, ${others.length} flag${others.length === 1 ? "" : "s"}`], ["MARKER", "filled red square: needs you now. Amber outline: watch it. Grey outline: worth a look"], ["KEYS", "tab goes to the next flagged thread, c answers a call, m mutes a flag"]], calls.length ? INK.warn : undefined)
     y += u(16)
     if (calls.length) {
@@ -353,10 +355,11 @@ export const hud = {
     const u = (value) => this.u(value)
     const world = scene.world
     const panes = world?.panes ?? []
-    this.run(c, x, top, [
+    const mapEnd = this.run(c, x, top, [
       ["SECTOR MAP", { size: 12.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
       [`   ${panes.length} panes`, { size: 13, color: INK.soft }],
     ])
+    this.nowHere(mapEnd + u(14), top)
     this.note("section:map", { x: x - u(4), y: top - u(16), w: w + u(8), h: u(22) }, "SECTION", "SECTOR MAP", [["WHAT", "every herdr pane as a square, by workspace (a line) and tab (a box)"], ["LEGEND", "filled cyan: working. Filled amber: it calls you. Green outline with a dot: finished, not read yet. Grey outline: resting. A dot alone: a shell. The cross: this pane"], ["NOW", `${panes.length} panes: ${panes.filter((pane) => pane.status === "working").length} working, ${panes.filter((pane) => pane.status === "blocked").length} calling, ${panes.filter((pane) => pane.status === "done").length} unread`], ["FROM", "herdr, asked every 2.5 s"], ["CLICK", "a square focuses its thread; enter goes to the pane in herdr"]])
     // legend
     let lx = x + w
@@ -451,6 +454,7 @@ export const hud = {
   drawLog(c, scene, now, x, top, w, h) {
     const u = (value) => this.u(value)
     this.label(c, "LOG", x, top)
+    this.nowHere(x + this.width(c, "LOG", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(12), top)
     this.note("section:log", { x: x - u(4), y: top - u(16), w: this.width(c, "LOG", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(8), h: u(22) }, "SECTION", "LOG", [["WHAT", "what just happened, newest first, from every listed thread: a tool call, a turn that began or ended, a call for you, a dispatch"], ["TONE", "bright for 20 s, dimmer for five minutes, faint after that"], ["RUNNING", "a call that has not come back counts its seconds, with a track under it that has a tick at that equipment's usual time"], ["CLICK", "focuses the line's thread; on the focused thread it pins the line"]])
     const lineH = u(25)
     const marks = []
@@ -531,7 +535,7 @@ export const hud = {
   },
 
 
-  drawCard(c, rect, content, pinned) {
+  drawCard(c, rect, content, pinned, word = "PINNED  ·  ESC") {
     const u = (value) => this.u(value)
     const tone = content.tone ?? INK.live
     c.fillStyle = PANEL
@@ -545,8 +549,8 @@ export const hud = {
     const x = rect.x + u(20)
     this.label(c, content.kicker, x, rect.y + u(25), tone, "left", 11.5)
     if (pinned) {
-      const w = this.chip(c, "PINNED  ·  ESC", rect.x + rect.w - u(14), rect.y + u(25), { color: INK.live, align: "right" })
-      this.hit("action", "unpin", { x: rect.x + rect.w - u(14) - w, y: rect.y + u(8), w, h: u(24) }, { tip: "click to let go of this card" })
+      const w = this.chip(c, word, rect.x + rect.w - u(14), rect.y + u(25), { color: INK.live, align: "right" })
+      this.hit("action", "unpin", { x: rect.x + rect.w - u(14) - w, y: rect.y + u(8), w, h: u(24) }, { tip: word.startsWith("HELD") ? "click to let the held moment go" : "click to let go of this card" })
     } else if (content.pin) this.text(c, "click to pin", rect.x + rect.w - u(16), rect.y + u(25), { size: 11.5, color: INK.faint, align: "right" })
     const titleStyle = { size: 21, family: FAMILY.label, weight: "600", color: INK.text }
     this.text(c, this.fit(c, content.title, rect.w - u(40), titleStyle), x, rect.y + u(52), titleStyle)
@@ -627,8 +631,9 @@ export const hud = {
       if (session.tokens?.cacheRead) lines.push(["CACHE", `${compactOf(session.tokens.cacheRead)} read  ·  ${compactOf(session.tokens.cacheWrite)} written`])
       const heat = cacheState(session.cache, now)
       if (heat) lines.push(["CACHE LIFE", heat.cold ? `cold since ${clockOf(heat.coldAt)}` : `${session.cache.measured ? "" : "about "}${leftWord(heat.left)} left of ${session.cache.measured ? `${lifeWord(session.cache.lifetime)}, measured` : `an assumed ${lifeWord(session.cache.lifetime)}`}`, heat.cold ? INK.dim : heat.color])
-      lines.push(["COST", session.cost ? moneyOf(session.cost) : session.parentId ? "not reported for subagents" : "not reported"])
-      if (session.kids) lines.push(["SUBAGENTS", `${session.kids}${row?.closed ? "  (folded)" : ""}`])
+      lines.push(["COST", session.then ? "not kept for a past moment: opencode records one running total" : session.cost ? moneyOf(session.cost) : session.parentId ? "not reported for subagents" : "not reported", session.then ? INK.dim : undefined])
+      if (session.then) lines.push(["FLAGS", "not kept for a past moment", INK.dim])
+      if (session.kids) lines.push(["SUBAGENTS", `${session.kids}${session.then ? " listed now" : ""}${row?.closed ? "  (folded)" : ""}`])
       for (const alert of session.alerts) lines.push([alert.muted ? "MUTED" : "FLAG", `${alert.text}${alert.detail && alert.kind !== "call" ? `  ·  ${clean(alert.detail).slice(0, 60)}` : ""}`, alert.muted ? INK.faint : LEVEL_COLOR[alert.level]])
       lines.push(["SESSION", session.id, INK.dim])
       return { tone: modelColor(session.model, session.provider), kicker: `${session.parentId ? "SUBAGENT" : "THREAD"} ${index(session.id)}`, title: session.title, lines, pin: true, foot: `click: focus${pane ? "  ·  middle click: go to pane" : ""}  ·  space: pin` }
@@ -665,8 +670,17 @@ export const hud = {
       if (!session) return null
       const cache = session.cache
       const state = cacheState(cache, now)
-      if (!state) return { tone: INK.soft, kicker: "PROMPT CACHE", title: threadOf(session.id), lines: [cache?.empty ? ["STATE", "nothing cached: this thread has made no model call yet"] : ["LIFETIME", "n/a: this thread's model is not served through Claude Code, so nothing this program reads says how long its cache lives", undefined, "wrap"]], pin: true, foot: "" }
+      if (!state) return { tone: INK.soft, kicker: "PROMPT CACHE", title: threadOf(session.id), lines: [cache?.unkept ? ["STATE", "not known at that moment: no model call of the thread is kept from before it, so when its cache was last touched is not known", undefined, "wrap"] : cache?.empty ? ["STATE", "nothing cached: this thread has made no model call yet"] : ["LIFETIME", "n/a: this thread's model is not served through Claude Code, so nothing this program reads says how long its cache lives", undefined, "wrap"]], pin: true, foot: "" }
       const lines = [["STATE", state.cold ? `cold since ${clockOf(state.coldAt)}, ${agoOf(now - state.coldAt)} ago` : `warm: ${cache.measured ? "" : "about "}${leftWord(state.left)} left`, state.cold ? INK.dim : state.color]]
+      if (cache.then) {
+        // a held moment: when the cache was last touched then is known from the thread's own
+        // calls; its lifetime is the one known now, and what the last call read and wrote is not kept
+        lines.push(["LIFETIME", `${lifeWord(cache.lifetime)}, ${cache.measured ? "as measured now" : "ASSUMED"}: the lifetime of that moment is not kept apart`, cache.measured ? undefined : INK.soft, "wrap"])
+        lines.push(["LAST TOUCHED", `${clockOf(cache.at)}, ${agoOf(now - cache.at)} before the held moment: the newest model call by then went out`, undefined, "wrap"])
+        lines.push(["GOES COLD", state.cold ? `had gone cold at ${clockOf(state.coldAt)}` : `at ${clockOf(state.coldAt)}, unless a call went out first`, undefined, "wrap"])
+        lines.push(["HOLDS", cache.tokens ? `about ${compactOf(cache.tokens)} tok: the thread's context at that moment` : "not known", undefined, "wrap"])
+        return { tone: state.cold ? INK.dim : state.color, kicker: "PROMPT CACHE", title: threadOf(session.id), lines, pin: true, foot: "the arc round its cell body is the cache now" }
+      }
       if (cache.measured) {
         lines.push(["LIFETIME", `${lifeWord(cache.lifetime)}, measured`])
         lines.push(["MEASURED FROM", `the thread's own Claude Code transcript: its newest call that wrote to the cache wrote ${compactOf(cache.hour)} tok under the 1 h lifetime and ${compactOf(cache.five)} under the 5 min one${cache.hour && cache.five ? "; the 5 min part goes cold first, so that is the lifetime shown" : ""}`, undefined, "wrap"])

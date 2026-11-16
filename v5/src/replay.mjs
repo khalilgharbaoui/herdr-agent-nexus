@@ -1,11 +1,18 @@
 // A held moment, replayed. A drag along the terrain holds one moment of its window (see
 // terrain.mjs). While it is held the stage does not show the focused thread as it is now but as
 // it stood then: the turn clock with the calls made by then, the context ring where the context
-// stood, the flock with the output written by then and in the formation of what was open, and
+// stood, the flock with the output written by then and in the formation of what was open, the
+// prompt cache, THIS TURN, REACH, the three charts, the live text and the subagent moons, and
 // the wires streaming at each thread's rate of that moment. All of it is drawn as the past: the
 // still layer at about half strength, every moving mark in one grey, and a THEN tag with the
 // time. Letting the moment go (escape) brings the present back: the flock of then flies off and
 // the flock of now gathers.
+//
+// Two times on one screen. A held moment is the past on the whole stage, and nowhere else: the
+// circuit's rows, the accounts, the equipment, comms, the sector map, the log and the header
+// stay the present, and each says so with a NOW chip beside its label for as long as the
+// moment is held. A card follows its mark: one opened on the stage reads the moment (its
+// kicker begins THEN and its first line says as of when), one opened elsewhere says NOW.
 //
 // What is read: the thread's own steps, tool calls and marks, which this program keeps for the
 // terrain's widest window (and for the whole of a running turn), cut at the held moment. What
@@ -34,7 +41,12 @@ export function sessionAt(session, at) {
       if (item.kind === "tool") {
         const tool = tools.get(item.tool?.id)
         if (tool) items.push({ ...item, tool })
-      } else items.push({ ...item, end: item.end !== null && item.end !== undefined && item.end <= at ? item.end : null })
+      } else {
+        // a block of thinking or of reply that had not ended by then: how much of it stood at
+        // that moment is not kept (only its final words are), so it is named, not quoted
+        const ended = item.end !== null && item.end !== undefined && item.end <= at
+        items.push(ended ? item : { ...item, end: null, text: "", length: 0, pending: true })
+      }
     }
     steps.push({
       ...step,
@@ -70,8 +82,31 @@ export function sessionAt(session, at) {
   const busy = busySince > 0 && !idleSince
   const own = steps.filter((step) => step.start >= (busySince || 0) - 2000)
   const wrote = Math.round(own.reduce((sum, step) => sum + (step.end === null ? 0 : wroteOf(step)), 0))
+  // where the context stood: the newest reading by then, and whether that reading was taken
+  // at its own call (from the transcript) or is the figure of a turn's end
   let context = 0
-  for (const step of steps) if (step.ctx > 0) context = step.ctx
+  let contextFrom
+  for (const step of steps) {
+    if (step.ctx > 0) {
+      context = step.ctx
+      contextFrom = step.ctxFrom === "transcript" ? "transcript" : undefined
+    }
+  }
+  // the live text as it stood: what the newest calls by then had thought, said and run
+  const tail = []
+  for (const step of steps.slice(-5)) for (const item of step.items) if (item.kind === "tool" || item.text || item.pending) tail.push(item)
+  // the message that started the turn of then
+  let prompt = ""
+  for (const mark of marks) if (mark.kind === "user" && mark.text) prompt = mark.text
+  // The prompt cache then: touched when the newest model call by then went out. Its lifetime is
+  // the one known now (measured from the transcript's newest writing call, or assumed): what
+  // it was at that moment is not kept apart. With no call kept from before the moment, when it
+  // was last touched is not known.
+  let cache = session.cache
+  if (cache && cache.lifetime && !cache.empty) {
+    const touched = steps.length ? steps[steps.length - 1].start : 0
+    cache = touched ? { ...cache, at: touched, tokens: context || 0, then: true } : { ...cache, lifetime: 0, unkept: true, then: true }
+  }
   const view = {
     ...session,
     then: at,
@@ -87,8 +122,15 @@ export function sessionAt(session, at) {
     updated: at,
     turn: busy ? { start: busySince, out: wrote } : null,
     lastOut: wrote,
-    context: { used: context, limit: session.context.limit },
-    tail: [],
+    context: { used: context, limit: session.context.limit, from: contextFrom },
+    tail: tail.slice(-14),
+    prompt,
+    cache,
+    // not kept for a past moment: opencode records one running total of each, and the flags
+    // of then were raised from a state that is gone
+    cost: 0,
+    tokens: null,
+    lastTurn: null,
     alerts: [],
   }
   view.state = stateOf(view, at)
@@ -125,9 +167,25 @@ export const replay = {
     const ridge = this.terrainGeo?.ridges.find((entry) => entry.sid === focus.session.id)
     const rate = ridge ? (this.ridgeSpot(ridge, at)?.value ?? 0) : 0
     const then = Object.create(scene)
+    // every thread as it stood then, cut from its own record the first time it is asked for
+    const sessions = new Map([[session.id, session]])
+    const byId = {
+      get: (sid) => {
+        let view = sessions.get(sid)
+        if (!view) {
+          const real = scene.byId.get(sid)
+          if (!real) return undefined
+          view = sessionAt(real, at)
+          sessions.set(sid, view)
+        }
+        return view
+      },
+      has: (sid) => scene.byId.has(sid),
+    }
     // (the scene's own `focused` is a getter: the stand-in's is set over it, on the stand-in only)
     Object.defineProperty(then, "focused", { value: { ...focus, session } })
-    Object.defineProperty(then, "rateOf", { value: (sid) => (sid === session.id ? rate : scene.rateOf(sid, now)) })
+    Object.defineProperty(then, "byId", { value: byId })
+    Object.defineProperty(then, "rateOf", { value: (sid) => (sid === session.id ? rate : this.thenRate(sid, at)) })
     Object.defineProperty(then, "then", { value: at })
     this.thenKept = { at, world: scene.world, sid: focus.session.id, session, rate, scene: then }
     return this.thenKept
@@ -150,6 +208,29 @@ export const replay = {
       cache.set(kind, dim)
     }
     return dim
+  },
+
+  // Where the NOW chip of the part being painted goes: called by the part where it draws its
+  // section label, with the place right after what stands on that line.
+  nowHere(x, y, align = "left") {
+    this.nowSpot = { x, y, align }
+  },
+
+  // The chip that names the present on a part that a held moment does not replay. While a
+  // moment is held the screen shows two times: the stage is then (dimmed, grey, under its THEN
+  // tag) and every other part is now, and says so here.
+  nowChip(c, region, at) {
+    const u = (value) => this.u(value)
+    const spot = this.nowSpot
+    const circuit = region.name === "top"
+    const word = circuit ? "NOW  ·  GREY MOTES: THEN" : "NOW"
+    const w = this.chip(c, word, spot.x, spot.y, { color: INK.live, align: spot.align })
+    const then = new Date(at).toTimeString().slice(0, 8)
+    this.note(`now:${region.name}`, { x: spot.align === "right" ? spot.x - w : spot.x, y: spot.y - u(16), w, h: u(22) }, "NOW", "this part shows the present", [
+      ["WHY", `a moment is held on the terrain (${then}). The stage above shows the focused thread as it stood then; this part is not replayed and shows now`, undefined, "wrap"],
+      ...(circuit ? [["GREY MOTES", "the motes on the wires are the one thing here that is then: each thread's stream at its rate of the held moment, in grey. The rows, their figures and their timers are now", undefined, "wrap"]] : []),
+      ["BACK", "escape lets the moment go, and every part is now again"],
+    ], INK.live)
   },
 
   // The tag that names the past on a part of the stage: "THEN 08:12:30".

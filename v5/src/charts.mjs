@@ -14,6 +14,11 @@
 // CONTEXT and LATENCY share the terrain's time window (1, 5 or 30 minutes, `w`) and step with
 // it; WINDOW spans the account's own five hours. Every point is a target: a call opens its
 // card, the account its own.
+//
+// While a moment is held on the terrain the three are drawn as of that moment: the time axes
+// stay where they are (their right end is still now), the lines end at the white line of the
+// held moment, a call that was open then is open, and the figure in each head is the one of
+// then. What lies right of the white line had not happened yet and is not drawn.
 
 import { portOf } from "./model.mjs"
 import { WINDOWS } from "./terrain.mjs"
@@ -48,6 +53,9 @@ export const charts = {
     const session = focus.session
     const span = ui.window ?? WINDOWS[1]
     const account = (scene.world?.accounts ?? []).find((entry) => entry.name === session.account)
+    // (at a held moment `now` is that moment: the axes and the account's trail still run on the present)
+    const held = scene.then ?? null
+    if (held !== null) now = this.present
     const trail = this.trailOf(account, now)
     const newest = session.steps[session.steps.length - 1]
     let running = 0
@@ -55,6 +63,8 @@ export const charts = {
     return [this.scrubAt(ui) ?? "", session.id, span, Math.floor(now / (span / SLICES)), session.steps.length, newest?.end ?? 0, newest?.tools.length ?? 0, running, session.context.used, session.context.limit, account?.name ?? "", account?.five?.used ?? "", account?.five?.resetsAt ?? 0, trail.length, Math.floor(now / 30e3)].join("|")
   },
 
+  // `now` is the moment the charts are read at: the present, or the moment held on the terrain
+  // (then `scene.then` is set and the session is the thread as it stood then).
   drawCharts(c, scene, ui, now) {
     const box = this.G.charts
     const focus = scene.focused
@@ -65,19 +75,18 @@ export const charts = {
     const w = Math.floor((box.w - 2 * gap) / 3)
     const span = ui.window ?? WINDOWS[1]
     const slice = span / SLICES
-    const from = Math.floor(now / slice) * slice + slice - span
+    const held = scene.then ?? null
+    const present = held === null ? now : this.present
+    const from = Math.floor(present / slice) * slice + slice - span
     const color = modelColor(session.model, session.provider)
     const frame = (index) => ({ x: box.x + index * (w + gap), y: box.y, w, h: box.h, px: box.x + index * (w + gap), py: box.y + u(34), pw: w, ph: box.h - u(34) - u(20) })
-    this.chartContext(c, frame(0), session, from, span, now, color)
-    this.chartLatency(c, frame(1), session, from, span, now, color)
-    this.chartWindow(c, frame(2), scene, session, now)
-    // a moment scrubbed on the terrain stands on the two charts that share its window
-    const held = this.scrubAt(ui)
+    this.chartContext(c, frame(0), session, from, span, now, color, held)
+    this.chartLatency(c, frame(1), session, from, span, now, color, held)
+    this.chartWindow(c, frame(2), scene, session, present, held)
+    // the held moment stands on the two charts that share the terrain's window (the line is
+    // drawn by paint, after the past has been dimmed, so it stays at full strength)
     if (held !== null && held >= from && held <= from + span) {
-      for (const f of [frame(0), frame(1)]) {
-        const x = Math.round(f.px + ((held - from) / span) * f.pw)
-        this.line(c, x, f.py, x, f.py + f.ph, rgba(INK.text, 0.75), 1)
-      }
+      for (const f of [frame(0), frame(1)]) this.heldLines.push({ x: Math.round(f.px + ((held - from) / span) * f.pw), y0: f.py, y1: f.py + f.ph })
     }
   },
 
@@ -111,14 +120,14 @@ export const charts = {
     }
   },
 
-  chartContext(c, f, session, from, span, now, color) {
+  chartContext(c, f, session, from, span, now, color, held = null) {
     const u = (v) => this.u(v)
     const limit = session.context.limit || 0
     const readings = session.steps.filter((step) => step.ctx > 0)
     const used = session.context.used || readings[readings.length - 1]?.ctx || 0
     const share = limit && used ? used / limit : null
     const tone = share === null ? INK.soft : share >= 0.92 ? INK.bad : share >= 0.8 ? INK.warn : INK.text
-    this.chartHead(c, f, "CONTEXT", "at every model call", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone, used && limit ? `${Math.round(share * 100)}%` : "", { kind: "context", id: session.id })
+    this.chartHead(c, f, "CONTEXT", held === null ? "at every model call" : "at every model call, to the held moment", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone, used && limit ? `${Math.round(share * 100)}%` : "", { kind: "context", id: session.id })
     this.timeAxis(c, f, span)
     const top = limit || Math.max(1, ...readings.map((step) => step.ctx)) * 1.15
     const xOf = (time) => f.px + clamp((time - from) / span, 0, 1) * f.pw
@@ -134,9 +143,11 @@ export const charts = {
       }
     }
     if (!readings.length) {
-      this.text(c, "no model call has reported its context yet", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
+      this.text(c, held === null ? "no model call has reported its context yet" : "no reading is kept from before that moment", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
       return
     }
+    // where the line ends: at now, or at the held moment (nothing right of it had happened yet)
+    const endX = held === null ? f.px + f.pw : xOf(held)
     // a step line: the context a call was given holds until the next call
     let level = 0
     for (const step of readings) if (step.start <= from) level = step.ctx
@@ -158,10 +169,10 @@ export const charts = {
       level = step.ctx
       pen = true
     }
-    c.lineTo(f.px + f.pw, yOf(level))
+    c.lineTo(endX, yOf(level))
     c.stroke()
     // the light under the line, and a point at every call
-    c.lineTo(f.px + f.pw, f.py + f.ph)
+    c.lineTo(endX, f.py + f.ph)
     c.lineTo(f.px, f.py + f.ph)
     c.closePath()
     c.fillStyle = rgba(color, 0.07)
@@ -176,7 +187,7 @@ export const charts = {
     this.hit("thread", session.id, { x: f.px, y: f.py, w: f.pw, h: f.ph })
   },
 
-  chartLatency(c, f, session, from, span, now, color) {
+  chartLatency(c, f, session, from, span, now, color, held = null) {
     const u = (v) => this.u(v)
     const xOf = (time) => f.px + clamp((time - from) / span, 0, 1) * f.pw
     const yOf = (ms) => f.py + f.ph - clamp((Math.log10(Math.max(100, ms) / 1000) - LOG_LOW) / (LOG_HIGH - LOG_LOW), 0, 1) * f.ph
@@ -196,7 +207,7 @@ export const charts = {
       this.text(c, word, f.px + f.pw, y - u(3), { size: 10, color: INK.faint, align: "right" })
     }
     if (!tools.length && !calls.length) {
-      this.text(c, "no call in this window", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
+      this.text(c, held === null ? "no call in this window" : "no call in this window by that moment", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
       return
     }
     const floor = f.py + f.ph
@@ -244,7 +255,10 @@ export const charts = {
     }
   },
 
-  chartWindow(c, f, scene, session, now) {
+  // At a held moment (`held`) the line is what this program had seen of the window by then, the
+  // figure in the head is the reading in force then, and the pace line ahead (an estimate made
+  // from the present) is left out. `now` is always the present here.
+  chartWindow(c, f, scene, session, now, held = null) {
     const u = (v) => this.u(v)
     const account = (scene.world?.accounts ?? []).find((entry) => entry.name === session.account)
     const five = account?.five
@@ -256,6 +270,41 @@ export const charts = {
       return
     }
     const start = five.resetsAt - five.span
+    if (held !== null) {
+      const seen = this.trailOf(account, now).filter((point) => point.at <= held)
+      const then = seen[seen.length - 1]
+      const tone = !then ? INK.soft : then.used >= 90 ? INK.bad : INK.text
+      const first = this.trailOf(account, now)[0]
+      this.chartHead(c, f, name, "used against an even pace, to the held moment", then ? `${Math.round(then.used)}% used then` : "n/a then", tone, then ? `${Math.round(then.used)}%` : "n/a", { lines: [["WHAT", "the focused thread's account: the used share of its five hour window over the window's own time, against an even pace (the diagonal)"], ["THEN", then ? `${Math.round(then.used)}% used: the newest reading this program had of the account at the held moment (${hourMinuteOf(then.at)})` : `not known: this program first read the account at ${first ? hourMinuteOf(first.at) : "a later time"}, after the held moment`], ["LEFT OUT", "where the use goes at this pace: that estimate is made from the present, not from the held moment"]] })
+      const xOf = (time) => f.px + clamp((time - start) / five.span, 0, 1) * f.pw
+      const yOf = (used) => f.py + f.ph - clamp(used / 100, 0, 1) * f.ph
+      for (const [time, align] of [[start, "left"], [five.resetsAt, "right"]]) {
+        this.line(c, xOf(time), f.py + f.ph, xOf(time), f.py + f.ph + u(4), INK.faint)
+        this.text(c, `${align === "right" ? "resets " : ""}${hourMinuteOf(time)}`, xOf(time), f.py + f.ph + u(16), { size: 10.5, color: INK.faint, align })
+      }
+      this.line(c, f.px, f.py, f.px + f.pw, f.py, rgba(INK.bad, 0.4))
+      this.text(c, "100%", f.px + f.pw, f.py + u(11), { size: 10, color: rgba(INK.bad, 0.8), align: "right" })
+      this.line(c, f.px, f.py + f.ph, f.px + f.pw, f.py, rgba(INK.live, 0.45))
+      if (then) {
+        c.strokeStyle = tone
+        c.lineWidth = 1.75
+        c.lineJoin = "round"
+        c.beginPath()
+        seen.forEach((point, index) => (index ? c.lineTo(xOf(point.at), yOf(point.used)) : c.moveTo(xOf(point.at), yOf(point.used))))
+        c.lineTo(xOf(held), yOf(then.used))
+        c.stroke()
+        const firstX = xOf(seen[0].at)
+        if (firstX - f.px > u(8)) {
+          c.setLineDash([u(1.5), u(5)])
+          this.line(c, f.px, f.py + f.ph, firstX, yOf(seen[0].used), rgba(INK.soft, 0.4))
+          c.setLineDash([])
+        }
+        c.fillStyle = tone
+        c.fillRect(Math.round(xOf(held)) - 2, Math.round(yOf(then.used)) - 2, 5, 5)
+      } else this.text(c, "not read yet at that moment", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
+      if (held >= start && held <= five.resetsAt) this.heldLines.push({ x: Math.round(xOf(held)), y0: f.py, y1: f.py + f.ph })
+      return
+    }
     const tone = five.used >= 90 ? INK.bad : account.dryAt ? INK.warn : INK.text
     this.chartHead(c, f, name, "used against an even pace", `${Math.round(five.used)}% used${account.dryAt ? `  ·  dry ${hourMinuteOf(account.dryAt)}` : ""}`, tone, `${Math.round(five.used)}%`, { kind: "account", id: account.name })
     const xOf = (time) => f.px + clamp((time - start) / five.span, 0, 1) * f.pw

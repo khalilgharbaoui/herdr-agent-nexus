@@ -460,7 +460,7 @@ export const stage = {
     this.text(c, "PROMPT CACHE", x0, y, labelStyle)
     this.hit("cache", session.id, { x: x0 - u(6), y: box.y + u(4), w: x1 - x0 + u(12), h: box.h - u(6) })
     if (!state) {
-      this.text(c, cache?.empty ? "nothing cached: this thread has made no model call yet" : "n/a: only a thread on a Claude model has one this program can read", x0 + this.width(c, "PROMPT CACHE", labelStyle) + u(14), y, { size: 12.5, color: INK.faint })
+      this.text(c, cache?.unkept ? "not known then: no model call of the thread is kept from before that moment" : cache?.empty ? "nothing cached: this thread has made no model call yet" : "n/a: only a thread on a Claude model has one this program can read", x0 + this.width(c, "PROMPT CACHE", labelStyle) + u(14), y, { size: 12.5, color: INK.faint })
       return
     }
     this.chip(c, cache.measured ? "MEASURED" : "ASSUMED", x0 + this.width(c, "PROMPT CACHE", labelStyle) + u(14), y, { color: cache.measured ? INK.dim : INK.soft })
@@ -507,7 +507,7 @@ export const stage = {
     this.text(c, `last call ${clockOf(cache.at)}`, x0, sy, small)
     this.text(c, `${state.cold ? "went cold" : "cold at"} ${clockOf(state.coldAt)}`, x1, sy, { ...small, align: "right" })
     if (cache.tokens > 0) {
-      const holds = `${cache.measured ? "" : "about "}${compactOf(cache.tokens)} tok ${state.cold ? "to write again on the next call" : "kept warm"}`
+      const holds = `${cache.measured && !cache.then ? "" : "about "}${compactOf(cache.tokens)} tok ${state.cold ? "to write again on the next call" : "kept warm"}`
       this.text(c, holds, (x0 + x1) / 2, sy, { size: 11.5, color: state.cold ? INK.faint : INK.dim, align: "center" })
     }
   },
@@ -677,6 +677,8 @@ export const stage = {
       RATE: [["WHAT", "tokens a second, from the newest report: what the call wrote over the time since the report before it (or since the turn began)"], ["VALID", "for 45 s after that report; n/a after, and for a thread that has reported nothing"], ["DRIVES", "the charge at the tip, the orbit's speed and the motes on the thread's wire"]],
       SPENT: [["WHAT", "what this thread has cost so far, as opencode records it"], ["NOTE", "n/a until opencode has a figure: for most threads that is when a turn ends"]],
     }
+    // (a held moment: opencode keeps one running total, so what the thread had cost by then is not known)
+    if (session.then) about.SPENT = [["THEN", "not kept: opencode records one running total of a thread's cost, so what it had cost at the held moment is not known"]]
     x = head.x
     for (const [name, value] of cells) {
       const from = x
@@ -733,6 +735,11 @@ export const stage = {
         lines.push({ tool, meta: toolMeta(tool.name), right, rightColor: running ? INK.live : tool.status === "error" ? INK.bad : INK.dim, running })
         return
       }
+      if (item.pending) {
+        // a held moment: this block had not ended then, and what stood of it is not kept
+        lines.push({ value: item.kind === "think" ? "reasoning: this block was still open at that moment, its words then are not kept" : "writing its reply: this block was still open at that moment, its words then are not kept", kind: item.kind, cursor: false, unkept: true })
+        return
+      }
       // The lines are laid out from the whole text and then filled in as it types, so nothing
       // on screen moves while a block is being revealed.
       const wrapped = wrap(clean(item.text), perLine)
@@ -753,7 +760,7 @@ export const stage = {
       })
     })
     if (!lines.length) {
-      this.text(c, session.state === "working" ? "waiting for the first words of this step" : "nothing said in the last quarter hour", box.x + gutter, box.y + lineH, { size, color: INK.faint })
+      this.text(c, scene.then ? "nothing is kept of what it had said or run by that moment" : session.state === "working" ? "waiting for the first words of this step" : "nothing said in the last quarter hour", box.x + gutter, box.y + lineH, { size, color: INK.faint })
       return
     }
     // once the box is full the oldest lines leave at the top; the wheel brings them back
@@ -785,7 +792,7 @@ export const stage = {
       }
       c.fillStyle = line.kind === "say" ? color : rgba(color, 0.32)
       c.fillRect(box.x + u(4), y - u(15), u(2), u(20))
-      this.text(c, line.value, box.x + gutter, y, { size, color: line.kind === "say" ? INK.text : INK.dim })
+      this.text(c, line.unkept ? this.fit(c, line.value, box.w - gutter, { size }) : line.value, box.x + gutter, y, { size, color: line.unkept ? INK.faint : line.kind === "say" ? INK.text : INK.dim })
       if (line.cursor) {
         c.fillStyle = INK.live
         c.fillRect(Math.round(box.x + gutter + line.value.length * charW + u(3)), y - u(14), u(8), u(17))

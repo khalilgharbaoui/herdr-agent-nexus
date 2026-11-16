@@ -140,6 +140,7 @@ export const circuit = {
     const G = this.G
     const u = (value) => this.u(value)
     this.label(c, "ACCOUNTS", G.circuit.x + G.M, G.circuit.y + u(36))
+    this.nowHere(G.circuit.x + G.M, G.circuit.y + u(58)) // under the label: the column is as narrow as its tubes
     this.note("section:accounts", { x: G.circuit.x + G.M - u(4), y: G.circuit.y + u(20), w: this.width(c, "ACCOUNTS", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(8), h: u(22) }, "SECTION", "ACCOUNTS", [["WHAT", "one tube per account: the tube is its five hour window, the level what is left of it"], ["MARKS", "cyan triangle: where an even pace would stand. Hollow amber triangle: when it runs dry at this pace. Motes sink through it while a thread draws on it"], ["FROM", "the Claude Code plugin's usage readings, as each model call reports them"], ["WIRES", "every thread taps the rail of the account that pays for it"]])
     for (const rail of G.rails) {
       const account = scene.world.accounts.find((candidate) => candidate.name === rail.name)
@@ -225,7 +226,9 @@ export const circuit = {
     if (G.above || G.below) {
       const text = `${G.above ? `${G.above} above` : ""}${G.above && G.below ? "  ·  " : ""}${G.below ? `${G.below} below` : ""}  ·  wheel to scroll`
       this.text(c, text, x, y, { size: 12.5, color: INK.warn })
+      x += this.width(c, text, { size: 12.5 }) + u(14)
     }
+    this.nowHere(x, y)
   },
 
   drawRest(c, scene) {
@@ -532,6 +535,7 @@ export const circuit = {
     const G = this.G
     const u = (value) => this.u(value)
     this.label(c, "EQUIPMENT", G.portX, G.circuit.y + u(36))
+    this.nowHere(G.portX + this.width(c, "EQUIPMENT", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(10), G.circuit.y + u(36))
     this.text(c, `last ${Math.round(scene.windowMs / 60e3)} min`, G.portX + G.boxW, G.circuit.y + u(36), { size: 11.5, color: INK.faint, align: "right" })
     this.note("section:equipment", { x: G.portX - u(4), y: G.circuit.y + u(20), w: G.boxW + u(8), h: u(22) }, "SECTION", "EQUIPMENT", [["WHAT", "what the models act with. Every tool call of every listed thread goes to exactly one of these"], ["COUNT", `the figure on a box is its calls in the last ${Math.round(scene.windowMs / 60e3)} minutes`], ["MARKS", "the line under a box: each call as a stem, as tall as it took. A lamp: a call in flight. A red flash: a call through it just failed"], ["WIRES", "a curve from a thread's wire to a box is a synapse: its calls leave along it and their results come back"]])
     for (const port of scene.ports.values()) {

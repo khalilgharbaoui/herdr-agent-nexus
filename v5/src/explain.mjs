@@ -224,6 +224,8 @@ export const explain = {
         add("clock", { kind: entry.tool ? "tool" : "step", id: entry.tool ? entry.tool.id : `${this.clock.sid}:${entry.step.seq}`, sid: this.clock.sid, tool: entry.tool, step: entry.step, rect: { x: x - this.u(9), y: y - this.u(9), w: this.u(18), h: this.u(18) } })
       }
     }
+    // while a moment is held, the dots and the calls on the clock are those of that moment
+    if (this.thenKept) for (const name of ["flock", "clock"]) for (const target of groups.get(name) ?? []) target.then = this.thenKept.at
     for (const [name, list] of groups) {
       if (name === "flock" || name === "clock") continue
       list.sort((a, b) => Math.round(a.rect.y / this.u(24)) - Math.round(b.rect.y / this.u(24)) || a.rect.x - b.rect.x)

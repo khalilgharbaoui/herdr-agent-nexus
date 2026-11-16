@@ -63,8 +63,24 @@ export const card = {
   // a frame, before the sprites are listed.
   layCard(scene, ui, now) {
     const u = (value) => this.u(value)
-    const subject = ui.help ? null : (ui.pinned ?? ui.card)
-    const content = subject ? this.wrapCard(this.inspect(subject.target, scene, now)) : null
+    // A pinned card first, then the one under the pointer, then the held moment's own.
+    // (on the terrain itself the held moment's card stays: the pointer rests there after the drag)
+    const onTerrain = ui.hold && (ui.card?.target.kind === "ridge" || ui.card?.target.kind === "terrain")
+    const subject = ui.help ? null : (ui.pinned ?? (onTerrain ? null : ui.card) ?? ui.hold)
+    // While a moment is held on the terrain, a mark of the stage is a mark of that moment
+    // (its target carries the moment, see paint and hitTest): its card is read from the
+    // thread as it stood then and says so. A mark of a part that is not replayed says NOW.
+    const held = this.thenKept
+    const past = subject && held && subject.target.then === held.at ? held : null
+    let content = subject ? this.inspect(subject.target, past ? past.scene : scene, past ? past.at : now) : null
+    if (content && held && subject.target.kind !== "scrub") {
+      const clock = new Date(held.at).toTimeString().slice(0, 8)
+      content = past
+        ? { ...content, kicker: `THEN ${clock}  ·  ${content.kicker}`, lines: [["AS OF", `${clock}, the moment held on the terrain: every figure and every "ago" below is of that moment`, INK.text, "wrap"], ...content.lines] }
+        : content.kicker === "NOW" ? content : { ...content, kicker: `NOW  ·  ${content.kicker}` }
+    }
+    content = this.wrapCard(content)
+    this.cardContent = content // what the card says, as data: tools/check.mjs reads it
     if (!content) {
       this.card = null
       this.cardAt = null
@@ -72,7 +88,8 @@ export const card = {
       return
     }
     const target = subject.target
-    const pinned = Boolean(ui.pinned)
+    const pinned = Boolean(ui.pinned) || subject === ui.hold
+    const holds = subject === ui.hold // the held moment's own card: it stays like a pinned one
     // a moving mark carries its target along
     const spot = this.spotOf(target, scene, now)
     if (spot) {
@@ -101,7 +118,7 @@ export const card = {
     const left = Math.round(this.cardAt.x)
     const top = Math.round(this.cardAt.y)
     // the card's own picture, repainted only when what it says changed
-    const key = `${pinned}|${w}x${h}|${JSON.stringify(content)}`
+    const key = `${pinned}|${holds}|${w}x${h}|${JSON.stringify(content)}`
     const cw = this.cell.width
     const ch = this.cell.height
     const padX = cw - 1
@@ -118,7 +135,7 @@ export const card = {
       c.clearRect(0, 0, this.cardCanvas.width, this.cardCanvas.height)
       const sink = this.sink
       this.sink = []
-      this.drawCard(c, { x: padX, y: padY, w, h }, content, pinned)
+      this.drawCard(c, { x: padX, y: padY, w, h }, content, pinned, holds ? "HELD  ·  ESC" : "PINNED  ·  ESC")
       this.cardHits = this.sink
       this.sink = sink
     }

@@ -274,9 +274,10 @@ export const terrain = {
 
   // Scrubbing. A drag along the terrain holds one moment of the window: it is read on the front
   // ridge (the focused thread's, at full size) in whole slices, and every ridge shows where it
-  // stood then. The moment is the pinned card's own target, so letting the card go lets it go.
+  // stood then. The moment is held by itself (`ui.hold`), apart from any pinned card: while it
+  // is held a mark can be hovered and pinned like any other, and its card reads the moment.
   scrubAt(ui) {
-    return ui?.pinned?.target.kind === "scrub" ? ui.pinned.target.at : null
+    return ui?.hold ? ui.hold.target.at : null
   },
 
   terrainTimeAt(x, y) {
