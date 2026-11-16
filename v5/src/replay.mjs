@@ -155,7 +155,10 @@ export const replay = {
   // The tag that names the past on a part of the stage: "THEN 08:12:30".
   thenTag(c, rect, at, corner) {
     const u = (value) => this.u(value)
-    const word = `THEN  ${new Date(at).toTimeString().slice(0, 8)}`
+    // a moment before anything this program keeps of the thread: the stage is empty because
+    // nothing is known of it, not because the thread did nothing, and the tag says so
+    const bare = !(this.thenKept?.session.steps.length > 0)
+    const word = `THEN  ${new Date(at).toTimeString().slice(0, 8)}${bare ? "  ·  NOTHING KEPT OF IT" : ""}`
     const right = corner === "right"
     const x = right ? rect.x + rect.w - u(18) : rect.x + this.G.M
     const y = rect.y + (corner === "top" ? u(26) : rect.h - u(14))
@@ -165,6 +168,7 @@ export const replay = {
       ["MARKED", "the still parts at half strength, every moving mark in one grey, and this tag"],
       ["FROM", "the thread's own record of its calls, cut at that moment. A call that reported no count is read from its text (an estimate); the rate is the terrain's slice"],
       ["BACK", "escape lets the moment go: the flock of then flies off and the flock of now gathers"],
+      ...(bare ? [["NOTHING KEPT", "this moment lies before the calls this program keeps of the thread (the terrain's widest window, or the turn that runs now): the empty stage means not known, not idle", INK.warn]] : []),
     ])
   },
 }
