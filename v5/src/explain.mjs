@@ -13,7 +13,7 @@ export const REGION_ORDER = ["flock", "clock", "stage", "terrain", "circuit", "p
 export const REGION_WORD = { flock: "the flock", clock: "the turn clock", stage: "the focus stage", terrain: "the time terrain", circuit: "the threads", ports: "the equipment", rails: "the accounts", header: "the header", footer: "comms, sector map and log" }
 
 // the focus stage is painted in parts; the keyboard walks them as one region
-const STAGE_PARTS = new Set(["core", "flockline", "plinth", "cache", "under", "head", "charts", "tail"])
+const STAGE_PARTS = new Set(["core", "flockline", "plinth", "cache", "under", "reach", "head", "charts", "tail"])
 
 export const explain = {
   // [title, text, anchor x, anchor y, which corner of the tag touches the anchor]
@@ -36,6 +36,7 @@ export const explain = {
       ["MOON", "A subagent of this thread on the outer circle. It circles as fast as it writes and sits still when it rests. Click it to focus it.", core.cx - core.Rm * 0.72, core.cy - core.Rm * 0.69, "tl"],
     ]
     if (this.cacheHead) list.push(["PROMPT CACHE", "What the thread has sent is kept by the provider for a set time after its last model call. The axis runs from that call to the moment it goes cold; the bright stretch is what is left, and the head is now. Its colour is its warmth: rose when just touched, cooling through orchid to a cold blue, grey when cold. Dashed and marked ASSUMED when the lifetime could not be measured from the thread's own transcript. The arc round every cell body is the same cache.", this.cacheHead.x, this.cacheHead.y, "tl"])
+    if (this.reachMark) list.push(["REACH", "What this turn touched, as a tree off the thread's wire: files under their folder, programs, searches, hosts and agents under their equipment. Each bar is one call on the turn's time: where it starts is when, its length how long, red when it failed, hollow while it runs. A packet runs out along the branch when a call starts and back with the result. The cyan line is now.", this.reachMark.tx0, this.reachMark.axisY, "tl"])
     if (T) {
       list.push(["RIDGE", "One thread's tokens a second over the window, the focused thread in front. The dot at the right edge is its newest reading; motes above it count the seconds before a call's first word.", T.x + T.w * 0.45, T.y + u(96), "tl"])
       list.push(["MARKS ON A RIDGE", "Diamond: a tool call. Red and taller: it failed. Flag: an alert was raised. Ring: the subagent was dispatched.", T.x + T.w * 0.3, T.y + T.h - u(24), "bl"])

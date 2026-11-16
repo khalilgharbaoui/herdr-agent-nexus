@@ -14,7 +14,7 @@ import { inside } from "./theme.mjs"
 import { WINDOWS } from "./terrain.mjs"
 import { clockOf } from "./util.mjs"
 
-const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge", "log", "cache", "context"])
+const INSPECTABLE = new Set(["thread", "fold", "clock", "project", "port", "account", "blip", "tab", "tool", "step", "alert", "pane", "dot", "flock", "lean", "ridge", "terrain", "charge", "log", "cache", "context", "note"])
 const DWELL_MS = 140 // how long the pointer rests on something before its card opens
 const GONE_MS = 8000 // no mouse report for this long: the pointer is taken to have left the pane
 const MODE = { 0: "not known", 1: "on", 2: "off", 3: "always on", 4: "always off" }

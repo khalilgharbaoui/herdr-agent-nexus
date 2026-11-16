@@ -17,6 +17,7 @@ import { circuit } from "./circuit.mjs"
 import { Flock } from "./flock.mjs"
 import { hud } from "./hud.mjs"
 import { PORTS, portOf } from "./model.mjs"
+import { reach } from "./reach.mjs"
 import { stage } from "./stage.mjs"
 import { terrain } from "./terrain.mjs"
 import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
@@ -124,12 +125,21 @@ export class Renderer {
       const tailTop = underTop + u(46)
       G.tail = { x: G.stage.x + M + u(20), y: tailTop, w: G.stage.w - 2 * M - u(20), h: G.band.y - u(20) - tailTop }
       G.under = null
+      G.reach = null
       G.tailBox = { x: G.stage.x, y: tailTop - u(36), w: G.stage.w, h: G.band.y - (tailTop - u(36)) }
       G.headBox = { x: split, y: G.stage.y, w: G.stage.x + G.stage.w - split, h: G.charts.y - G.stage.y }
       G.chartsBox = { x: split, y: G.charts.y, w: G.stage.x + G.stage.w - split, h: G.tailBox.y - G.charts.y }
     } else {
       G.tail = { x: headX, y: G.stage.y + u(478), w: G.head.w, h: G.stage.h - u(478) - u(22) }
       G.under = { x: G.stage.x, y: underTop, w: split - G.stage.x, h: stageBottom - underTop }
+      // what the turn touched takes the room under THIS TURN's five lines, when there is room
+      // for its head and three rows (the stage is as tall as the thread rows let it be)
+      const listH = u(26) + 5 * u(25) + u(18)
+      G.reach = null
+      if (G.under.h - listH >= u(150)) {
+        G.reach = { x: G.stage.x, y: underTop + listH, w: split - G.stage.x, h: G.under.h - listH }
+        G.under.h = listH
+      }
       G.tailBox = { x: split, y: G.tail.y - u(36), w: W - split, h: stageBottom - (G.tail.y - u(36)) }
       G.headBox = { x: split, y: G.stage.y, w: W - split, h: G.charts.y - G.stage.y }
       G.chartsBox = { x: split, y: G.charts.y, w: W - split, h: G.tailBox.y - G.charts.y }
@@ -326,6 +336,7 @@ export class Renderer {
     add("plinth", G.plinth, (scene, ui, now) => this.signPlinth(scene, ui, now), (c, scene, ui, now) => this.drawPlinth(c, scene, ui, now), false, true)
     add("cache", G.cacheBox, (scene, ui, now) => this.signCache(scene, ui, now), (c, scene, ui, now) => this.drawCache(c, scene, ui, now), false, true)
     if (G.under) add("under", G.under, (scene, ui, now) => this.signUnder(scene, ui, now), (c, scene, ui, now) => this.drawUnder(c, scene, ui, now), false, true)
+    if (G.reach) add("reach", G.reach, (scene, ui, now) => this.signReach(scene, ui, now), (c, scene, ui, now) => this.drawReach(c, scene, ui, now), false, true)
     add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
     add("charts", G.chartsBox, (scene, ui, now) => this.signCharts(scene, ui, now), (c, scene, ui, now) => this.drawCharts(c, scene, ui, now))
     add("tail", G.tailBox, (scene, ui, now) => this.signTail(scene, ui, now), (c, scene, ui, now) => this.drawTail(c, scene, ui, now))
@@ -1131,6 +1142,8 @@ export class Renderer {
           : null
         if (tone) flow.flash(blip.x, blip.y, tone, now, signal.type === "turn-end" ? 900 : 420)
       }
+      // the focused thread's call also travels its branch of REACH, to what it touches
+      if (signal.type === "tool-start" || signal.type === "tool-end") this.reachReact(scene, signal, now, PACKET[signal.port] ?? "pulse")
       const g = G.rowOf?.get(signal.sid)
       if (!g) continue
       const session = g.row.session
@@ -1191,6 +1204,7 @@ export class Renderer {
     }
     if (scene.primed) this.logKnown = logged
     const streams = []
+    this.reachStreams(scene, streams)
     for (const stream of scene.streams) {
       if (stream.type === "tool") streams.push({ key: stream.key, path: `syn:${stream.sid}:${stream.port}`, kind: `tail|${spriteHex(PORT_COLOR[stream.port])}`, speed: u(64), gap: u(34) })
       else if (stream.type === "kid") streams.push({ key: stream.key, path: `kid:${stream.sid}`, kind: `tail|${PORT_COLOR.agent}`, speed: u(40), gap: u(26) })
@@ -1256,4 +1270,4 @@ export class Renderer {
 // the sign a tool call travels as, by the equipment it goes to
 const PACKET = { exec: "pkexec", read: "pkread", write: "pkwrite", web: "pkweb", agent: "pkagent", other: "pkother" }
 
-Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts)
+Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts, reach)

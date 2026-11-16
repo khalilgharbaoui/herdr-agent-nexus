@@ -15,6 +15,9 @@ explains the phase strip, the circuit, comms, equipment, the sector map and the 
   dispatches marked on the ridge they belong to.
 - **Everything is a target**, down to one dot, and the keyboard reaches every mark (`[` `]`). A
   card is tied to its mark by a leader line and follows it.
+- **REACH.** Under THIS TURN, a tree off the focused thread's own wire: what the turn has
+  touched (files under their folder, programs, searches, hosts, agents) with one bar per call
+  on the turn's time. The rest of the stage says how the turn works; this says on what.
 - **Explain mode** (`e`): the screen labels its own marks in place.
 - **It asks the terminal.** Every sprite image is acknowledged by the terminal and checked every
   two seconds. See "What the terminal holds".
@@ -92,6 +95,12 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | This program's line (right of the counts) | The pane's size, frames a second, sprites and whether the terminal holds them, kB/s, CPU | Rewritten every 2 s | What each figure is | Pins it |
 | Turn readout under the core | The state word, the turn's time and its usual length (median; "3 in 4 end by" is the third quartile) | The timer runs with real time | The thread's card | Pins it |
 | A line of THIS TURN | Model calls, then each kind of equipment the turn called: how often, how long together, how many failed | Changes when a call lands | The equipment's card; for model calls, what one is | Pins it |
+| REACH tree (left column, under THIS TURN) | What the focused thread's turn has touched: every file under the folder it is in, every program, search, host and dispatch under its equipment. Folders are named from the root they share ("in ~/code/..."); when a stray file makes that root the disk or the home folder, the branch with the most calls is followed down and the rest is named in full, as outside. Read from each tool call's name and the first field of its input in opencode's record (path, command, pattern, address). A program is the first word of its command after any leading `cd` and assignments, with the subcommand for git, npm and the like. Shown when the thread rows leave the stage room for its head and three rows | A target appears when it is first touched. When the rows do not fit, every group shows as many of its most recently touched targets as all can show alike, and a last line counts the rest | The target: its path or last command, calls by kind, failures, time together, first and last touch. A folder or a kind of equipment: what it holds. The root. The rest that is not shown | Pins it |
+| Bar on a REACH row | One tool call on that target, on the turn's time: where it starts is when the call started, its length how long it took (3 px at least), its colour the equipment, red when it failed, hollow while it runs. One scale for every row: the first round span the turn still fits in (1, 2, 5, 10, 20, 30 minutes, 1 hour and so on) | A running call's bar grows. The scale stands still until the turn outgrows it | The tool call (the same card as its pillar, its diamond and its log line) | Pins it |
+| Cyan line through REACH | Now, on the turn's time | Moves right in whole seconds, two pixels at a time | The axis: when the turn began, the span across | Pins it |
+| Tone of a name in REACH, and the word at its right | How long ago the target was last touched: bright for 20 s, softer for five minutes, dim after that. The word: "now", "20s", "3m", or "running" in cyan while a call on it is out; a clock time for a turn that has ended | Changes every ten seconds under a minute, every minute after | The target | Pins it |
+| Packet on a REACH branch | A call of the focused thread leaving its wire for its target, and its result coming back: the same sign per equipment as on a synapse, red when it failed | Out when the call starts, back when it ends, a flash at the target when the result lands (longer and red for a failure) | n/a | n/a |
+| Motes on a REACH branch | A call that is still out | Run from the wire to the target for as long as the call runs | The branch: what it is, how many calls are out | Pins it |
 | Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
 ### What the flock does, and when
