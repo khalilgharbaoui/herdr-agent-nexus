@@ -831,7 +831,15 @@ export class Renderer {
   // How much time one full circle of the turn ring stands for.
   turnScale(session, elapsed) {
     const expect = session.expect
-    if (expect) return Math.max(expect.p75 * 1.25, elapsed * 1.08)
+    // A turn past its usual length keeps 8% of the circle ahead of it, so the scale grows with
+    // it. It grows in steps of a quarter of a percent, not with every second: the clock (and
+    // the core it is painted on, the largest region there is) stands still between two steps,
+    // and the head creeps forward by under a degree before it is set back.
+    if (expect) {
+      const floor = expect.p75 * 1.25
+      const wanted = elapsed * 1.08
+      return wanted <= floor ? floor : floor * 1.0025 ** Math.ceil(Math.log(wanted / floor) / Math.log(1.0025))
+    }
     return NICE_SPANS.find((span) => span >= elapsed * 1.15) ?? elapsed * 1.2
   }
 
