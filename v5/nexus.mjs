@@ -489,6 +489,7 @@ async function runTerminal() {
       readbackMbPerSecond: Number((((terminal.readBytes ?? 0) - (mark.read ?? 0)) / 1e6 / seconds).toFixed(1)), // pixels read back from the canvas to find what changed
       movedPerFrameBy: Object.fromEntries(Object.entries(terminal.movedBy).map(([name, count]) => [name, Number((count / frames).toFixed(1))]).filter(([, rate]) => rate >= 1).sort((a, b) => b[1] - a[1])), // sprite placements a frame, by kind of mark
       repaintsPerSecond: Object.fromEntries(Object.entries(renderer.repaints ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.2).sort((a, b) => b[1] - a[1])), // which regions of the still layer were painted again, and how often
+      repaintCauses: Object.fromEntries(Object.entries(renderer.causes ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.5).sort((a, b) => b[1] - a[1])), // for the regions that name the parts of their signature: which part changed, times a second
       threads: scene.threads.length,
       working: scene.counts.working,
       phase: scene.phase.level,
@@ -510,6 +511,7 @@ async function runTerminal() {
     mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0 }
     readHeaps()
     renderer.repaints = {}
+    renderer.causes = {}
     terminal.movedBy = {}
     peak = 0
     const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`

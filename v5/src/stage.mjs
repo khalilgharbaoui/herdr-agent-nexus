@@ -104,7 +104,10 @@ export const stage = {
     const session = scene.focused?.session
     if (!session) return "none"
     const flock = this.flock
-    return [session.id, session.state, session.turn?.out ?? session.lastOut ?? 0, flock.sid === session.id ? `${flock.state}|${flock.count}|${flock.unit}` : ""].join("|")
+    const mine = flock.sid === session.id
+    const parts = [session.id, session.state, session.turn?.out ?? session.lastOut ?? 0, mine ? flock.state : "", mine ? flock.count : "", mine ? flock.unit : ""]
+    this.signed = { labels: ["thread", "state", "out", "flock state", "dots", "unit"], parts }
+    return parts.join("|")
   },
 
   drawFlockLine(c, scene) {
@@ -130,22 +133,48 @@ export const stage = {
     const session = focus.session
     const { degrees, rs } = this.coreView(session)
     const turn = this.turnWindow(session, now)
-    const parts = [session.id, focus.index, session.state, session.phase.key, session.context.used, session.steps.length, degrees, rs, this.flock.unit, scene.threads.filter((row) => row.parent?.session.id === session.id).length]
+    // every part with the name of what it stands for: when the core is painted again, the part
+    // that changed is counted under that name (stats.json, repaintCauses)
+    const parts = []
+    const labels = []
+    const put = (label, ...values) => {
+      for (const value of values) {
+        labels.push(label)
+        parts.push(value)
+      }
+    }
+    put("thread", session.id, focus.index)
+    put("state", session.state, session.phase.key)
+    put("context read", session.context.used)
+    put("model calls", session.steps.length)
+    put("lean", degrees)
+    put("globe size", rs)
+    put("unit", this.flock.unit)
+    put("subagents", scene.threads.filter((row) => row.parent?.session.id === session.id).length)
     const pace = this.contextPace(session)
-    if (pace) parts.push(Math.round(pace.perCall / 50), pace.since, pace.calls)
+    if (pace) put("context pace", Math.round(pace.perCall / 50), pace.since, pace.calls)
     if (turn) {
       const elapsed = turn.end - turn.start
       const scale = this.turnScale(session, elapsed)
       // the arc is repainted when its head has moved two pixels, and never more than once a second
       // (a turn past its usual length has a scale that grows with it, so its head stands still: the
       // small term keeps rounding noise from flipping the figure, and the core with it, every frame)
-      parts.push(Math.round(scale / 1000), turn.live ? Math.floor(Math.min(now / 1000, (elapsed / scale) * (this.G.core.RA * 3)) + 1e-4) : 0)
-      for (const tool of session.phase.tools) parts.push(tool.id, Math.floor(Math.log10(Math.max(1, now - tool.start)) * 16))
+      put("clock scale", Math.round(scale / 1000))
+      put("clock head", turn.live ? Math.floor(Math.min(now / 1000, (elapsed / scale) * (this.G.core.RA * 3)) + 1e-4) : 0)
+      // a running call's pillar grows on a log scale, which is 24 steps in its first second: it
+      // is read on a half-second grid that every running pillar shares, so the core (the largest
+      // region there is) is painted for them twice a second at most, however many calls run
+      const beat = Math.floor(now / 500) * 500
+      for (const tool of session.phase.tools) {
+        put("tool running", tool.id)
+        put("pillar growing", Math.floor(Math.log10(Math.max(1, beat - tool.start)) * 16))
+      }
       const newest = session.steps[session.steps.length - 1]
-      if (newest) parts.push(newest.end === null ? "open" : "closed", newest.tools.length, newest.tools[newest.tools.length - 1]?.status ?? "")
+      if (newest) put("newest call", newest.end === null ? "open" : "closed", newest.tools.length, newest.tools[newest.tools.length - 1]?.status ?? "")
     }
     const intro = (now - scene.focus.since) / 450
-    if (intro < 1) parts.push(Math.floor(intro * 6))
+    if (intro < 1) put("focus sweep", Math.floor(intro * 6))
+    this.signed = { labels, parts }
     return parts.join("|")
   },
 

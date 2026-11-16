@@ -542,10 +542,29 @@ export class Renderer {
     let any = false
     const painted = []
     if (rearranged) this.base.clearRect(0, 0, this.W, this.H)
+    this.causes ??= {}
     for (const region of this.regions) {
+      this.signed = null
       const signature = region.sign(scene, ui, now, meta)
+      const signed = this.signed
       const under = stale.some((rect) => intersects(rect, region.rect))
-      if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) continue
+      if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) {
+        continue
+      }
+      // why it is painted again: the named parts of its signature that changed (where the region
+      // names them), or what forced it
+      const before = region.parts
+      if (signed) region.parts = signed
+      const named = new Set()
+      if (signature === region.last) named.add(rearranged ? "layout" : under ? "an overlay moved" : "wires")
+      else if (signed && before) {
+        const count = Math.max(signed.parts.length, before.parts.length)
+        for (let index = 0; index < count; index += 1) if (signed.parts[index] !== before.parts[index] || signed.labels[index] !== before.labels[index]) named.add(signed.labels[index] ?? before.labels[index])
+      }
+      for (const label of named) {
+        const key = `${region.name}: ${label}`
+        this.causes[key] = (this.causes[key] ?? 0) + 1
+      }
       region.last = signature
       this.paint(region, scene, ui, now, meta)
       this.repaints[region.name] = (this.repaints[region.name] ?? 0) + 1
