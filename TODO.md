@@ -5,30 +5,26 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-16 10:30: v5 runs live in herdr pane `wE:p1QF` (sprite transport, the terminal holds
-  every sprite page; restart it in place with `v5/tools/restart.sh`). The pane was 139 columns
-  by 82 rows from early morning and is 91 by 82 again since about 09:58 (the operator moves
-  the split himself; v5 follows without a restart). A seventh designer session (on `appical`,
-  06:55 to 10:30) worked through the eleventh addendum's list. Done: a resize no longer
-  leaves memory behind (one resize per settled size instead of one per column, buffers kept
-  while the pane fits them, the allocator gives freed large blocks back:
-  `v5/tools/resize-check.py` measures it on a stand-in terminal); the upright scale is set by
-  the height too, so a wide pane has room and THIS TURN and REACH always show; resting rows
-  say what their last turn was; a moment held on the terrain is replayed in the core, the
-  flock and the wires, marked THEN; an endless loop in REACH's row budget is fixed. Commits
-  are signed again (1Password answers); `da9ec45`, `fb3629f`, `f94e7d6` and the README commit
-  after them. `v5/README.md` ends with what was seen where and the measurements.
-- Left for a next session: the footer's use of a wide pane (comms, the sector map and the
-  log each leave their right third empty at 139 columns); a held moment that lies before the
-  focused thread's kept history should say so; the live text, the charts' lines, REACH and
-  the moons at a held moment; REACH and the stage's empty space in landscape; a look at REACH,
-  scrubbing and the replay with a real hand; the footprint right after a real resize.
-- For the operator to judge, each a decision taken for him that he can overrule: the scale at
-  139 columns is 0.88 now (it was 1.10: everything is a fifth smaller than he saw it there
-  this morning, and REACH, THIS TURN and six of eight rows show where four rows did);
-  `MallocLargeCache=0` costs about one point of a core for some 50 MB less and a clean resize
-  (`MallocLargeCache=1 node v5/nexus.mjs` runs without it); the cache ramp still waits for
-  his word.
+- 2026-11-16 12:45: v5 runs live in herdr pane `wE:p1QF` at `8113689` plus the README commit
+  after it (sprite transport, the terminal holds every page; restart it in place with
+  `v5/tools/restart.sh`). The pane is 183 columns by 82 rows since about 11:25 (the operator
+  widened it himself). An eighth designer session (on `default`, 10:35 to 12:45) worked
+  through the twelfth addendum's list and stopped early: `default` reached 96% of its window
+  (it resets 15:30). Done, each a signed commit: a held moment is the past on the whole
+  stage and every other part says NOW, with cards that read the moment (`8fa2719`); the wide
+  footer (`18de692`); the circuit costs less per working thread (`8113689`); memory watched
+  for half an hour at 91 columns (it levels off at 170 to 171 MB); `v5/tools/check.mjs`, 29
+  checks of v5's interactions. `v5/README.md` ends with what was seen where and the numbers.
+- Left for a next session: landscape (REACH and THIS TURN have no place there; two checks of
+  `check.mjs` fail there on purpose until they do); a live minute with eight or more threads
+  working, to turn the estimate of the cost class into a reading (`tools/cost-watch.mjs`);
+  the result of the thirteen-minute side-by-side watch for cost bursts; a look at the held
+  moment in the real pane through herdr (`tools/poke.mjs`: down, drag, up on the terrain).
+- For the operator to judge, each a decision taken for him that he can overrule: during a
+  hold the circuit's rows stay the present under a NOW chip (their wires carry the grey
+  motes of then); in a working row the chips stand in one column, clear of the widest timer
+  (a short timer leaves a gap); the rows that type share one typist's steps; the scale at
+  139 columns, the allocator setting and the cache ramp still wait for his word.
 
 ## Open from the operator
 

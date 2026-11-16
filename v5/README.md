@@ -303,6 +303,29 @@ eight to nine working, twelve minutes; small blocks went from 44 to 48 MB and V8
 area elsewhere (336 MB at 139). A resize of the real pane while it ran happened once with the
 new code (the operator took the split back to 91 columns; `stats.json` counts the sizes
 settled on under `resizes`); the footprint after it was not caught on its own.
+## Checks
+
+`node --no-warnings v5/tools/check.mjs [--size 1365x2460] [--shots]` runs the demo on a clock
+of its own and sends it the events a mouse and a keyboard send, at places taken from the
+picture's own geometry, so it holds at any upright size. 29 checks, exit code 0 when all pass,
+and a loop that never ends is reported as a hang (it runs itself as a child with a time limit):
+
+| Interaction | What is checked |
+| --- | --- |
+| REACH | it is drawn, its head and a target open their cards, a bar is its tool call's own target |
+| A resting row | the reading of its last turn opens the LAST TURN card |
+| Scrubbing | a drag on the terrain holds a moment, the focus does not move, the SCRUB card shows, a mark stands on every ridge |
+| The replay | the stage is read as of the moment, the thread shown has nothing from after it, every target of the stage carries the moment, every part that is not replayed has its NOW chip, the moving marks of the core are grey |
+| Cards during a hold | a line of THIS TURN, a dot of the flock of then and a moon read the moment; a part that is not replayed says NOW; a pinned card leaves the moment held; escape lets go of the card first and the moment second; nothing of the moment is left afterwards |
+| Partial repaints | a change of the wires repaints every region a changed wire runs through (against the wires' own pixels); the three ticking parts of a working row are pixel for pixel what a fresh paint gives |
+| A resize | three sizes in a row are laid out with nothing thrown |
+
+In landscape two of them fail on purpose: REACH and THIS TURN have no place there yet.
+`tools/cost-watch.mjs [seconds] [folder]` averages a stretch of `stats.json` reports (cost,
+and what it is spent on); with `tools/resize-check.py --fresh --to 91 --settle 120 --run <folder>`
+it measures a second copy on a stand-in terminal, and `NEXUS_COARSE=1` in front of that runs
+the repaints the old way for a side-by-side reading.
+
 ## Files
 
 As v4, plus `src/flock.mjs` (the swarm: a dot's life from the tip to the globe, simulation,
@@ -542,3 +565,54 @@ was 209); 16 to 18 MB of the terminal's 67 MB store.
 `stats.json` says what costs it:
 `repaintsPerSecond` by region of the still layer and `movedPerFrameBy` by kind of mark. Painted
 fallback: 1.5 to 4.7 MB/s and about one core.
+
+Eighth session (2026-11-16, 10:35 to 12:45, stopped early: the account it ran on reached 96%
+of its window), in the twelfth addendum's order:
+
+- **A held moment is the past on the whole stage, and every other part says NOW** (see the
+  table of marks: "The stage at a held moment", "NOW chip", "Scrubbed moment"). The moment is
+  held by itself now, apart from any pinned card: that is what made a dot of the flock of then
+  open the card of now (a click pinned the dot, which let the moment go). Replayed in
+  addition: the live text, the three charts, REACH, the prompt cache axis, the moons.
+- **The wide footer** (see "Flag line in comms", "Pane name beside its square", "Log line").
+- **Memory over half an hour** at 91 columns on a stand-in terminal, 5 of 8 threads working,
+  one sample a minute: 173 MB in the first minute, 164 to 170 over the first nine (the
+  allocator's small blocks going from 24 to 31 MB), 170 MB for the next sixteen and 171 MB for
+  the last seven; large blocks 68 MB and V8 54 MB throughout. It levels off: the 7 MB of the
+  last session's twelve minutes was the settling of the first ten.
+- **Cost with many threads working.** Three things grew with the number of working threads
+  and are changed: a tool call starting or ending (anywhere) repainted the whole circuit, 34
+  regions, where it now repaints the regions that synapse runs through (1.4 changed and 4.1
+  painted on average in the demo); a working row was painted and read back whole for every
+  tick of its timer, and is four regions now; and every typing row stepped fifteen times a
+  second, where the rows now share those steps. The word under a row's timer counted in
+  tenths once it had a region of its own (seven paints a second a row): it counts in whole
+  seconds. Side by side on the same live data (91 columns, 5 of 8 working, 80 s, twice): tiles
+  from the rows 12.3 and 11.6 a second before, 8.6 and 8.7 after; pixels read back 15.0 and
+  15.4 MB/s before, 10.9 and 11.6 after; 303 and 296 kB/s before, 273 and 279 after; per cent
+  of a core 6.6 and 6.7 before, 5.9 and 6.7 after (three copies ran at once, so the last is
+  the least exact). In the demo (5 to 8 of 20 working): tiles from the rows 57.9 a second
+  before, 22.9 after. What a working thread still costs: about 1.7 tiles a second (its timer
+  and its live line) and 6 to 7 sprite placements a frame (the motes on its wire), some 20
+  kB/s together. **Not shown: a live minute with eight or more working.** The machine had five
+  all session, so that the class holds there is an estimate (five working measured at 248 to
+  359 kB/s and 4.6 to 8.4% of a core, plus four threads at 20 kB/s), not a reading. The demo
+  does not stand in for it: its focused thread types without pause, and that alone (the live
+  text, 72 tiles a second) puts it at 26% of a core. A thirteen-minute side-by-side watch for
+  the bursts (readback of 28 to 48 MB/s with 16 to 19% of a core in the half-hour watch) was
+  still running when the session stopped; its output is the newest file under
+  `~/.local/share/opencode/shell/` named in the session's report.
+- **Checks** for every interaction of v5 that had none: see "Checks".
+
+Seen in the real pane (its own frame, the terminal holding every page, 183 columns by 82 rows:
+the operator had widened it): the footer with flags in full and named panes, after each of
+four restarts the verdict "held" and no error. Seen only in headless frames and in the
+checks: everything about the held moment in its new form (the NOW chips, the THEN cards, the
+replayed charts, REACH, text and moons), the rows in four regions, 139 and 91 columns. Not
+sent through herdr into the real pane this session: any input at all.
+
+Not done: landscape (REACH and THIS TURN have no place there, and the stage is empty between
+the live text and the terrain); a live minute at eight or more working; the rows of the
+circuit at a held moment (they say NOW; replaying them needs what a past moment does not
+keep: cost, flags, the last turn).
+
