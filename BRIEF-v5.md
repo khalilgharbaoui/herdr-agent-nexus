@@ -288,3 +288,28 @@ Nothing new from the operator. The standing instruction holds: "sofare so good n
 4. Scrubbing the terrain by dragging.
 5. The context head running back after a compaction: provoke it in the demo if it cannot be seen live, and say which.
 6. A last look at the whole screen against the operator's first words and the second addendum's list; spend what is left on the weakest part and say which it was.
+
+## Eleventh addendum: the operator's go-ahead, 2026-11-16 06:50 (verbatim)
+
+> "go ahead do the most recommeded"
+
+1Password is unlocked again: the sixth session's eight steps are signed commits now (`9a4465e` to `a4d5db5`). The operator has also widened the split by hand: the Nexus pane `wE:p1QF` is 139 columns by 82 rows, and v5 (pid 38589) lived through that resize without a restart.
+
+### What the director measured at 06:52, after that real resize (two hours seven minutes of uptime)
+
+- Physical footprint 417 MB (`footprint <pid>`), resident size 565 MB. Before the resize, at 91 columns, the band was 171 to 218 MB. So either memory scales with the pane far more than the pixels do (139 against 91 columns is 1.5 times the area), or a resize leaves the old size's buffers, canvases or atlas pages behind.
+- `stats.json`: 770 kB/s, 8 to 12% of a core, graphics verdict "held" with 22 held of 32 pages.
+
+### Decisions taken for the operator (he can overrule any)
+
+1. **Memory rule:** under about 220 MB and not rising at 91 columns is accepted. At any other width the rule is the same number scaled by the pane's pixel area, and a resize must not leave memory behind.
+2. **History depth:** yes, but cheaply. Do not widen the 31-minute window. Read, for every listed thread, a small summary of its last turn however old it is (when it ended, how long it ran, calls, output, cost, how it ended), bounded per thread, and draw that in the bare right half of resting rows. A resting row then says what the thread last did and how long ago, and it does not come and go with data age.
+3. **Cache ramp:** stays (rose through orchid to cold blue) until the operator says otherwise.
+
+### Order of work
+
+1. **Memory after a resize, first.** Reproduce it: is 417 MB what a fresh start at 139 columns settles at, or what a resize from 91 leaves? Measure both. Fix what a resize leaves behind (old canvases, readback buffers, atlas pages, worker state), and bring the wide pane's settled level to the scaled rule. Explain "22 held of 32 pages": if pages are sent that the terminal does not hold, say why the verdict is still "held", or fix the count.
+2. **The wide pane is real now: use it.** At 139 columns the layout has room the 91-column layout did not. Look at a real frame at this width and make the layout fill it with meaning: REACH and THIS TURN must always have room (when many threads are listed, the list gives way, scrolls or folds, never REACH), the charts and terrain take the extra width, nothing is stretched thin or left as a dark band. Check 91 columns still looks as it did.
+3. **Resting rows show their last turn** (decision 2 above).
+4. **A scrubbed moment is replayed, not only read out:** while a moment is held, the core, the flock and the wires show that moment (the thread's rate then, what was open, where its context stood), clearly marked as the past (for example dimmed with a "THEN" tag and the held time), and they return to now on release.
+5. A last look at the whole screen at this width against the operator's first words; spend what is left on the weakest part and say which it was.
