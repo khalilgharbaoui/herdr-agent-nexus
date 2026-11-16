@@ -388,7 +388,9 @@ async function runTerminal() {
         const { context, bands } = paintSprites(sprites, changed ? renderer.marks : null)
         outcome = terminal.send(context, bands, [], atlas, null, renderer.card)
       } else {
+        terminal.lastDirty = null
         outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas, readAll ? null : renderer.spans, renderer.card)
+        if (!readAll && changed) renderer.attribute(terminal.lastDirty)
       }
       if (outcome === "sent") {
         total.sent += 1
@@ -511,6 +513,7 @@ async function runTerminal() {
       resizes: terminal.resizes ?? 0, // sizes this run has settled on since it started
       movedPerFrameBy: Object.fromEntries(Object.entries(terminal.movedBy).map(([name, count]) => [name, Number((count / frames).toFixed(1))]).filter(([, rate]) => rate >= 1).sort((a, b) => b[1] - a[1])), // sprite placements a frame, by kind of mark
       repaintsPerSecond: Object.fromEntries(Object.entries(renderer.repaints ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.2).sort((a, b) => b[1] - a[1])), // which regions of the still layer were painted again, and how often
+      tilesPerSecondBy: Object.fromEntries(Object.entries(renderer.tilesBy ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.1).sort((a, b) => b[1] - a[1])), // tiles that went out, by the region whose repaint changed them: what the still layer's bytes are spent on
       repaintCauses: Object.fromEntries(Object.entries(renderer.causes ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.5).sort((a, b) => b[1] - a[1])), // for the regions that name the parts of their signature: which part changed, times a second
       threads: scene.threads.length,
       working: scene.counts.working,
@@ -534,6 +537,7 @@ async function runTerminal() {
     readHeaps()
     renderer.repaints = {}
     renderer.causes = {}
+    renderer.tilesBy = {}
     terminal.movedBy = {}
     peak = 0
     const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`

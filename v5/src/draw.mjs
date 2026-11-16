@@ -30,6 +30,9 @@ const PORTRAIT_UNITS = 2800 // the height, in layout units, an upright pane is g
 // that carries a section label stays the present and says so with a NOW chip beside its label.
 const THEN_REGIONS = new Set(["core", "flockline", "plinth", "cache", "under", "reach", "head", "charts", "tail"])
 const NOW_REGIONS = new Set(["header", "rails", "top", "ports", "comms", "footer", "log"])
+// For measuring what the two savings of 2026-11-16 are worth, on the same data (tools/cost-watch.mjs):
+// NEXUS_COARSE=1 paints a working row as one region and the whole circuit at every change of the wires, as before.
+const COARSE = process.env.NEXUS_COARSE === "1"
 
 export class Renderer {
   constructor(flow) {
@@ -207,7 +210,7 @@ export class Renderer {
     const u = (value) => this.u(value)
     const accounts = scene.world?.accounts ?? []
     if (scene.focus.id !== this.scrollFocus) this.follow = true
-    const signature = [this.W, this.H, scene.focus.id, this.scroll, ui.zoom, this.follow, accounts.map((account) => account.name).join(","), ...scene.rows.map((row) => (row.type === "project" ? `P${row.key}${row.closed ? "-" : "+"}` : `${row.key}:${row.depth}:${this.tall(row.session) ? 1 : 0}${row.closed ? "-" : ""}`))].join("|")
+    const signature = [this.W, this.H, scene.focus.id, this.scroll, ui.zoom, this.follow, accounts.map((account) => account.name).join(","), ...scene.rows.map((row) => (row.type === "project" ? `P${row.key}${row.closed ? "-" : "+"}` : `${row.key}:${row.depth}:${this.tall(row.session) ? (row.session.state === "working" ? 2 : 1) : 0}${row.closed ? "-" : ""}`))].join("|")
     if (signature === this.arranged) return false
     const rows = scene.rows
     const natural = rows.map((row) => this.rowHeight(row))
@@ -279,7 +282,21 @@ export class Renderer {
       else {
         const working = this.tall(row.session)
         const somaX = somaX0 + Math.min(row.depth, 4) * u(44)
-        G.rows.push({ row, key: row.key, sid: row.session.id, y, h, somaX, r: working ? u(13) : u(8), axonY: y + h - u(18), textX: somaX + u(38), textRight: G.termX - u(18), live: working && h >= u(110) })
+        const g = { row, key: row.key, sid: row.session.id, y, h, somaX, r: working ? u(13) : u(8), axonY: y + h - u(18), textX: somaX + u(38), textRight: G.termX - u(18), live: working && h >= u(110) }
+        // A working row ticks: its timer every second, the word under it, and its live line
+        // as it types. Each of the three has a small region of its own inside the row, so a
+        // tick paints and reads back a few thousand pixels instead of the whole row.
+        if (g.live && row.session.state === "working" && !COARSE) {
+          const titleY = y + u(36)
+          const metaY = titleY + u(25)
+          const liveY = metaY + u(26)
+          g.parts = {
+            timer: { x: g.textRight - u(112), y: titleY - u(20), w: u(118), h: u(27) },
+            phase: { x: g.textRight - u(210), y: metaY - u(15), w: u(216), h: u(21) },
+            live: { x: g.textX - u(2), y: liveY - u(16), w: g.textRight + u(6) - (g.textX - u(2)), h: u(23) },
+          }
+        }
+        G.rows.push(g)
       }
       y += h
     }
@@ -387,7 +404,18 @@ export class Renderer {
     for (const g of G.rows) {
       const rect = { x: left, y: g.y, w: right - left, h: g.h }
       if (g.project) add(`proj:${g.key}`, rect, (scene) => this.signProject(g), (c, scene) => this.drawProject(c, g, scene), true)
-      else add(`row:${g.sid}`, rect, (scene, ui, now) => this.signRow(g, scene, now), (c, scene, ui, now) => this.drawRow(c, g, scene, now), true)
+      else {
+        add(`row:${g.sid}`, rect, (scene, ui, now) => this.signRow(g, scene, now, g.parts ? "body" : "all"), (c, scene, ui, now) => this.drawRow(c, g, scene, now, g.parts ? "body" : "all"), true)
+        if (g.parts) {
+          // (painted after the row itself: when the row is painted again, so are they)
+          const body = regions[regions.length - 1]
+          body.inner = []
+          for (const part of ["timer", "phase", "live"]) {
+            add(`row:${g.sid}:${part}`, g.parts[part], (scene, ui, now) => this.signRow(g, scene, now, part), (c, scene, ui, now) => this.drawRow(c, g, scene, now, part), true)
+            body.inner.push(regions[regions.length - 1])
+          }
+        }
+      }
     }
     const last = G.rows[G.rows.length - 1]
     const restY = last ? last.y + last.h : G.rowsTop
@@ -399,6 +427,9 @@ export class Renderer {
     add("footer", cols.map, (scene) => this.signMap(scene), (c, scene) => this.drawMapRegion(c, scene))
     add("log", cols.log, (scene, ui, now) => this.signLog(scene, ui, now), (c, scene, ui, now) => this.drawLogRegion(c, scene, ui, now))
     add("hints", cols.hints, (scene, ui) => ui.tip, (c, scene, ui) => this.drawHints(c, ui))
+    // the targets of a row or a project line that is no longer laid out go with it
+    const names = new Set(regions.map((region) => region.name))
+    for (const name of this.hits.keys()) if ((name.startsWith("row:") || name.startsWith("proj:")) && !names.has(name)) this.hits.delete(name)
     this.regions = regions
   }
 
@@ -579,11 +610,28 @@ export class Renderer {
     const wires = this.signWires(scene, now)
     const rewire = wires !== this.wiresSignature || rearranged
     this.repaints ??= {}
+    // Where the wires changed: the boxes of the parts that look different now, came or went.
+    // Null means everywhere (a new layout). A tool call that starts or ends lights or dims one
+    // synapse: only the regions that synapse runs through are painted again, not the whole
+    // circuit (which it was until 2026-11-16, at every call of every thread).
+    let rewired = null
     if (rewire) {
       this.wiresSignature = wires
+      const before = rearranged ? null : this.wiresDrawn
       this.drawWires(scene, now)
+      this.wiresDrawn = this.wireParts(scene, now)
       this.repaints.wires = (this.repaints.wires ?? 0) + 1
+      if (before && !COARSE) {
+        rewired = []
+        for (const [key, part] of this.wiresDrawn) {
+          const was = before.get(key)
+          if (!was) rewired.push(...part.boxes)
+          else if (was.look !== part.look) rewired.push(...part.boxes)
+        }
+        for (const [key, part] of before) if (!this.wiresDrawn.has(key)) rewired.push(...part.boxes)
+      }
     }
+    const rewiredIn = (region) => rewire && region.circuit && (rewired === null || rewired.some((box) => intersects(box, region.rect)))
     // overlays wanted now, and the ground that has to be repainted because one moved, changed or left
     const overlays = this.overlaysFor(scene, ui, now)
     const stale = []
@@ -598,6 +646,7 @@ export class Renderer {
     for (const name of this.hits.keys()) if (name.startsWith("over:") && !overlays.some((overlay) => overlay.name === name)) this.hits.delete(name)
     let any = false
     const painted = []
+    this.paintedNow = [] // which region was painted where, this frame: see attribute
     if (rearranged) this.base.clearRect(0, 0, this.W, this.H)
     this.causes ??= {}
     // a moment held on the terrain: these parts of the stage show the focused thread as it stood then
@@ -610,7 +659,8 @@ export class Renderer {
       const signature = past ? `then ${past.at}|${region.sign(past.scene, ui, past.at, meta)}` : `${region.sign(scene, ui, now, meta)}${present ? "|now chip" : ""}`
       const signed = this.signed
       const under = stale.some((rect) => intersects(rect, region.rect))
-      if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) {
+      const wired = rewiredIn(region)
+      if (signature === region.last && !wired && !rearranged && !under) {
         continue
       }
       // why it is painted again: the named parts of its signature that changed (where the region
@@ -632,6 +682,9 @@ export class Renderer {
       else this.paint(region, scene, ui, now, meta, null, present)
       this.repaints[region.name] = (this.repaints[region.name] ?? 0) + 1
       painted.push(region.rect)
+      this.paintedNow.push(region)
+      // a row that was painted again has cleared its parts: they follow it in this same pass
+      if (region.inner) for (const part of region.inner) part.last = null
       any = true
     }
     for (const overlay of overlays) {
@@ -649,6 +702,30 @@ export class Renderer {
       }
     }
     return any
+  }
+
+  // Which region each tile that went out belongs to: the one painted this frame that covers
+  // most of it. A repaint is cheap when nothing in it changed (nothing is sent); this counts
+  // what a region's repaints really cost, in tiles, so stats.json can say which part of the
+  // screen the bytes go to.
+  attribute(tiles) {
+    if (!tiles || !this.paintedNow?.length) return
+    this.tilesBy ??= {}
+    for (const tile of tiles) {
+      let best = null
+      let most = 0
+      for (const region of this.paintedNow) {
+        const rect = region.rect
+        const w = Math.min(tile.x + tile.w, rect.x + rect.w) - Math.max(tile.x, rect.x)
+        const h = Math.min(tile.y + tile.h, rect.y + rect.h) - Math.max(tile.y, rect.y)
+        if (w > 0 && h > 0 && w * h > most) {
+          most = w * h
+          best = region
+        }
+      }
+      const name = best ? (best.name.startsWith("row:") ? "rows" : best.name.startsWith("proj:") ? "projects" : best.name) : "other"
+      this.tilesBy[name] = (this.tilesBy[name] ?? 0) + 1
+    }
   }
 
   paint(region, scene, ui, now, meta, then = null, present = null) {
@@ -724,6 +801,40 @@ export class Renderer {
     }
     this.knownSessions = new Set(scene.threads.map((row) => row.session.id))
     if (this.reveal.size > 900) for (const key of this.reveal.keys()) if (!live.has(key)) this.reveal.delete(key)
+    // The rows share one typist. A row's live line is painted again at every step of its
+    // typing, and every step sends a tile: with eight threads typing at once that was eight
+    // times the cost of one. So the rows that are typing take turns: one row steps at a
+    // fifteenth of a second as before, two rows at every other step each, and so on up to
+    // eight. The text is revealed in the same time, in larger steps; a block that is fully
+    // typed shows at once. (The focused thread's own text on the stage is not part of this.)
+    if (typeStep && !COARSE) {
+      this.rowReveal ??= new Map()
+      const typing = []
+      for (const g of this.G.rows) {
+        if (!g.row || !g.live) continue
+        const item = this.liveOf(g.row.session)?.item
+        if (!item) continue
+        const state = this.reveal.get(item.key)
+        const shown = state ? Math.floor(state.shown) : item.text.length
+        if (state && state.shown < state.length) typing.push([g.sid, shown])
+        else this.rowReveal.set(g.sid, { key: item.key, shown })
+      }
+      this.typeTurn = (this.typeTurn ?? 0) + 1
+      const share = Math.min(8, typing.length)
+      typing.forEach(([sid, shown], index) => {
+        const known = this.rowReveal.get(sid)
+        const key = this.liveOf(this.G.rowOf.get(sid).row.session).item.key
+        // its turn, or a new block (which starts from where its typing stands)
+        if (!known || known.key !== key || (this.typeTurn + index) % share === 0) this.rowReveal.set(sid, { key, shown })
+      })
+      if (this.rowReveal.size > 200) for (const sid of this.rowReveal.keys()) if (!this.G.rowOf.has(sid)) this.rowReveal.delete(sid)
+    }
+  }
+
+  // How much of a row's live line shows: its typing as of the row's last turn at it (see advance).
+  rowShownOf(sid, item) {
+    const known = COARSE ? null : this.rowReveal?.get(sid)
+    return known && known.key === item.key ? Math.min(known.shown, item.text.length) : this.shownOf(item)
   }
 
   shownOf(item) {

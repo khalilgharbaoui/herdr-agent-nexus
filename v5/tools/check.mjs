@@ -15,6 +15,9 @@
 //                the flock, a moon when there is one), one opened on a part that is not
 //                replayed says NOW, a pinned card leaves the moment held, and escape lets go
 //                of the card first and of the moment second
+//   repaint      over half a minute: a change of the wires repaints every region a changed
+//                wire runs through (checked against the wires' own pixels), and the three
+//                ticking parts of a working row are pixel for pixel what a fresh paint gives
 //   resize       a change of size lays the picture out again, twice, with nothing left over
 // It runs itself as a child with a time limit, so a loop that never ends is reported as a hang
 // instead of hanging the caller. Exit code 0: every check passed.
@@ -264,6 +267,78 @@ if (held !== null) {
   check("cards: the next escape lets the moment go", !ui.hold && !renderer.thenKept)
   const left = everyTarget().filter((target) => target.then !== undefined || String(target.id).startsWith("now:"))
   check("replay: nothing of the moment is left on screen", left.length === 0, left.length ? `${left.length} targets, the first: ${left[0].kind} ${left[0].id}` : "")
+}
+
+// ---------------------------------------------------------------- partial repaints
+// The still layer is painted in regions, each only when its own signature changes. Two of the
+// rules are checked here, over half a minute of the demo:
+//   wires  a change of the wires repaints the regions a changed wire runs through, and those
+//          only. Checked against the wires' own picture: every region whose wire pixels
+//          differ after a redraw must have been painted in that frame.
+//   rows   a working row is four regions (what stands still, its timer, the word under it,
+//          its live line). After half a minute the three small ones must be, pixel for pixel,
+//          what painting them afresh gives.
+// (A region that draws a quantity finer than it signs it, such as the turn clock's head
+// between two of its steps or a cache arc within its minute, may differ from a fresh paint by
+// that much: that is the price of not repainting it every frame, and not what is checked.)
+{
+  const grabWires = () => Buffer.from(renderer.wires.getImageData(0, 0, renderer.W, renderer.H).data)
+  const draw = renderer.drawWires.bind(renderer)
+  let changedBy = null // names of the circuit regions whose wire pixels the last redraw changed
+  let redraws = 0
+  let regionsChanged = 0
+  let regionsPainted = 0
+  const missed = []
+  renderer.drawWires = (...rest) => {
+    const before = grabWires()
+    draw(...rest)
+    const after = grabWires()
+    changedBy = new Set()
+    redraws += 1
+    const stride = renderer.W * 4
+    for (const region of renderer.regions) {
+      if (!region.circuit) continue
+      const { x, y, w, h } = region.rect
+      const x0 = Math.max(0, Math.floor(x))
+      const x1 = Math.min(renderer.W, Math.ceil(x + w))
+      for (let row = Math.max(0, Math.floor(y)); row < Math.min(renderer.H, Math.ceil(y + h)); row += 1) {
+        if (before.compare(after, row * stride + x0 * 4, row * stride + x1 * 4, row * stride + x0 * 4, row * stride + x1 * 4) !== 0) {
+          changedBy.add(region.name)
+          break
+        }
+      }
+    }
+  }
+  for (let tick = 0; tick < 900; tick += 1) {
+    changedBy = null
+    const layout = renderer.arranged
+    step(1)
+    if (!changedBy || renderer.arranged !== layout) continue // no redraw of the wires, or a new layout (everything is painted)
+    const painted = new Set(renderer.paintedNow.map((region) => region.name))
+    regionsChanged += changedBy.size
+    regionsPainted += renderer.paintedNow.filter((region) => region.circuit).length
+    for (const name of changedBy) if (!painted.has(name)) missed.push(name)
+  }
+  renderer.drawWires = draw
+  const circuit = renderer.regions.filter((region) => region.circuit).length
+  check("repaint: a change of the wires repaints every region a changed wire runs through", missed.length === 0 && redraws > 0, missed.length ? `${missed.length} regions kept old wires, the first: ${missed[0]}` : `${redraws} redraws of the wires; a redraw changed ${(regionsChanged / redraws).toFixed(1)} of ${circuit} circuit regions on average and ${(regionsPainted / redraws).toFixed(1)} were painted`)
+
+  const grab = () => Buffer.from(renderer.base.getImageData(0, 0, renderer.W, renderer.H).data)
+  const kept = grab()
+  for (const region of renderer.regions) region.last = null
+  renderer.wiresSignature = ""
+  renderer.update(scene, ui, now, { line: "check" })
+  const fresh = grab()
+  const parts = renderer.regions.filter((region) => /:(timer|phase|live)$/.test(region.name))
+  const stride = renderer.W * 4
+  const off = []
+  for (const region of parts) {
+    const { x, y, w, h } = region.rect
+    let differing = 0
+    for (let row = Math.floor(y); row < Math.ceil(y + h); row += 1) for (let at = row * stride + Math.floor(x) * 4, to = row * stride + Math.ceil(x + w) * 4; at < to; at += 4) if (kept[at] !== fresh[at] || kept[at + 1] !== fresh[at + 1] || kept[at + 2] !== fresh[at + 2] || kept[at + 3] !== fresh[at + 3]) differing += 1
+    if (differing) off.push(`${region.name}: ${differing} pixels`)
+  }
+  check("repaint: the parts of a working row are what a fresh paint gives", off.length === 0 && parts.length > 0, off.length ? off.join("; ") : `${parts.length / 3} working rows, each in four regions`)
 }
 
 // ---------------------------------------------------------------- a resize

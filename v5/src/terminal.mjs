@@ -337,6 +337,8 @@ export class Terminal {
       this.tilesHeld += tile.length - (this.tileBytes.get(tile.index) ?? 0)
       this.tileBytes.set(tile.index, tile.length)
     }
+    // where the tiles that go out this frame stand, for the account of what costs them (see Renderer.attribute)
+    this.lastDirty = dirty.length ? dirty.map((tile) => ({ x: (tile.index % across) * tileWidth, y: Math.floor(tile.index / across) * bandHeight, w: tile.width, h: tile.height })) : null
     return { chunks, dirty, across, down }
   }
 

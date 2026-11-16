@@ -34,6 +34,57 @@ export const circuit = {
     return parts.join("|")
   },
 
+  // The wires in parts, for knowing where a change of them shows: a row's own (the tap from
+  // its account, its axon and terminal), each synapse that is drawn (lit while a call is out,
+  // fainter by how long ago it was used) and each link from a parent. A part is what it looks
+  // like now (`look`) and the small boxes it runs through. Made only when the wires changed.
+  wireParts(scene, now) {
+    const G = this.G
+    const u = (value) => this.u(value)
+    const parts = new Map()
+    const lit = new Map()
+    for (const stream of scene.streams) lit.set(stream.type === "kid" ? `kid:${stream.sid}` : `${stream.sid}:${stream.port}`, stream)
+    const pad = u(4)
+    const along = (points) => {
+      const boxes = []
+      for (let index = 1; index < points.length; index += 1) {
+        const [x0, y0] = points[index - 1]
+        const [x1, y1] = points[index]
+        boxes.push({ x: Math.min(x0, x1) - pad, y: Math.min(y0, y1) - pad, w: Math.abs(x1 - x0) + pad * 2, h: Math.abs(y1 - y0) + pad * 2 })
+      }
+      return boxes
+    }
+    for (const g of G.rows) {
+      if (!g.row) continue
+      const session = g.row.session
+      const working = session.state === "working"
+      const rail = G.rails.find((candidate) => candidate.name === session.account)
+      const from = rail ? rail.x - pad : g.somaX
+      parts.set(`row:${g.sid}`, { look: `${session.state}|${session.account}`, boxes: [{ x: from, y: g.axonY - pad, w: G.termX + pad - from, h: pad * 2 }] })
+      // (the same choice of synapses as drawWires makes)
+      const recent = []
+      for (const [id, port] of scene.ports) {
+        const used = port.used?.get(session.id)
+        if (used && (working || now - used < 90e3)) recent.push([id, used])
+      }
+      recent.sort((a, b) => b[1] - a[1])
+      const faint = new Map(recent.slice(0, working ? 3 : 2))
+      for (const id of scene.ports.keys()) {
+        const stream = lit.get(`${g.sid}:${id}`)
+        if (!stream && !faint.has(id)) continue
+        const path = this.flow.paths.get(`syn:${g.sid}:${id}`)
+        if (!path) continue
+        const age = stream ? 0 : now - faint.get(id)
+        parts.set(`syn:${g.sid}:${id}`, { look: stream ? `lit ${stream.type}` : age < 60e3 ? "3" : age < 240e3 ? "2" : "1", boxes: along(path.points) })
+      }
+      if (g.row.parent) {
+        const path = this.flow.paths.get(`kid:${g.sid}`)
+        if (path) parts.set(`kid:${g.sid}`, { look: lit.has(`kid:${g.sid}`) ? "lit" : "", boxes: along(path.points) })
+      }
+    }
+    return parts
+  },
+
   drawWires(scene, now) {
     const c = this.wires
     const G = this.G
@@ -278,23 +329,37 @@ export const circuit = {
     return { kind: "none" }
   },
 
-  signRow(g, scene, now) {
+  // `part` is which part of the row is signed: "all" for a row that is one region, and for a
+  // working row (which is four: see arrange) "body" for what stands still, "timer" for the
+  // turn's time, "phase" for the word under it, "live" for the live line.
+  signRow(g, scene, now, part = "all") {
     const session = g.row.session
-    const parts = [session.state, session.phase.key, session.title, session.model, session.effort, session.agent, session.pane, session.cost.toFixed(2), session.context.used, scene.focus.id === session.id, g.row.index, g.row.closed, g.row.kids]
-    for (const alert of session.alerts) parts.push(alert.kind, alert.level, alert.muted, alert.text)
-    if (g.row.tally) parts.push(g.row.tally.threads, g.row.tally.working)
-    if (session.turn) parts.push(Math.floor((now - session.turn.start) / 1000))
-    else parts.push(Math.floor((now - (session.idleSince || session.updated)) / 60e3))
-    parts.push(cacheSign(session.cache, now))
-    const last = session.lastTurn
-    if (last) parts.push(last.end, last.calls, last.tools, last.outcome)
-    const live = g.live ? this.liveOf(session) : null
-    if (live?.kind === "tool") parts.push(live.tool.id, live.more, Math.floor((now - live.tool.start) / 1000))
-    else if (live?.item) parts.push(live.item.key, this.shownOf(live.item))
+    const all = part === "all"
+    const parts = []
+    if (all || part === "body") {
+      parts.push(session.state, session.phase.key, session.title, session.model, session.effort, session.agent, session.pane, session.cost.toFixed(2), session.context.used, scene.focus.id === session.id, g.row.index, g.row.closed, g.row.kids)
+      for (const alert of session.alerts) parts.push(alert.kind, alert.level, alert.muted, alert.text)
+      if (g.row.tally) parts.push(g.row.tally.threads, g.row.tally.working)
+      parts.push(cacheSign(session.cache, now))
+      const last = session.lastTurn
+      if (last) parts.push(last.end, last.calls, last.tools, last.outcome)
+      // a row without a turn counts its rest in minutes
+      if (!session.turn) parts.push(Math.floor((now - (session.idleSince || session.updated)) / 60e3))
+    }
+    if ((all || part === "timer") && session.turn) parts.push(Math.floor((now - session.turn.start) / 1000))
+    // (in whole seconds: in tenths the word would be painted ten times a second)
+    if (part === "phase") parts.push(session.state, session.phase.key, session.phase.key === "tool" ? "" : Math.floor(Math.max(0, now - (session.phase.since ?? now)) / 1000))
+    if (all || part === "live") {
+      const live = g.live ? this.liveOf(session) : null
+      parts.push(live?.kind ?? "")
+      if (live?.kind === "tool") parts.push(live.tool.id, live.more, Math.floor((now - live.tool.start) / 1000))
+      else if (live?.item) parts.push(live.item.key, this.rowShownOf(session.id, live.item))
+      else if (live?.kind === "wait") parts.push(session.question ?? "")
+    }
     return parts.join("|")
   },
 
-  drawRow(c, g, scene, now) {
+  drawRow(c, g, scene, now, part = "all") {
     const G = this.G
     const u = (value) => this.u(value)
     const row = g.row
@@ -304,6 +369,37 @@ export const circuit = {
     const waiting = session.state === "waiting"
     const focused = scene.focus.id === session.id
     const { somaX, axonY } = g
+    const all = part === "all"
+    const titleY = g.y + (g.live ? u(36) : u(32))
+    const metaY = titleY + u(25)
+    // right side of the title line: how long
+    let right = ""
+    let rightStyle = { size: 14.5, color: INK.dim, align: "right" }
+    if (working) {
+      right = timerOf(now - session.turn.start)
+      rightStyle = { size: 19, family: FAMILY.monoMedium, color: INK.text, align: "right" }
+    } else if (waiting) {
+      right = `waiting ${agoOf(now - (session.idleSince || session.updated))}`
+      rightStyle = { size: 15, family: FAMILY.monoMedium, color: INK.warn, align: "right" }
+    } else if (session.state === "stalled") right = `silent ${agoOf(now - session.last)}`
+    else right = `${session.state === "failed" ? "failed" : "resting"} ${agoOf(now - (session.idleSince || session.updated))}`
+    // the word under it: what the model is at, and for how long
+    // (a working row's word is its own region and counts in whole seconds, as its timer does)
+    const phaseFor = Math.max(0, now - (session.phase.since ?? now))
+    const phaseWord = working && session.phase.key !== "tool" ? `${session.phase.key === "calling" ? "calling the model" : session.phase.key} ${spanOf(g.parts ? Math.max(1000, Math.floor(phaseFor / 1000) * 1000) : phaseFor)}` : ""
+    // a working row's ticking parts, each in its own small region (see arrange)
+    if (part === "timer") {
+      this.text(c, right, g.textRight, titleY, rightStyle)
+      return
+    }
+    if (part === "phase") {
+      if (phaseWord) this.text(c, phaseWord, g.textRight, metaY, { size: 14, color: INK.live, align: "right" })
+      return
+    }
+    if (part === "live") {
+      this.drawRowLive(c, g, session, color, now, metaY)
+      return
+    }
 
     // the cell body: its ring is the model, the dot inside grows with the context window
     if (working || waiting) {
@@ -349,20 +445,11 @@ export const circuit = {
       c.stroke()
     }
 
-    // right side of the title line: how long, and before it what needs noticing
-    const titleY = g.y + (g.live ? u(36) : u(32))
-    let right = ""
-    let rightStyle = { size: 14.5, color: INK.dim, align: "right" }
-    if (working) {
-      right = timerOf(now - session.turn.start)
-      rightStyle = { size: 19, family: FAMILY.monoMedium, color: INK.text, align: "right" }
-    } else if (waiting) {
-      right = `waiting ${agoOf(now - (session.idleSince || session.updated))}`
-      rightStyle = { size: 15, family: FAMILY.monoMedium, color: INK.warn, align: "right" }
-    } else if (session.state === "stalled") right = `silent ${agoOf(now - session.last)}`
-    else right = `${session.state === "failed" ? "failed" : "resting"} ${agoOf(now - (session.idleSince || session.updated))}`
-    this.text(c, right, g.textRight, titleY, rightStyle)
-    let edge = g.textRight - this.width(c, right, rightStyle) - u(14)
+    // right side of the title line: how long (a working row's timer is its own region), and
+    // before it what needs noticing. In a working row the chips stand in one column, clear
+    // of the widest timer; elsewhere they follow the text.
+    if (all) this.text(c, right, g.textRight, titleY, rightStyle)
+    let edge = g.parts ? g.parts.timer.x - u(8) : g.textRight - this.width(c, right, rightStyle) - u(14)
     for (const alert of session.alerts.slice(0, 3)) {
       const tone = alert.muted ? INK.faint : alert.level === "alert" ? (alert.kind === "call" ? INK.warn : INK.bad) : alert.level === "caution" ? INK.warn : alert.kind === "unread" ? INK.good : INK.dim
       const word = { call: "CALL", stall: "SILENT", streak: `${session.failStreak} FAILS`, context: `CTX ${Math.round((session.context.used / session.context.limit) * 100)}%`, long: alert.text.match(/×[\d.]+/)?.[0] ?? "LONG", unread: "UNREAD", failed: "FAILED" }[alert.kind] ?? alert.kind.toUpperCase()
@@ -384,7 +471,6 @@ export const circuit = {
     this.text(c, this.fit(c, session.title, edge - titleX - u(8), titleStyle), titleX, titleY, titleStyle)
 
     // meta line: model, effort, agent, where it lives, cost, context
-    const metaY = titleY + u(25)
     const small = { size: 14, color: INK.dim }
     let x = this.run(c, titleX, metaY, [[shortModel(session.model), { size: 14, family: FAMILY.monoMedium, color: working || waiting ? color : rgba(color, 0.7) }]])
     for (const part of [session.effort, session.agent]) if (part) x = this.run(c, x, metaY, [[`  ·  ${part}`, small]])
@@ -410,14 +496,15 @@ export const circuit = {
     if (row.closed && row.tally) x = this.run(c, x, metaY, [[`  ·  ${row.tally.threads} subagent${row.tally.threads === 1 ? "" : "s"} folded${row.tally.working ? `, ${row.tally.working} working` : ""}`, { size: 14, color: row.tally.working ? INK.live : INK.soft }]])
     // a resting thread says what its last turn was, in the right half of this line
     if (!working && !waiting && session.state !== "stalled" && session.lastTurn) this.drawLastTurn(c, g, session, session.lastTurn, x + u(36), metaY, now)
-    if (working) {
-      const phase = session.phase
-      const word = phase.key === "tool" ? "" : `${phase.key === "calling" ? "calling the model" : phase.key} ${spanOf(Math.max(0, now - (phase.since ?? now)))}`
-      if (word) this.text(c, word, g.textRight, metaY, { size: 14, color: INK.live, align: "right" })
-    }
-    if (!g.live) return
+    if (all && phaseWord) this.text(c, phaseWord, g.textRight, metaY, { size: 14, color: INK.live, align: "right" })
+    if (all) this.drawRowLive(c, g, session, color, now, metaY)
+  },
 
-    // the live line: the thread's own words, or the command it is running
+  // The live line of a row: the thread's own words, or the command it is running.
+  drawRowLive(c, g, session, color, now, metaY) {
+    if (!g.live) return
+    const u = (value) => this.u(value)
+    const titleX = g.textX
     const liveY = metaY + u(26)
     const live = this.liveOf(session)
     const size = 15
@@ -444,7 +531,7 @@ export const circuit = {
       const perLine = Math.max(10, Math.floor(room / charW) - 2)
       const body = clean(live.item.text)
       const window = body.length > perLine ? `…${body.slice(-(perLine - 1))}` : body
-      const part = live.item.text.length ? this.shownOf(live.item) / live.item.text.length : 1
+      const part = live.item.text.length ? this.rowShownOf(session.id, live.item) / live.item.text.length : 1
       c.fillStyle = live.kind === "say" ? color : rgba(color, 0.4)
       c.fillRect(titleX, liveY - u(13), u(2), u(17))
       this.text(c, part >= 1 ? window : window.slice(0, Math.round(part * window.length)), titleX + u(12), liveY, { size, color: live.kind === "say" ? INK.text : INK.dim })

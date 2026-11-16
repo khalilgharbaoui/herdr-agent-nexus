@@ -25,11 +25,13 @@ parser.add_argument("--steps", type=int, default=0, help="resize events of the d
 parser.add_argument("--fresh", action="store_true")
 parser.add_argument("--demo", action="store_true")
 parser.add_argument("--label", default="")
+parser.add_argument("--run", default="", help="folder the copy writes its stats.json to (default: a temporary one)")
 args = parser.parse_args()
 
 CELL_W, CELL_H = 15, 30
 HERE = os.path.dirname(os.path.abspath(__file__))
-run = tempfile.mkdtemp(prefix="nexus-resize-")
+run = args.run or tempfile.mkdtemp(prefix="nexus-resize-")
+os.makedirs(run, exist_ok=True)
 cols = args.to if args.fresh else args.start
 
 
