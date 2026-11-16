@@ -45,6 +45,16 @@ open() {
   *) die "open takes tab or split, not $placement" ;;
   esac
 
+  mkdir -p "$RUN" || die "cannot write to $RUN"
+  # One open at a time. v5 writes nexus.pid a moment after its pane opens, so a second call
+  # in that moment (a key pressed twice) would see nothing running and open a second pane.
+  # A mark older than a minute is from an open that was cut off, and is taken over.
+  if ! mkdir "$RUN/opening" 2>/dev/null && [ -z "$(find "$RUN/opening" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+    say "already opening"
+    return 0
+  fi
+  trap 'rmdir "$RUN/opening" 2>/dev/null' EXIT
+
   pane=$(pane_of_run)
   if pid=$(nexus_running_pid "$RUN"); then
     if [ -n "$pane" ] && [ "${NEXUS_FOCUS:-1}" != 0 ]; then
@@ -61,7 +71,8 @@ open() {
   if [ "$placement" = tab ]; then
     [ -z "${NEXUS_WORKSPACE:-}" ] || set -- "$@" --workspace "$NEXUS_WORKSPACE"
   else
-    # beside the pane the action was called from, upright: v5 is laid out for a tall pane
+    # to the right of the pane the action was called from, which makes a tall pane: the
+    # upright layout is the one v5 has finished
     [ -z "${HERDR_PANE_ID:-}" ] || set -- "$@" --target-pane "$HERDR_PANE_ID"
     set -- "$@" --direction right
   fi
@@ -73,7 +84,17 @@ open() {
   [ "$mode" != demo ] || set -- "$@" --env NEXUS_DEMO=1
 
   answer=$("$H" plugin pane open "$@" 2>&1) || die "herdr did not open the pane: $answer"
-  say "opened in pane $(printf '%s' "$answer" | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p') ($placement${mode:+, $mode})"
+  pane=$(printf '%s' "$answer" | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p')
+
+  # The pane is open. Whether Agent Nexus runs in it is known once v5 has the terminal and
+  # has written nexus.pid: up to eight seconds for that.
+  tries=0
+  until pid=$(nexus_running_pid "$RUN") || [ "$tries" -ge 80 ]; do
+    sleep 0.1
+    tries=$((tries + 1))
+  done
+  [ -n "$pid" ] || die "pane ${pane:-?} is open, but Agent Nexus has not started in it: the pane says why"
+  say "running in pane ${pane:-?} (pid $pid, $placement, $mode)"
 }
 
 stop() {

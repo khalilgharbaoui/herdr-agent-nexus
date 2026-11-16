@@ -21,13 +21,6 @@ fail() {
   exit 1
 }
 
-node=$(nexus_find_node) || fail "$(nexus_node_missing)"
-
-[ -d "$NEXUS_ROOT/node_modules/@napi-rs/canvas" ] || fail "Agent Nexus is not built: $NEXUS_ROOT has no node_modules.
-herdr builds a plugin when it installs one from GitHub, and not when it links a local folder.
-Build this one by hand:
-  sh $NEXUS_ROOT/herdr/build.sh"
-
 RUN=$(nexus_run_dir)
 mkdir -p "$RUN" || fail "Agent Nexus cannot write to $RUN"
 
@@ -36,6 +29,23 @@ if pid=$(nexus_running_pid "$RUN"); then
   fail "Agent Nexus already runs in pane $(cat "$RUN/pane" 2>/dev/null || echo "?") (pid $pid).
 Go to that pane, or stop it first with the action \"Agent Nexus: stop\"."
 fi
+
+# The pane this run is in, for the open and stop actions, from here on: a pane that only
+# shows why Agent Nexus could not start is theirs to close too. The file goes when this
+# script ends, also on a hangup while v5 runs (herdr closed the pane). A pane closed while it
+# waits for enter below is ended before the trap can run (measured), and the actions forget
+# what that leaves.
+printf '%s\n' "${HERDR_PANE_ID:-}" >"$RUN/pane"
+trap 'rm -f "$RUN/pane"' EXIT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
+
+node=$(nexus_find_node) || fail "$(nexus_node_missing)"
+
+[ -d "$NEXUS_ROOT/node_modules/@napi-rs/canvas" ] || fail "Agent Nexus is not built: $NEXUS_ROOT has no node_modules.
+herdr builds a plugin when it installs one from GitHub, and not when it links a local folder.
+Build this one by hand:
+  sh $NEXUS_ROOT/herdr/build.sh"
 
 set --
 if [ "${NEXUS_DEMO:-}" = 1 ]; then
@@ -59,13 +69,6 @@ if [ -n "${HERDR_BIN_PATH:-}" ]; then
   PATH="$(dirname -- "$HERDR_BIN_PATH"):$PATH"
   export PATH
 fi
-
-# The pane this run is in, for the open and stop actions. A hangup (herdr closed the pane, or
-# its server went away) is taken so this file is still removed.
-printf '%s\n' "${HERDR_PANE_ID:-}" >"$RUN/pane"
-trap 'rm -f "$RUN/pane"' EXIT
-trap 'exit 129' HUP
-trap 'exit 143' TERM
 
 # shellcheck disable=SC2086 # NEXUS_ARGS is a list of arguments
 NEXUS_RUN="$RUN" "$node" --no-warnings "$NEXUS_ROOT/v5/nexus.mjs" "$@" ${NEXUS_ARGS:-} 2>"$RUN/stderr.log"

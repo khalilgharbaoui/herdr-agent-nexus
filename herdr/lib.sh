@@ -19,17 +19,36 @@ nexus_config_file() {
   fi
 }
 
-# Reads those settings: KEY=VALUE lines, read by sh.
+# Reads those settings: one KEY=value a line, the value as written or in one pair of quotes.
 # NEXUS_NODE       the node to run, when herdr's PATH has none that is new enough
-# NEXUS_ARGS       more arguments for v5/nexus.mjs, such as "--fps 20" or "--db /path/opencode.db"
+# NEXUS_ARGS       more arguments for v5/nexus.mjs, such as --fps 20 or --db /path/opencode.db
 # NEXUS_FOCUS      0 opens the pane without switching to it
 # NEXUS_WORKSPACE  the workspace a new tab opens in, instead of the active one
+# The file is read, not run: a line that is not one of these four is skipped, so a slip in it
+# cannot stop the pane from opening, and nothing in it is ever executed.
 nexus_load_config() {
   nexus_config=$(nexus_config_file)
-  if [ -f "$nexus_config" ]; then
-    # shellcheck disable=SC1090
-    . "$nexus_config"
-  fi
+  [ -f "$nexus_config" ] || return 0
+  while IFS= read -r nexus_line || [ -n "$nexus_line" ]; do
+    case "$nexus_line" in
+    NEXUS_NODE=* | NEXUS_ARGS=* | NEXUS_FOCUS=* | NEXUS_WORKSPACE=*)
+      nexus_key=${nexus_line%%=*}
+      nexus_value=${nexus_line#*=}
+      case "$nexus_value" in
+      \"*\")
+        nexus_value=${nexus_value#\"}
+        nexus_value=${nexus_value%\"}
+        ;;
+      \'*\')
+        nexus_value=${nexus_value#\'}
+        nexus_value=${nexus_value%\'}
+        ;;
+      esac
+      # the key is one of the four names above, so this assigns and runs nothing
+      eval "$nexus_key=\$nexus_value"
+      ;;
+    esac
+  done <"$nexus_config"
 }
 
 # Succeeds when $1 is a Node.js version of at least NEXUS_MIN_NODE.
