@@ -869,7 +869,7 @@ export const hud = {
       const session = scene.byId.get(entry.sid)
       // a tool call's line is the same call as its pillar and its diamond: the same card
       if (entry.port && session) for (const step of session.steps) for (const tool of step.tools) if (tool.id === entry.key) return this.inspect({ kind: "tool", id: tool.id, sid: entry.sid, tool }, scene, now)
-      const what = { turn: "a turn began", done: "the turn ended", failed: "the turn failed", interrupted: "the turn was interrupted", call: "it began to wait on you", dispatch: "a subagent was dispatched" }[entry.name] ?? bare(entry.name)
+      const what = { turn: "a turn began", done: "the turn ended", failed: "the turn failed", interrupted: "the turn was interrupted", call: "it began to wait on you", dispatch: "a subagent was dispatched", compacted: "its context shrank: a compaction (or a pruning) opened the window again" }[entry.name] ?? bare(entry.name)
       const tone = entry.tone === "bad" ? INK.bad : entry.tone === "warn" ? INK.warn : entry.tone === "ok" ? INK.good : entry.tone === "run" ? INK.live : INK.soft
       const lines = [["WHAT", what, tone], ["THREAD", threadOf(entry.sid)], ["WHEN", `${clockOf(entry.at)}  ·  ${agoOf(now - entry.at)} ago`]]
       if (entry.span !== null) lines.push(["TOOK", spanOf(Math.max(1, entry.span))])

@@ -2,7 +2,7 @@
 // the moving layer), what is in flight (streams), what needs the operator (alerts and the phase),
 // who is in focus, and the numbers the header shows.
 
-import { agoOf, clockOf, hourMinuteOf, spanOf, toolMeta } from "./util.mjs"
+import { agoOf, clockOf, compactOf, hourMinuteOf, spanOf, toolMeta } from "./util.mjs"
 
 const STALL_AFTER = 5 * 60e3
 const QUIET_ROWS = 8
@@ -246,8 +246,17 @@ export class Scene {
         this.signal({ type: "dispatch", sid, at: now, parent: session.parentId })
         this.note({ key: `${sid}:spawn`, at: session.created, sid, name: "dispatch", detail: session.title, span: null, tone: "plain" })
       }
+      // The context fell by more than a fiftieth of the window (and 5k tokens): it was compacted
+      // or pruned. The log says so with both figures; on the stage the head of the context ring
+      // runs back (see the moving layer).
+      const ctx = session.context?.used ?? 0
+      const limit = session.context?.limit ?? 0
+      if (this.primed && before?.ctx && ctx && before.ctx - ctx > Math.max(5000, limit * 0.02)) {
+        this.signal({ type: "compact", sid, at: now, from: before.ctx, to: ctx })
+        this.note({ key: `${sid}:compact:${now}`, at: now, sid, name: "compacted", detail: `context ${compactOf(before.ctx)} to ${compactOf(ctx)}${limit ? ` of ${compactOf(limit)}` : ""}`, span: null, tone: "plain" })
+      }
       const gainedNow = before && out > before.out
-      this.seen.set(sid, { busy: session.busy, blocked: session.blocked, steps, landed, tools, said, out, outAt: gainedNow || !before ? now : before.outAt, turnStart: session.turn?.start ?? 0 })
+      this.seen.set(sid, { busy: session.busy, blocked: session.blocked, steps, landed, tools, said, out, ctx: ctx || before?.ctx || 0, outAt: gainedNow || !before ? now : before.outAt, turnStart: session.turn?.start ?? 0 })
     }
     for (const id of this.seen.keys()) {
       if (byId.has(id)) continue

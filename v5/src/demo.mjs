@@ -212,6 +212,9 @@ export class DemoSource {
     const step = session.current
     session.turnOut += step.out
     session.context += step.out + this.between(200, 4000)
+    // a window that is nine tenths full is compacted: the context falls to about a quarter
+    const limit = contextLimit(session.model || "")
+    if (limit && session.context > limit * 0.9) session.context = limit * this.between(0.18, 0.28)
     step.ctx = session.context
     session.cost += step.out * 0.00004 + 0.01
     if (step.final) {
@@ -348,6 +351,13 @@ export class DemoSource {
 
   poll(now) {
     this.advance(now)
+    if (!this.nearFull) {
+      // once the history has been played, the first working thread stands just under nine tenths
+      // of its window: the demo shows a compaction within its first minute or two
+      this.nearFull = true
+      const first = this.sessions.find((session) => !session.parentId && session.phase !== "idle" && contextLimit(session.model || "")) ?? this.sessions.find((session) => contextLimit(session.model || ""))
+      if (first) first.context = 0.894 * contextLimit(first.model || "")
+    }
     const sessions = this.sessions.map((session) => {
       const busy = session.phase !== "idle"
       const limit = contextLimit(session.model)
