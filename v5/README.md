@@ -108,7 +108,9 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Section label (TIME TERRAIN, ACCOUNTS, CIRCUIT, EQUIPMENT, COMMS, SECTOR MAP, LOG) and a chart's head | The name of a part of the screen | Still | What the part shows, its marks, its keys; a chart's head opens the chart's own card (context, account) or says what the chart is | Pins it |
 | Workspace name in the sector map | A herdr workspace; its tabs follow on the line | Still | Its panes by state, and whether herdr shows it now | Pins it |
 | Log line "compacted" | A thread's context fell by more than a fiftieth of its window and 5k tokens between two readings: a compaction or a pruning, with both figures | Lights up as any new line; on the stage the head of the context ring runs back | The line in full | Focuses its thread |
-| Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
+| Last turn on a resting row (right half of its meta line) | What the thread's last turn was, however long ago: how long it ran, its model calls, its tool calls and how many failed (in red), what it wrote, what it cost, and how it ended: a full green dot and "done", a red cross and "failed", a ring and "interrupted" (or "ended" when the record does not say). Read from opencode's record of the thread, from the newest message of the user to its newest step: one small summary a thread, read again only when the thread's record moves, at most four threads a poll, from at most 400 of the turn's newest steps ("over 400 calls" then). A narrow row drops parts from the left (the label, the cost, the output, the tools, the calls); how it ended always stays | Still. It changes when the thread's next turn ends | The LAST TURN card: began, ended, ran, model calls, tool calls, wrote, cost, where it is read from | Pins it |
+| The stage at a held moment (THEN) | While a moment is held on the terrain, the core, the flock line, the turn readout, THIS TURN and the focus header show the focused thread as it stood at that moment, not now: the turn clock with the calls made by then (a call that was open then is open), the context ring where the context stood at the last call before it, the output written by then (a call that reported no count is read from its text: an estimate), the state word and the timer of then. Read from the thread's own steps, tool calls and marks, which are kept for the terrain's widest window and for the whole of a running turn. Marked as the past: the still parts at about half strength, every dot, satellite and mote in one grey, and a white tag "THEN 08:12:30" at the core. Not replayed: the live text, the charts and REACH (they mark the moment with a white line), the cache axis, the subagent moons, the rows of the circuit | When the moment is first held, the flock of now flies off and the flock of then gathers. It flies in the formation of what was open then (a murmuration while the model reasoned, parallels while it wrote, locked in its lattice while a tool ran, at rest when the thread rested) on its own running clock, so a held moment is still alive. On release the flock of then flies off and the flock of now gathers | Marks answer as they do now: a pillar or a bar opens its call's card. The THEN tag says what is shown and where it is read from | The tag: pins its card. Escape lets the moment go |
+| Wires at a held moment | Every listed thread that had a model call or a tool call open at the held moment: grey motes along its axon at its rate of that moment (the terrain's slice, in the same four densities as now; the sparsest stream when the slice holds no figure), the focused thread's also up its wire into the flock, and grey motes on the synapse to the equipment of each tool call that was out | Flow as now, in grey. What happens now still travels in colour (a packet, a flash) | n/a | n/a || Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
 ### What the flock does, and when
 
@@ -162,6 +164,11 @@ lost, so the program asks the terminal instead.
   later. `kill -USR2 $(cat v5/nexus.pid)` deletes one page behind the program's back to test it.
 - `stats.json` carries the answer under `graphics` (pages, sent, held, verdict, answers,
   lostLastMinute, storeMb of storeLimitMb) and `fallback` (why the layer is painted, or null).
+- `pages` is how many sprite pages this program has built, `sent` how many of those are on the
+  terminal now, `held` how many of the sent ones the terminal last answered `OK` for. The
+  verdict compares held with sent, so "22 held of 32 pages" is "held": the other ten are built
+  here and not on the terminal. A resize clears the terminal and every page with it; a page
+  goes up again when a sprite next needs it, and one that nothing uses stays down.
 
 ## The prompt cache
 
@@ -246,6 +253,51 @@ session was the low end of that band (small blocks 39 to 43) at 84 columns; larg
 64 MB there and are 64 to 77 MB at 91 columns. So the footprint to hold it to is "under about
 220 MB and not rising", not a single figure.
 
+**A resize (2026-11-16, seventh session).** The operator dragged the split from 91 to 139
+columns while v5 ran: 417 MB two hours later (large blocks 140 MB), with a peak of 780 MB,
+where a fresh start at 139 columns settles at 204 to 219 MB (large blocks 98 MB). So it was
+what the resize left, not what the width costs. `tools/resize-check.py` reproduces it on a
+second copy of v5 that draws on a stand-in terminal (a pty the script answers for), so the
+pane the operator looks at is never resized:
+
+| A drag from 91 to 139 columns | Before | After |
+| --- | --- | --- |
+| At 91 columns, before the drag | 198 to 222 MB | 167 to 177 MB |
+| Right after it | 1008 to 1027 MB (large blocks 862 MB) | 214 MB (large blocks 103 MB) |
+| Two to four minutes later | 273 to 368 MB | 203 to 225 MB, where a fresh start at 139 columns stands at 209 to 213 |
+| Back from 139 to 91 columns | not measured | 159 to 169 MB, as a fresh start at 91 |
+
+Three causes, each measured on its own:
+
+- **One resize per column.** A hand on a split sends a resize for every column it crosses, and
+  each built both layers of the picture and the shadow of the screen afresh: 48 sizes in two
+  seconds. The size is now taken once it has stood still for 160 ms, and nothing is sent
+  while it moves.
+- **macOS keeps freed large blocks.** A surface that is freed stays with the allocator as
+  "Malloc Large (empty)", dirty and counted against the process, until a block of that very
+  size is asked for again (48 freed surfaces: 640 MB, still there after a full collection and
+  handed out again only to canvases that fit them). Two answers. The layers and the shadow are
+  built on a grid of 8 columns by 4 rows and kept while the pane fits them without wasting a
+  quarter, and the shadow is cleared instead of replaced at a reset: a nudge of the split
+  frees nothing. And the allocator is told to give freed large blocks back at once
+  (`MallocLargeCache=0`, set where the process already replaces itself at its start): the
+  same 48 surfaces are 41 MB after a collection instead of 816.
+- **The old size's owners.** The layers of the size before are only freed when V8 collects
+  the objects that own them, which with a heap this small can be many minutes away. It is
+  asked to collect once, a second after a resize and after a snapshot (`--expose-gc`, given
+  with the young generation's size).
+
+What the allocator setting costs: in pairs of copies fed the same data, 1.1 points of a core
+(median 7.9% against 6.4% at 139 columns with five threads working, higher in 17 of 20
+samples) for some 50 MB less at rest (208 to 243 MB against 255 to 302) and nothing left by a
+resize. `MallocLargeCache=1 node v5/nexus.mjs` runs with the system's default.
+
+In the real pane with all of it: 211 to 253 MB at 139 columns (large blocks 102 to 103 MB,
+four threads working, thirteen minutes) and 183 to 193 MB at 91 columns (large blocks 68 MB,
+eight to nine working). The rule is about 220 MB at 91 columns and that times the pane's
+area elsewhere (336 MB at 139). A resize of the real pane while it ran happened once with the
+new code (the operator took the split back to 91 columns; `stats.json` counts the sizes
+settled on under `resizes`); the footprint after it was not caught on its own.
 ## Files
 
 As v4, plus `src/flock.mjs` (the swarm: a dot's life from the tip to the globe, simulation,
@@ -255,7 +307,9 @@ projection, hit test), `src/body.mjs` (the view of the core: projection, rings, 
 shows it), `src/cache-worker.mjs` (reads the transcripts off the main thread), `tools/cache-probe.mjs`
 (what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
 `tools/gfx-probe.mjs`, `tools/mem-watch.mjs` and `tools/mem-source.mjs` (see "Memory"),
-`tools/coverage.mjs` (which ink on the still layer no target covers), `src/allocations.mjs`
+`tools/coverage.mjs` (which ink on the still layer no target covers), `src/replay.mjs` (a held
+moment replayed: the thread as it stood then), `tools/resize-check.py` (what a resize costs,
+on a stand-in terminal), `src/allocations.mjs`
 (the allocation sampler), `src/reach.mjs` (REACH: what the turn touched), `tools/burst-watch.mjs`
 (cost and repaint causes, report by report) and `tools/compact-check.mjs` (provokes a
 compaction in the demo). `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
@@ -414,13 +468,64 @@ thread's last turn did, what it ended on) is only in memory for the 31 minutes o
 this program reads, so a mark there would appear and vanish by the age of the data, not by
 the state of the thread. It needs a decision on reading further back before it is drawn.
 
-Not done: the replay of a scrubbed moment in the core and on the wires; REACH in landscape
-(the left column does not exist there); the stage's empty space above the terrain in
-landscape.
+Seventh session (2026-11-16, 06:55 to 10:30), in the eleventh addendum's order:
 
-Not verified: a 206 column pane in the real terminal, a resize while it runs, a quiet machine,
-and how the event-driven marks look in the pane (that they are placed there is counted, see
-above).
+- **Memory after a resize.** See "Memory": a resize leaves nothing behind now, and "22 held
+  of 32 pages" is explained under "What the terminal holds".
+- **The wide pane.** Upright, the scale was the width's share alone until the height ran
+  short at a design height of 2200 units: at 139 columns everything was drawn a tenth larger
+  than designed, the stage stood at its smallest, THIS TURN and REACH had no room and the list
+  scrolled after four rows. The height's share is 2800 units now: from 111 columns on the
+  scale stands still (0.88 at 82 rows) and the extra width goes to what grows sideways (the
+  charts, the live text, the terrain, the rows). At 139 columns the core is 323 px in radius
+  where it was 406, and 266 at 91 columns. THIS TURN and REACH always have their room (three
+  steps of the stage: the five lines and REACH's head with some five rows); when many threads
+  are listed the list gives way and scrolls, and what its window leaves over is air between
+  the rows. 91 columns is as it was (same scale, all eight threads listed, REACH whole).
+- **Resting rows show their last turn** (see the table of marks). Read for every resting
+  thread, however old: 8.8 ms for the first poll of 17 threads, then cached.
+- **A held moment is replayed** (see the table of marks: "The stage at a held moment" and
+  "Wires at a held moment"). The flock keeps two clocks for it: the moment the thread is
+  shown at, and its own running time.
+- **A fault found on the way.** REACH's row budget looped for ever when the groups left
+  after folding fitted whole in a small room. Nothing reached it while REACH had either a
+  large room or none; with its room guaranteed it froze the demo at once and could have
+  frozen the pane. It stops at the largest group now.
+
+Seen in the real pane through herdr (synthetic input, the terminal holding every page): a
+drag on the terrain held a moment ("scrubbing the terrain: 09:58:34", 33 of 33 pages held, no
+error) and escape let it go; the pane's own frame of that moment shows the dimmed core, the
+grey flock, the THEN tag and the turn readout of then. Seen only in this program's own
+frames: the layout at 139 columns with the new scale (the pane was back at 91 columns by the
+time it was restarted on it for good; it ran at 139 with the new scale from 09:02 to 09:16),
+the last turn on resting rows and its card, the flock gathering again on release. Not seen
+by anyone yet: any of this with a real hand.
+
+The last look at the whole screen (10:20, 91 columns, eight of eleven threads working; and
+the 139 column frame of 09:03): the weakest part left is the footer in a wide pane. At 139
+columns comms, the sector map and the log each have their right third empty: the lines fit
+at 91 columns already and the extra width brings them nothing. It was left: what belongs
+there is a decision (a wider sector map with pane titles, or the log's lines in full), not a
+gap to fill with decoration. The second weakest is the replay's edge: a moment before the
+focused thread's kept history shows an empty globe and "resting" rather than saying that
+nothing is kept for it.
+
+Not done: the live text, the charts' own lines, REACH and the subagent moons at a held
+moment (they stay at now, with the moment marked); a dot of the flock of then answers with
+the card of now's flock; REACH in landscape (the left column does not exist there); the
+stage's empty space above the terrain in landscape; the footer's use of a wide pane.
+
+Not verified: a 206 column pane in the real terminal, a quiet machine, the footprint right
+after a real resize with the new code (measured on the stand-in terminal only), and how the
+event-driven marks look in the pane (that they are placed there is counted, see above).
+
+Measured in the real pane with all of the above. At 139 columns by 82 rows (09:02 to 09:16,
+four threads working, the new scale): 30 frames a second, 350 to 820 kB/s, 5.3 to 9.9% of a
+core with single reports to 13.9%; the class for 91 columns times the pane's area is 313 to
+1025 kB/s. At 91 columns by 82 rows (10:15 to 10:21, eight to nine of eleven threads
+working, twice as many as the class was measured with): 595 to 930 kB/s and 9 to 13% of a
+core, single reports to 19% and 1.9 MB/s. The rows are what it costs there: each working row
+is painted again one to three times a second for its timer and its live line.
 
 Measured at 105 columns by 82 rows, three to four threads working, with the charts and the
 perspective terrain in: 30 frames a second; 250 to 370 kB/s and 4 to 8% of a core while the

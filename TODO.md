@@ -5,26 +5,30 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-16 04:55: v5 runs live in herdr pane `wE:p1QF` (91 columns by 82 rows, sprite
-  transport, the terminal holds every sprite page; restart it in place with
-  `v5/tools/restart.sh`). A sixth designer session (on `appical`, 02:55 to 04:55) worked
-  through the tenth addendum's list. Done: the core repaint bursts (a running tool call's
-  pillar stepped 24 times in its first second and painted the whole core each time; and a
-  long turn's clock grew its scale every second); REACH in the left column (what the turn
-  touched, as a tree off the thread's wire with one bar per call on the turn's time); a
-  note's card opens on hover (it only opened on a click); every remaining small mark is a
-  target (`v5/tools/coverage.mjs`: 1 of 3051 inked cells without one); explain-mode tags no
-  longer overlap; the terrain is scrubbed by dragging; the context head running back is
-  provoked in the demo (`v5/tools/compact-check.mjs`) and a real fall of a context is a log
-  line. Memory is a band of about 171 to 218 MB and does not leak. `v5/README.md` ends with
-  what was seen where and the measurements.
-- **Commits are waiting for 1Password.** Signing has answered "failed to fill whole buffer"
-  since 03:10 (the app is probably locked while the operator sleeps). Nothing was committed
-  unsigned. Every working step is recorded as a tree with its message in
-  `.git/pending-steps.tsv`; run `.git/step.sh` once 1Password is unlocked and each becomes
-  its own signed commit, in order. Until then the work is in the working tree and the index.
-- Left for a next session: replaying a scrubbed moment in the core and on the wires; REACH
-  and the stage's empty space in landscape; a look at REACH and scrubbing with a real hand.
+- 2026-11-16 10:30: v5 runs live in herdr pane `wE:p1QF` (sprite transport, the terminal holds
+  every sprite page; restart it in place with `v5/tools/restart.sh`). The pane was 139 columns
+  by 82 rows from early morning and is 91 by 82 again since about 09:58 (the operator moves
+  the split himself; v5 follows without a restart). A seventh designer session (on `appical`,
+  06:55 to 10:30) worked through the eleventh addendum's list. Done: a resize no longer
+  leaves memory behind (one resize per settled size instead of one per column, buffers kept
+  while the pane fits them, the allocator gives freed large blocks back:
+  `v5/tools/resize-check.py` measures it on a stand-in terminal); the upright scale is set by
+  the height too, so a wide pane has room and THIS TURN and REACH always show; resting rows
+  say what their last turn was; a moment held on the terrain is replayed in the core, the
+  flock and the wires, marked THEN; an endless loop in REACH's row budget is fixed. Commits
+  are signed again (1Password answers); `da9ec45`, `fb3629f`, `f94e7d6` and the README commit
+  after them. `v5/README.md` ends with what was seen where and the measurements.
+- Left for a next session: the footer's use of a wide pane (comms, the sector map and the
+  log each leave their right third empty at 139 columns); a held moment that lies before the
+  focused thread's kept history should say so; the live text, the charts' lines, REACH and
+  the moons at a held moment; REACH and the stage's empty space in landscape; a look at REACH,
+  scrubbing and the replay with a real hand; the footprint right after a real resize.
+- For the operator to judge, each a decision taken for him that he can overrule: the scale at
+  139 columns is 0.88 now (it was 1.10: everything is a fifth smaller than he saw it there
+  this morning, and REACH, THIS TURN and six of eight rows show where four rows did);
+  `MallocLargeCache=0` costs about one point of a core for some 50 MB less and a clean resize
+  (`MallocLargeCache=1 node v5/nexus.mjs` runs without it); the cache ramp still waits for
+  his word.
 
 ## Open from the operator
 
