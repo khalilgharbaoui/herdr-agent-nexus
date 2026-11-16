@@ -1,8 +1,122 @@
 # Agent Nexus
 
-A flight recorder for every opencode session, subagent and herdr agent on this Mac, drawn
-in the terminal. It renders with Skia (`@napi-rs/canvas`) at the terminal's native pixel
-size on a transparent ground, and shows the frames through the Kitty graphics protocol.
+Every opencode session, subagent and herdr agent on this machine as one living circuit you
+can point at, drawn in a terminal pane. It renders with Skia (`@napi-rs/canvas`) at the
+terminal's native pixel size and shows the frames through the Kitty graphics protocol. It
+is a [herdr](https://herdr.dev) plugin, `herdr-agent-nexus`.
+
+The current version is v5. [`v5/README.md`](v5/README.md) says what every mark means, how
+the picture gets to the screen and what was measured.
+
+## Install
+
+```sh
+herdr plugin install khalilgharbaoui/herdr-agent-nexus
+```
+
+herdr fetches the repository into a folder of its own, shows what the plugin will run, and
+runs the build step, `herdr/build.sh`: `npm ci` for the one dependency, then a check that
+this node can draw a picture and open a database. Nothing else is installed.
+
+It needs:
+
+- herdr 0.9.5 or newer, running inside a terminal that speaks the Kitty graphics protocol
+  (Ghostty or kitty);
+- Node.js 22.13 or newer with npm (22.12 has no `node:sqlite` without a flag), and git;
+- for live data, opencode: Agent Nexus reads its database at
+  `~/.local/share/opencode/opencode.db` and never writes to it. Without opencode there is
+  the demo.
+
+It is developed and measured on macOS. The type is FiraCode Nerd Font Mono when
+`~/Library/Fonts` has it (Menlo otherwise), with DIN Condensed and Avenir Next Condensed,
+which macOS ships. Linux is declared in the manifest and has not been measured yet: the
+type falls back to the system's sans and mono faces there.
+
+```sh
+herdr plugin update khalilgharbaoui.agent-nexus      # the newest commit
+herdr plugin uninstall khalilgharbaoui.agent-nexus
+```
+
+## Use
+
+The plugin adds five actions to herdr:
+
+| Action       | What it does                                                                |
+| ------------ | --------------------------------------------------------------------------- |
+| `open`       | Starts the live view in a new tab, or goes to it when it already runs       |
+| `open-split` | Starts it in a split to the right of the focused pane                       |
+| `demo`       | The same view over made-up sessions: needs no opencode and reads nothing    |
+| `stop`       | Quits the live view and closes its pane                                     |
+| `status`     | Whether it runs, in which pane, and what it last reported about itself      |
+
+```sh
+herdr plugin action invoke khalilgharbaoui.agent-nexus.open
+herdr plugin action invoke khalilgharbaoui.agent-nexus.stop
+herdr plugin action invoke khalilgharbaoui.agent-nexus.status
+herdr plugin log list --plugin khalilgharbaoui.agent-nexus --limit 1    # what status said
+```
+
+A key for it, in herdr's `config.toml` (the form is from herdr's plugin documentation):
+
+```toml
+[[keys.command]]
+key = "prefix+n"
+type = "plugin_action"
+command = "khalilgharbaoui.agent-nexus.open"
+description = "agent nexus"
+```
+
+In the view, `?` lists the keys and what the mouse does, and `q` quits and closes the pane.
+There is one Agent Nexus per user, since it is a view of the whole machine: opening it a
+second time goes to the pane it already runs in.
+
+It keeps what a run writes (`nexus.pid`, `stats.json`, `input.json`, `shots/`,
+`stderr.log`) in herdr's state folder for the plugin,
+`~/.local/state/herdr/plugins/khalilgharbaoui.agent-nexus/run`, and nothing in the
+installed copy. When it cannot start, the pane says why and waits for enter.
+
+Settings are optional: `KEY=value` lines in `nexus.env` in the plugin's config folder
+(`herdr plugin config-dir khalilgharbaoui.agent-nexus` prints the folder).
+
+| Setting           | Meaning                                                                    |
+| ----------------- | -------------------------------------------------------------------------- |
+| `NEXUS_NODE`      | The node to run, when herdr's PATH holds none that is new enough            |
+| `NEXUS_ARGS`      | More arguments for `v5/nexus.mjs`, such as `--fps 20` or `--db /a/path.db`  |
+| `NEXUS_FOCUS`     | `0` opens the pane without switching to it                                  |
+| `NEXUS_WORKSPACE` | The workspace a new tab opens in, instead of the active one                 |
+
+## Develop
+
+Running from a checkout is unchanged, and independent of an installed copy (the two keep
+their files apart, so both can run at once):
+
+```sh
+npm install
+node --no-warnings v5/nexus.mjs            # live, in the current terminal
+node --no-warnings v5/nexus.mjs --demo     # simulated data
+v5/tools/restart.sh <pane id>              # restart it in place in a herdr pane
+```
+
+The plugin is four files: `herdr-plugin.toml` (what herdr reads), `herdr/build.sh` (the
+build step), `herdr/pane.sh` (the pane: finds node, runs v5, says why when it cannot) and
+`herdr/ctl.sh` (the actions), with `herdr/lib.sh` shared between them. To try a change to
+them without pushing it, link the checkout in place of the installed copy:
+
+```sh
+herdr plugin uninstall khalilgharbaoui.agent-nexus   # herdr refuses a link over an install, and the reverse
+herdr plugin link "$PWD"                             # runs from this checkout, with its node_modules
+herdr plugin unlink khalilgharbaoui.agent-nexus
+```
+
+herdr does not build a linked folder. A release is a push: bump `version` in
+`herdr-plugin.toml` and `package.json`, and an installed copy follows with
+`herdr plugin update`.
+
+## The first tape (v2, at the repository root)
+
+The files at the root (`nexus.mjs`, `encoder.mjs`, `src/`, `tools/`) are the second version,
+a flight recorder drawn as a score on one shared time axis. It is kept as it was, beside
+`v1/`, `v3/` and `v4/`. What follows describes it.
 
 ```sh
 node --no-warnings nexus.mjs            # live, in the current terminal
@@ -16,7 +130,7 @@ Keys: `q` quit, `d` switch between live and demo, `s` save a snapshot to `shots/
 Claude Code plugin's state files and `herdr agent list`. It writes nothing outside this
 folder.
 
-## What it shows
+### What it shows
 
 The score is the centre. Every thread is a lane on one shared time axis that runs into a
 hard NOW edge.
@@ -46,7 +160,7 @@ the current pace, tool latency as one tick per call on a log axis, and the event
 A session whose busy flag is set but where nothing has moved for five minutes is shown as
 stalled, not as working.
 
-## How the frames get to the screen
+### How the frames get to the screen
 
 - Native resolution. The canvas is exactly `columns x cell width` by `rows x cell height`
   pixels, so one canvas pixel is one terminal pixel. Positions are whole pixels and the
@@ -71,7 +185,7 @@ stalled, not as working.
 (frames a second that differed and were sent), kB and tiles per changed frame, and the
 draw, read-back, encode and write times.
 
-## Files
+### Files
 
 - `nexus.mjs`: options, the frame loop, snapshots, stats.
 - `encoder.mjs`: the worker that compresses changed tiles and writes them to the terminal.
@@ -85,7 +199,7 @@ draw, read-back, encode and write times.
 - `tools/edge.mjs`: renders the awkward cases (empty, idle, tiny, crowded) to `shots/`.
 - `tools/crop.mjs`: cuts a region out of a PNG at full size.
 
-## Requirements
+### Requirements
 
 Node 24 or newer (`node:sqlite`), a terminal that speaks the Kitty graphics protocol with
 RGBA and zlib (Ghostty, kitty, herdr inside either), and the fonts FiraCode Nerd Font Mono,
