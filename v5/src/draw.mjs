@@ -1058,7 +1058,7 @@ export class Renderer {
     for (const hit of this.hits.get("footer") ?? []) {
       if (hit.kind !== "blip" || hit.pane?.status !== "blocked") continue
       const level = Math.floor(((Math.sin(now / 220) + 1) / 2) * 3.999)
-      if (level) out.push({ key: `bp:${hit.id}`, kind: `breath${level}|${INK.warn}`, x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 })
+      if (level) out.push({ key: `bp:${hit.id}`, kind: `breath${level}|${INK.warn}`, x: hit.spot?.x ?? hit.rect.x + hit.rect.w / 2, y: hit.spot?.y ?? hit.rect.y + hit.rect.h / 2 })
     }
     // Comms: a flag that needs you now breathes red on its marker until it is dealt with or muted
     // (a call has its own ring: the level meter in its box).
@@ -1184,7 +1184,7 @@ export class Renderer {
   // Where a thread's pane stands on the sector map: the middle of its square, or null.
   blipOf(sid) {
     for (const hit of this.hits.get("footer") ?? []) {
-      if (hit.kind === "blip" && hit.pane?.sessionId === sid) return { x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 }
+      if (hit.kind === "blip" && hit.pane?.sessionId === sid) return hit.spot ?? { x: hit.rect.x + hit.rect.w / 2, y: hit.rect.y + hit.rect.h / 2 }
     }
     return null
   }

@@ -190,7 +190,11 @@ export const hud = {
     const M = G.M
     const gap = u(34)
     const inner = F.w - 2 * M - 2 * gap
-    const widths = [Math.round(inner * 0.34), Math.round(inner * 0.36), 0]
+    // Comms and the sector map take what they can use and no more: a flag in full with what it
+    // says about itself is some 900 units, a map with its panes named some 1000. In a wide
+    // pane the rest goes to the log, whose lines (a command, a path) are the longest there are.
+    // Up to about 110 columns that is the old split: a third, a good third, the rest.
+    const widths = [Math.min(Math.round(inner * 0.34), u(900)), Math.min(Math.round(inner * 0.36), u(1000)), 0]
     widths[2] = inner - widths[0] - widths[1]
     const x1 = F.x + M
     const x2 = x1 + widths[0] + gap
@@ -215,7 +219,7 @@ export const hud = {
 
   signMap(scene) {
     const parts = [scene.focus.id, scene.world?.self]
-    for (const pane of scene.world?.panes ?? []) parts.push(`${pane.id}${pane.status[0]}${pane.row}${pane.focused ? "f" : ""}`)
+    for (const pane of scene.world?.panes ?? []) parts.push(`${pane.id}${pane.status[0]}${pane.row}${pane.focused ? "f" : ""}${pane.label || pane.title || ""}`)
     return parts.join("|")
   },
 
@@ -341,9 +345,21 @@ export const hud = {
       const since = alert.muted ? "muted" : alert.kind === "context" || alert.kind === "account" ? "" : agoOf(now - alert.since)
       const sinceW = since ? this.width(c, since, { size: 12.5 }) + u(12) : 0
       const style = { size: 13.5, color: alert.muted ? INK.faint : alert.level === "notice" ? INK.soft : INK.text }
-      // a line never stops inside a word; its card says it in full
-      const body = alert.sid ? `${shortWords(alert.title, 26)}: ${alert.text}` : `${alert.text}${alert.detail ? `, ${alert.detail}` : ""}`
-      this.text(c, this.fitWords(c, body, w - u(18) - leadW - sinceW, style), x + u(18) + leadW, lineY, style)
+      // The line in full when the width is there: the whole title, what is flagged, and what
+      // the flag says about itself (how long such a turn usually takes, the call that failed).
+      // In a narrow column the title is shortened and the line never stops inside a word; its
+      // card says it in full either way.
+      const avail = w - u(18) - leadW - sinceW
+      const full = alert.sid ? `${clean(alert.title)}: ${alert.text}` : `${alert.text}${alert.detail ? `, ${alert.detail}` : ""}`
+      const whole = this.width(c, full, style) <= avail
+      const body = this.fitWords(c, whole || !alert.sid ? full : `${shortWords(alert.title, 26)}: ${alert.text}`, avail, style)
+      this.text(c, body, x + u(18) + leadW, lineY, style)
+      if (whole && alert.sid && alert.detail && alert.kind !== "call" && clean(alert.detail) !== clean(alert.title)) {
+        const more = `  ·  ${clean(alert.detail)}`
+        const moreStyle = { size: 13, color: alert.muted ? INK.faint : INK.dim }
+        const bodyW = this.width(c, body, style)
+        if (bodyW + this.width(c, more, moreStyle) <= avail) this.text(c, more, x + u(18) + leadW + bodyW, lineY, moreStyle)
+      }
       if (since) this.text(c, since, x + w, lineY, { size: 12.5, color: INK.dim, align: "right" })
       this.hit("alert", alert.key, { x, y: lineY - u(18), w, h: lineH }, { alert, sid: alert.sid })
     })
@@ -387,37 +403,100 @@ export const hud = {
       byTab.set(key, [...(byTab.get(key) ?? []), pane])
     }
     const workspaces = (world?.workspaces?.length ? [...world.workspaces].sort((a, b) => a.number - b.number) : [...new Set(panes.map((pane) => pane.workspace))].map((id) => ({ id, label: id, mark: "" })))
-    let y = top + u(18)
-    for (const workspace of workspaces) {
-      if (y + lineH > top + h + u(6)) break
-      const tabs = [...byTab.entries()].filter(([, list]) => list[0].workspace === workspace.id)
-      if (!tabs.length) continue
-      const base = y + pad + side - u(2)
+    // A pane's own name beside its square, where the width is there: every pane when all of
+    // them fit, else the ones that are alive or ask for something (working, calling, finished
+    // and not read, the focused thread's, this one), else none, as in a narrow pane. The name
+    // is the label the pane was given in herdr, else its terminal's title, else its thread's.
+    const titleStyle = { size: 12 }
+    const nameOf = (pane) => (pane.id === world.self ? "Agent Nexus, this pane" : clean(pane.label || pane.title || (pane.sessionId ? (scene.byId.get(pane.sessionId)?.title ?? "") : "")))
+    const matters = (pane) => pane.status === "working" || pane.status === "blocked" || pane.status === "done" || pane.id === world.self || (pane.sessionId && pane.sessionId === scene.focus.id)
+    const titleMax = u(270)
+    const layout = (level) => {
+      const lines = []
+      let y = top + u(18)
+      let fits = true
+      for (const workspace of workspaces) {
+        const tabs = [...byTab.entries()].filter(([, list]) => list[0].workspace === workspace.id)
+        if (!tabs.length) continue
+        if (y + lineH > top + h + u(6)) {
+          fits = false
+          break
+        }
+        const line = { workspace, y, tabs: [], mine: tabs.flatMap(([, list]) => list), tabCount: tabs.length }
+        lines.push(line)
+        let tx = x + labelW
+        for (const [tabId, list] of tabs) {
+          const cells = list.map((pane) => {
+            const name = level === 2 || (level === 1 && matters(pane)) ? this.fitWords(c, nameOf(pane), titleMax, titleStyle) : ""
+            return { pane, name, w: side + (name ? u(7) + this.width(c, name, titleStyle) + u(6) : 0) }
+          })
+          const widthOf = () => cells.reduce((sum, cell) => sum + cell.w, 0) + (cells.length - 1) * u(4) + pad * 2
+          // a tab that is wider than a whole line gives names up, never squares: first the
+          // names of panes that rest, from the right, then the others
+          for (const keep of [true, false]) {
+            for (let index = cells.length - 1; index >= 0 && widthOf() > w - labelW; index -= 1) {
+              const cell = cells[index]
+              if (!cell.name || (keep && matters(cell.pane))) continue
+              cell.name = ""
+              cell.w = side
+            }
+          }
+          const cellW = widthOf()
+          if (tx + cellW > x + w && tx > x + labelW) {
+            tx = x + labelW
+            y += lineH
+            if (y + lineH > top + h + u(6)) {
+              fits = false
+              break
+            }
+          }
+          line.tabs.push({ tabId, cells, x: tx, y, w: Math.min(cellW, x + w - tx) })
+          tx += cellW + u(6)
+        }
+        if (!fits) break
+        y += lineH
+      }
+      return { lines, fits }
+    }
+    // Names never cost a pane its square: the fullest naming that still shows every pane the
+    // bare map shows is the one drawn. (Names are tried only where there is room for one at
+    // all: a wide pane's map.)
+    const placed = (candidate) => candidate.lines.reduce((sum, line) => sum + line.tabs.reduce((count, tabBox) => count + tabBox.cells.length, 0), 0)
+    let plan = layout(0)
+    plan.level = 0
+    if (w >= u(700)) {
+      for (const level of [2, 1]) {
+        const named = layout(level)
+        if (placed(named) < placed(plan)) continue
+        plan = named
+        plan.level = level
+        break
+      }
+    }
+    this.mapLevel = plan.level
+    for (const line of plan.lines) {
+      const { workspace } = line
+      const base = line.y + pad + side - u(2)
       if (workspace.mark) {
         c.fillStyle = workspace.mark
         c.fillRect(x, base - u(9), u(4), u(11))
       }
       const style = { size: 12.5, color: workspace.focused ? INK.text : INK.soft }
       this.text(c, this.fit(c, workspace.label || workspace.id, labelW - u(16), style), x + u(11), base, style)
-      const mine = tabs.flatMap(([, list]) => list)
-      this.note(`workspace:${workspace.id}`, { x: x - u(2), y: y, w: labelW - u(4), h: side + pad * 2 }, "SECTOR MAP · WORKSPACE", workspace.label || workspace.id, [["WHAT", "a herdr workspace: its tabs follow on this line, one square per pane"], ["PANES", `${mine.length} in ${tabs.length} tab${tabs.length === 1 ? "" : "s"}: ${mine.filter((pane) => pane.status === "working").length} working, ${mine.filter((pane) => pane.status === "blocked").length} calling, ${mine.filter((pane) => pane.status === "done").length} unread`], ["SHOWN", workspace.focused ? "this is the workspace herdr shows now" : "not the workspace herdr shows now"]], workspace.mark || undefined)
-      let tx = x + labelW
-      for (const [tabId, list] of tabs) {
-        const cellW = list.length * (side + u(4)) - u(4) + pad * 2
-        if (tx + cellW > x + w) {
-          tx = x + labelW
-          y += lineH
-          if (y + lineH > top + h + u(6)) break
-        }
+      const mine = line.mine
+      this.note(`workspace:${workspace.id}`, { x: x - u(2), y: line.y, w: labelW - u(4), h: side + pad * 2 }, "SECTOR MAP · WORKSPACE", workspace.label || workspace.id, [["WHAT", "a herdr workspace: its tabs follow on this line, one square per pane"], ["PANES", `${mine.length} in ${line.tabCount} tab${line.tabCount === 1 ? "" : "s"}: ${mine.filter((pane) => pane.status === "working").length} working, ${mine.filter((pane) => pane.status === "blocked").length} calling, ${mine.filter((pane) => pane.status === "done").length} unread`], ["SHOWN", workspace.focused ? "this is the workspace herdr shows now" : "not the workspace herdr shows now"], ["NAMES", plan.level === 2 ? "every pane is named beside its square" : plan.level === 1 ? "named beside its square: a pane that works, calls, has finished unread, holds the focused thread, or is this one. The others are named on their cards" : "the map is too narrow for names: a pane's card says its name"]], workspace.mark || undefined)
+      for (const tabBox of line.tabs) {
+        const { tabId, cells } = tabBox
         const tab = scene.tabOf.get(tabId)
         const active = workspace.activeTab === tabId
         c.strokeStyle = active && workspace.focused ? INK.soft : active ? INK.faint : INK.ghost
         c.lineWidth = 1
-        c.strokeRect(tx + 0.5, y + 0.5, cellW - 1, side + pad * 2 - 1)
-        this.hit("tab", tabId, { x: tx, y, w: cellW, h: side + pad * 2 }, { label: tab?.label ?? "", workspace: workspace.label })
-        list.forEach((pane, index) => {
-          const px = tx + pad + index * (side + u(4))
-          const py = y + pad
+        c.strokeRect(tabBox.x + 0.5, tabBox.y + 0.5, tabBox.w - 1, side + pad * 2 - 1)
+        this.hit("tab", tabId, { x: tabBox.x, y: tabBox.y, w: tabBox.w, h: side + pad * 2 }, { label: tab?.label ?? "", workspace: workspace.label })
+        let px = tabBox.x + pad
+        for (const cell of cells) {
+          const { pane } = cell
+          const py = tabBox.y + pad
           if (pane.status === "working" || pane.status === "blocked") {
             c.fillStyle = pane.status === "working" ? INK.live : INK.warn
             c.fillRect(px, py, side, side)
@@ -439,11 +518,16 @@ export const hud = {
             this.line(c, px + side / 2, py - u(3), px + side / 2, py + side + u(3), INK.live)
             this.line(c, px - u(3), py + side / 2, px + side + u(3), py + side / 2, INK.live)
           }
-          this.hit("blip", pane.id, { x: px - u(2), y: py - u(2), w: side + u(4), h: side + u(4) }, { pane })
-        })
-        tx += cellW + u(6)
+          if (cell.name) {
+            // its name, in the tone of its state: bright while it works, amber while it calls
+            const tone = pane.status === "blocked" ? INK.warn : pane.status === "working" ? INK.text : pane.status === "done" ? INK.soft : pane.id === world.self ? INK.live : INK.dim
+            this.text(c, cell.name, px + side + u(7), py + side - u(2), { ...titleStyle, color: tone })
+          }
+          // one target for the square and its name; `spot` is the square, where rings and flashes land
+          this.hit("blip", pane.id, { x: px - u(2), y: py - u(2), w: cell.w + u(4), h: side + u(4) }, { pane, spot: { x: px + side / 2, y: py + side / 2 } })
+          px += cell.w + u(4)
+        }
       }
-      y += lineH
     }
   },
 
