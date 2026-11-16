@@ -405,6 +405,15 @@ own frames: how REACH, the scrub marks, the explain tags and the compaction look
 anyone yet: REACH and scrubbing with a real hand, and a packet travelling a REACH branch
 (placed, by the counters, as any packet).
 
+The last look at the whole screen (04:51, the live pane's own frame, four threads working):
+with REACH in, no part of the portrait screen is empty while threads work. The weakest part
+left is the circuit's resting rows: a thread that rests shows its name, its figures, its cache
+and "resting 4h30", and the right half of its row is bare, because the line there is the
+thread's last minutes and it has none. It was left as it is: what would belong there (what the
+thread's last turn did, what it ended on) is only in memory for the 31 minutes of history
+this program reads, so a mark there would appear and vanish by the age of the data, not by
+the state of the thread. It needs a decision on reading further back before it is drawn.
+
 Not done: the replay of a scrubbed moment in the core and on the wires; REACH in landscape
 (the left column does not exist there); the stage's empty space above the terrain in
 landscape.
