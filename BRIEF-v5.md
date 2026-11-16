@@ -313,3 +313,25 @@ Nothing new from the operator. The standing instruction holds: "sofare so good n
 3. **Resting rows show their last turn** (decision 2 above).
 4. **A scrubbed moment is replayed, not only read out:** while a moment is held, the core, the flock and the wires show that moment (the thread's rate then, what was open, where its context stood), clearly marked as the past (for example dimmed with a "THEN" tag and the held time), and they return to now on release.
 5. A last look at the whole screen at this width against the operator's first words; spend what is left on the weakest part and say which it was.
+
+## Twelfth addendum: state at 10:32 on 2026-11-16, and the next order of work
+
+A seventh session fixed memory after a resize (a drag sent one resize per column and each rebuilt the buffers; the size is now taken once it has stood still, buffers are kept while the pane fits them, and freed large blocks go back to the system with `MallocLargeCache=0`), gave the wide pane a layout (scale limited by height, REACH and THIS TURN always have room, the thread list scrolls), made resting rows show their last turn, and made a held moment replay in the core, the flock and the wires under a "THEN" tag. v5 runs in `wE:p1QF` at `00ecb91`, graphics verdict "held". The operator moved the split back to 91 columns at about 09:58.
+
+Nothing new from the operator. His standing words: "go ahead do the most recommeded".
+
+### Decisions taken for the operator (he can overrule any)
+
+1. **Scale at 139 columns:** keep the smaller scale (0.88), which buys REACH, THIS TURN and six rows instead of four. He judges it by eye the next time he widens the split.
+2. **The allocator setting stays:** one point of a core for about 50 MB less and a clean resize.
+3. **The wide footer:** both. Log and comms lines are shown in full when the width is there (this also answers his old complaint about a comms line cut mid-word), and the sector map shows pane titles. Nothing is stretched; a third column is added only if it carries data not shown elsewhere.
+4. **The cache ramp** stays until he judges it.
+
+### Order of work
+
+1. **A held moment is the past everywhere, or it says where it is not.** While a moment is held, the live text, the charts' lines, REACH and the subagent moons still show now, and a dot of the past flock opens the present flock's card. That breaks "accuracy first". Either each of those shows the held moment too, or it is visibly marked as "now" while the rest is "then". A card opened during a hold reads the held moment.
+2. **Cost with many threads working.** At 91 columns with eight to nine of eleven threads working the pane read 9 to 13% of a core (single reports to 19%) and 595 to 930 kB/s; the class (4 to 11%, 205 to 670 kB/s) was measured with half as many. Make the cost grow slower than the number of working threads (each row repaints 1.5 times a second today; look at what a row really changes per repaint), and show a minute at eight or more working inside the class, or say what the honest class is.
+3. **Memory over half an hour.** The last watch crept about 7 MB in twelve minutes at 91 columns. Watch thirty minutes with the threads the machine has and say whether it levels off; if it does not, find what grows.
+4. **The wide footer**, as decided above.
+5. **Landscape:** REACH and the empty space above the terrain.
+6. A poke or check script for every interaction added in v5 that has none (REACH, scrubbing and its replay, the resting-row card, a resize), so the next change cannot silently break them. List them in the README.
