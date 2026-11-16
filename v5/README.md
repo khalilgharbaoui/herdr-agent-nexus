@@ -293,8 +293,9 @@ samples) for some 50 MB less at rest (208 to 243 MB against 255 to 302) and noth
 resize. `MallocLargeCache=1 node v5/nexus.mjs` runs with the system's default.
 
 In the real pane with all of it: 211 to 253 MB at 139 columns (large blocks 102 to 103 MB,
-four threads working, thirteen minutes) and 183 to 193 MB at 91 columns (large blocks 68 MB,
-eight to nine working). The rule is about 220 MB at 91 columns and that times the pane's
+four threads working, thirteen minutes) and 183 to 196 MB at 91 columns (large blocks 68 MB,
+eight to nine working, twelve minutes; small blocks went from 44 to 48 MB and V8 from 60 to
+63 MB in that time, with nine threads working, and it was not watched for longer). The rule is about 220 MB at 91 columns and that times the pane's
 area elsewhere (336 MB at 139). A resize of the real pane while it ran happened once with the
 new code (the operator took the split back to 91 columns; `stats.json` counts the sizes
 settled on under `resizes`); the footprint after it was not caught on its own.
