@@ -21,7 +21,9 @@ import { reach } from "./reach.mjs"
 import { stage } from "./stage.mjs"
 import { terrain } from "./terrain.mjs"
 import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
-import { FAMILY, INK, TAU, clamp, fontOf, modelColor } from "./util.mjs"
+import { FAMILY, INK, TAU, clamp, fontOf, keeps, modelColor, roomFor } from "./util.mjs"
+
+const PORTRAIT_UNITS = 2800 // the height, in layout units, an upright pane is given at least
 
 export class Renderer {
   constructor(flow) {
@@ -54,11 +56,30 @@ export class Renderer {
     this.H = height
     this.cell = cell
     const wide = width > height * 1.15
-    this.S = clamp(wide ? Math.min(height / 2460, width / 3300) : Math.min(width / 1890, height / 2200), 0.34, 1.6)
-    this.canvas = createCanvas(width, height)
-    this.base = this.canvas.getContext("2d")
-    this.wiresCanvas = createCanvas(width, height)
-    this.wires = this.wiresCanvas.getContext("2d")
+    // One scale for everything. Upright, the width sets it up to the point where the height
+    // would run short: the picture needs some 2800 units of height (header, stage with REACH,
+    // terrain, a list of eight threads, footer), so past that point the scale stands still and
+    // a wider pane gives its extra width to what grows sideways: the charts, the live text,
+    // the terrain, the rows. (Until 2026-11-16 the height's share was 2200 units: at 139
+    // columns everything was a tenth larger than drawn for, the stage was at its smallest and
+    // THIS TURN and REACH had no room.)
+    this.S = clamp(wide ? Math.min(height / 2460, width / 3300) : Math.min(width / 1890, height / PORTRAIT_UNITS), 0.34, 1.6)
+    // The two layers are the largest blocks this program holds (4 bytes a pixel each). A block
+    // that is freed is not given back: the allocator keeps it, counted against this process,
+    // until a block of the same size is asked for (measured: 48 sizes of one drag left 640 MB
+    // of them). So the layers are built a little larger than the pane, on a grid of 8 columns
+    // by 4 rows, and kept for as long as the pane fits them without wasting a quarter: a nudge
+    // of the split frees nothing.
+    const room = roomFor(width, height, cell)
+    if (!this.canvas || !keeps(this.canvas.width, this.canvas.height, width, height)) {
+      this.canvas = createCanvas(room.width, room.height)
+      this.base = this.canvas.getContext("2d")
+      this.wiresCanvas = createCanvas(room.width, room.height)
+      this.wires = this.wiresCanvas.getContext("2d")
+    } else {
+      this.base.clearRect(0, 0, this.canvas.width, this.canvas.height)
+      this.wires.clearRect(0, 0, this.wiresCanvas.width, this.wiresCanvas.height)
+    }
     this.fits.clear()
     this.arranged = ""
     this.wiresSignature = ""
@@ -187,9 +208,15 @@ export class Renderer {
     const wanted = natural.reduce((sum, height) => sum + height, 0)
     if (!G.wide) {
       // few threads: the stage takes what they leave, in steps of four lines of text. Zoom takes more.
+      // THIS TURN and REACH always have their room (three steps: the five lines and REACH's
+      // head with some five rows). When many threads are listed it is the list that gives
+      // way: it scrolls, and says how many are above and below. Only a pane too short to
+      // show three rows of threads beside it gives the room up.
       const step = u(112)
-      const spare = G.rowsBottom - G.rowsTop + this.extra - Math.max(wanted, PORTS.length * u(96)) - u(30)
-      const extra = Math.max(clamp(Math.floor(spare / step) * step, 0, step * 7), ui.zoom ? step * 5 : 0)
+      const all = G.rowsBottom - G.rowsTop + this.extra
+      const spare = all - Math.max(wanted, PORTS.length * u(96)) - u(30)
+      const least = all - step * 3 >= u(330) ? step * 3 : 0
+      const extra = Math.max(clamp(Math.floor(spare / step) * step, least, step * 7), ui.zoom ? step * 5 : 0)
       if (extra !== this.extra) {
         this.extra = extra
         this.layout(false, extra)

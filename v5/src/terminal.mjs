@@ -11,6 +11,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { Worker } from "node:worker_threads"
 import { Input } from "./input.mjs"
+import { KEEP_SLACK, roomFor } from "./util.mjs"
 
 // Which event-driven mark a sprite is, or "" when it is not one. A packet is the sign of a tool
 // call on its synapse, a flash answers something that just happened, a ripple runs from a cell
@@ -32,6 +33,7 @@ const MAX_SPRITES = 960
 const PAGE_BASE = 7200 // image ids of the sprite pages start here
 const PROBE_SLOT = 999 // the placement that asks whether a page is still there
 const PROBE_MS = 2000
+const RESIZE_SETTLE_MS = 160 // a resize is answered when the size has stood still this long
 // What the terminal's image store holds for one pane. Under herdr 0.9.5 it is 64 MiB (measured
 // with tools/gfx-probe.mjs); past it the oldest image is dropped without a word. Ghostty on its
 // own keeps 320 MB.
@@ -117,11 +119,22 @@ export class Terminal {
       this.error = String(error?.message ?? error)
       this.inflight = 0
     })
+    // A hand on a split sends a resize for every column it crosses. Answering each built the
+    // picture's buffers 48 times in two seconds for a drag from 91 to 139 columns (measured:
+    // 200 MB to over 1 GB, and 890 MB half a minute later). So the size is taken once it has
+    // stood still for a moment, and nothing is sent while it moves: a frame for a size the
+    // pane no longer has would be wrong anyway.
     process.stdout.on("resize", () => {
-      this.measure().then(() => {
-        this.reset = true
-        for (const listener of this.listeners.resize) listener()
-      })
+      this.resizing = true
+      clearTimeout(this.resizeTimer)
+      this.resizeTimer = setTimeout(() => {
+        this.measure().then(() => {
+          this.resizing = false
+          this.reset = true
+          this.resizes = (this.resizes ?? 0) + 1
+          for (const listener of this.listeners.resize) listener()
+        })
+      }, RESIZE_SETTLE_MS)
     })
     return this.kitty
   }
@@ -237,7 +250,14 @@ export class Terminal {
     const stride = width * 4
     let all = false
     if (!this.shadow || this.shadow.length !== stride * height || this.reset) {
-      this.shadow = Buffer.alloc(stride * height) // what the terminal shows: nothing yet
+      // What the terminal shows: nothing yet. The block itself is kept while the pane fits it
+      // (see Renderer.resize): a new one at every reset left the old one with the allocator.
+      const need = stride * height
+      if (!this.shadowStore || this.shadowStore.length < need || this.shadowStore.length > need * KEEP_SLACK) {
+        const room = roomFor(width, height, this.cell)
+        this.shadowStore = Buffer.alloc(room.width * room.height * 4)
+      } else this.shadowStore.fill(0, 0, need)
+      this.shadow = this.shadowStore.subarray(0, need)
       all = true
     }
     const shadow = this.shadow
@@ -260,6 +280,7 @@ export class Terminal {
         const local = span * 4
         const image = context.getImageData(x0, top, span, rows).data
         this.readBytes = (this.readBytes ?? 0) + span * rows * 4
+        this.reads = (this.reads ?? 0) + 1
         const bytes = Buffer.from(image.buffer, image.byteOffset, image.length)
         let changed = false
         for (let column = first; column < end; column += 1) {
@@ -385,7 +406,7 @@ export class Terminal {
   // `card` is the inspection card as its own image: { key, left, top, w, h, padX, padY, winW,
   // winH, width, height, pixels() }, or null when none is open.
   send(context, marks, sprites, atlas, spans = null, card = null) {
-    if (this.inflight >= 2 || !this.worker) return "busy"
+    if (this.inflight >= 2 || !this.worker || this.resizing) return "busy"
     const reset = this.reset
     if (reset) {
       // the terminal was cleared: every placement is gone and every sprite page with it

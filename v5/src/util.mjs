@@ -10,6 +10,21 @@ export const clamp = (value, low, high) => Math.max(low, Math.min(high, value))
 export const approach = (value, target, rate, dt) => value + (target - value) * (1 - Math.exp(-rate * dt))
 export const lerp = (from, to, amount) => from + (to - from) * amount
 
+// ------------------------------------------------------------------ pixel buffers
+
+// The size a pixel buffer is built at for a pane of width by height: the next step of a grid
+// of 8 columns by 4 rows. And whether a buffer of haveW by haveH may stay for such a pane: it
+// holds it, and no more than a quarter of it would be unused.
+export const KEEP_SLACK = 1.25
+export function roomFor(width, height, cell) {
+  const stepX = 8 * cell.width
+  const stepY = 4 * cell.height
+  return { width: Math.ceil(width / stepX) * stepX, height: Math.ceil(height / stepY) * stepY }
+}
+export function keeps(haveW, haveH, width, height) {
+  return haveW >= width && haveH >= height && haveW * haveH <= width * height * KEEP_SLACK
+}
+
 // ------------------------------------------------------------------ type
 
 const FONT_DIR = path.join(os.homedir(), "Library/Fonts")

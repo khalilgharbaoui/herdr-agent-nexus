@@ -30,7 +30,11 @@ import { STORE_LIMIT, Terminal } from "./src/terminal.mjs"
 import { Controller } from "./src/ui.mjs"
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
-const SHOTS = path.join(HERE, "shots")
+// Where this run writes what it says about itself (nexus.pid, stats.json, input.json, shots).
+// A second copy beside the one in the pane (tools/resize-check.py) is given its own folder,
+// so it does not write over the first one's files.
+const RUN = process.env.NEXUS_RUN || HERE
+const SHOTS = path.join(RUN, "shots")
 const argument = (name, fallback) => {
   const index = process.argv.indexOf(`--${name}`)
   return index > 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback
@@ -178,13 +182,13 @@ const SEMI_SPACE_MB = Number(process.env.NEXUS_SEMI) || 4
 function withSmallYoungGeneration() {
   if (process.execArgv.some((flag) => flag.startsWith("--max-semi-space-size")) || process.env.NEXUS_REEXEC || typeof process.execve !== "function") return
   try {
-    process.execve(process.execPath, [process.execPath, ...process.execArgv, `--max-semi-space-size=${SEMI_SPACE_MB}`, ...process.argv.slice(1)], { ...process.env, NEXUS_REEXEC: "1" })
+    process.execve(process.execPath, [process.execPath, ...process.execArgv, `--max-semi-space-size=${SEMI_SPACE_MB}`, "--expose-gc", ...process.argv.slice(1)], { ...process.env, NEXUS_REEXEC: "1", MallocLargeCache: process.env.MallocLargeCache ?? "0" })
   } catch {}
 }
 
 async function runTerminal() {
   withSmallYoungGeneration()
-  if (Number(process.env.NEXUS_ALLOC) > 0) profileAllocations(Number(process.env.NEXUS_ALLOC), path.join(HERE, "alloc.json"))
+  if (Number(process.env.NEXUS_ALLOC) > 0) profileAllocations(Number(process.env.NEXUS_ALLOC), path.join(RUN, "alloc.json"))
   const terminal = new Terminal()
   const kitty = await terminal.open()
   if (!kitty) {
@@ -192,7 +196,7 @@ async function runTerminal() {
     console.error("This terminal did not answer the Kitty graphics query, so there is nothing to draw on.")
     process.exit(1)
   }
-  const pidFile = path.join(HERE, "nexus.pid")
+  const pidFile = path.join(RUN, "nexus.pid")
   fs.writeFileSync(pidFile, String(process.pid))
   const flow = new Flow()
   const renderer = new Renderer(flow)
@@ -264,7 +268,7 @@ async function runTerminal() {
     renderer,
     terminal,
     scene: () => scene,
-    logFile: path.join(HERE, "input.json"),
+    logFile: path.join(RUN, "input.json"),
     actions: {
       quit: () => {
         quit()
@@ -280,6 +284,7 @@ async function runTerminal() {
         terminal.gfx.lost = []
         terminal.gfx.refused = 0
         if (painted) atlas.clear() // no sprite page stays on the terminal while it is not used
+        else composite = null // and the painted layer's own canvas goes when sprites are back
         readAll = true
         lastSpriteBands = null
         return painted ? "moving layer painted into tiles" : "moving layer as sprites"
@@ -336,7 +341,7 @@ async function runTerminal() {
   }
 
   const frame = () => {
-    if (quitting || terminal.inflight >= 2) return
+    if (quitting || terminal.inflight >= 2 || terminal.resizing) return
     waiting = false
     const started = performance.now()
     lastFrameAt = started
@@ -371,6 +376,7 @@ async function runTerminal() {
         // a minute later, and with room in the store: sprites get another try
         painted = false
         fallback = null
+        composite = null
         terminal.gfx.lost = []
         terminal.gfx.refused = 0
         atlas.clear()
@@ -402,7 +408,20 @@ async function runTerminal() {
         saveShot(renderer, lastSprites, atlas, wantShot)
       } catch {}
       wantShot = null
+      collectSoon() // the snapshot's own canvas is as large as the pane
     }
+  }
+
+  // Buffers as large as the pane that were just let go (the layers of the size before a resize,
+  // a snapshot's canvas) are only freed when V8 collects their owners, and with a heap this
+  // small and this steady that can be many minutes away. So it is asked to, once, a moment
+  // after. (--expose-gc is given with the young generation's size; without it this does nothing.)
+  let collecting = null
+  const collectSoon = () => {
+    if (typeof globalThis.gc !== "function") return
+    clearTimeout(collecting)
+    collecting = setTimeout(() => globalThis.gc(), 1200)
+    collecting.unref()
   }
 
   let deflate = null
@@ -488,6 +507,8 @@ async function runTerminal() {
       cacheWorker: source.cacheKept ?? null, // what the transcript reader keeps: transcripts followed, calls and block stamps held, its own heap in use
       deflate, // how the encoder compresses: "one stream, kept" or, when its check failed, "a stream per image"
       readbackMbPerSecond: Number((((terminal.readBytes ?? 0) - (mark.read ?? 0)) / 1e6 / seconds).toFixed(1)), // pixels read back from the canvas to find what changed
+      readbacksPerSecond: Number((((terminal.reads ?? 0) - (mark.reads ?? 0)) / seconds).toFixed(0)), // how many reads that took (one buffer each)
+      resizes: terminal.resizes ?? 0, // sizes this run has settled on since it started
       movedPerFrameBy: Object.fromEntries(Object.entries(terminal.movedBy).map(([name, count]) => [name, Number((count / frames).toFixed(1))]).filter(([, rate]) => rate >= 1).sort((a, b) => b[1] - a[1])), // sprite placements a frame, by kind of mark
       repaintsPerSecond: Object.fromEntries(Object.entries(renderer.repaints ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.2).sort((a, b) => b[1] - a[1])), // which regions of the still layer were painted again, and how often
       repaintCauses: Object.fromEntries(Object.entries(renderer.causes ?? {}).map(([name, count]) => [name, Number((count / seconds).toFixed(1))]).filter(([, rate]) => rate >= 0.5).sort((a, b) => b[1] - a[1])), // for the regions that name the parts of their signature: which part changed, times a second
@@ -509,7 +530,7 @@ async function runTerminal() {
       load: os.loadavg()[0].toFixed(1),
       error: error ?? terminal.error ?? null,
     }
-    mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0 }
+    mark = { ...total, at: now, cpu: process.cpuUsage(), input, read: terminal.readBytes ?? 0, reads: terminal.reads ?? 0 }
     readHeaps()
     renderer.repaints = {}
     renderer.causes = {}
@@ -518,7 +539,7 @@ async function runTerminal() {
     const verdict = painted ? (fallback ? `painted: ${fallback}` : "painted") : `sprites ${stats.graphics.verdict === "held" ? "held by the terminal" : stats.graphics.verdict}`
     meta.line = `${terminal.width}×${terminal.height} native  ·  ${stats.fps.toFixed(0)} fps  ·  ${stats.sprites} ${verdict}  ·  ${stats.kbPerSecond.toFixed(0)} kB/s  ·  cpu ${stats.cpuPercent.toFixed(0)}%`
     try {
-      fs.writeFileSync(path.join(HERE, "stats.json"), JSON.stringify(stats))
+      fs.writeFileSync(path.join(RUN, "stats.json"), JSON.stringify(stats))
     } catch {}
   }, 2000)
   report.unref()
@@ -528,7 +549,9 @@ async function runTerminal() {
     if (atlas.cw !== terminal.cell.width || atlas.ch !== terminal.cell.height) atlas = new Atlas(terminal.cell.width, terminal.cell.height)
     renderer.bandHeight = terminal.bandHeight
     renderer.resize(terminal.width, terminal.height, terminal.cell)
+    if (composite && (composite.width !== terminal.width || composite.height !== terminal.height)) composite = null
     readAll = true
+    collectSoon()
   })
   process.on("SIGUSR1", () => {
     wantShot = "latest.png"
