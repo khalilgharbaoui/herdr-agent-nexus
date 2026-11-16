@@ -221,12 +221,17 @@ export class Flock {
   // One step of the swarm. `input` carries the thread and the instrument's geometry.
   step(input) {
     const { session, turn, now, core, S, rate, entry, pointer, ports } = input
+    // Two clocks. `now` is the moment the thread is shown at: the present, or a past moment that
+    // is held (see replay.mjs), and everything read from the thread is measured against it.
+    // `clock` is the flock's own time, which always runs: a dot flies in, a spark fades and the
+    // globe breathes on it, so a held moment is still alive. They are the same outside a replay.
+    const clock = input.clock ?? now
     const dt = Math.min(0.05, input.dt)
     const u = (value) => value * S
     const out = session.turn?.out ?? session.lastOut ?? 0
     // a turn that ended is still the same turn: its last dots come in from the orbit and the
     // globe forms up. Only another thread or a new turn starts the flock afresh.
-    const turnKey = session.turn?.start ?? (session.id === this.sid ? this.turn : 0)
+    const turnKey = session.turnKey ?? session.turn?.start ?? (session.id === this.sid ? this.turn : 0)
     const fresh = session.id !== this.sid || turnKey !== this.turn
     const fill = session.context.limit && session.context.used ? clamp(session.context.used / session.context.limit, 0, 1) : 0
     const ease = (rate) => 1 - Math.exp(-rate * dt)
@@ -253,7 +258,7 @@ export class Flock {
       // so its dots stay in orbit; a report that never comes is given up after six seconds.
       if (this.openSince && this.own > 0 && out === this.outAtOpen) {
         this.carry += this.own
-        this.carryAt = now
+        this.carryAt = clock
       }
       this.own = 0
       if (openSince) {
@@ -266,7 +271,7 @@ export class Flock {
       this.openSince = openSince
     }
     if (openSince) this.own = ((now - openSince) / 1000) * this.callRate
-    if (this.carry > 0 && now - this.carryAt > 6000) this.carry = 0
+    if (this.carry > 0 && clock - this.carryAt > 6000) this.carry = 0
     this.estimate = this.carry + this.own
     const unit = flockUnit(out + this.estimate)
     // the orbit holds so many dots; an open call that has written more keeps the tip charged
@@ -298,7 +303,7 @@ export class Flock {
     if (fresh) {
       // the flock that was here leaves: its dots fly outward and fade
       if (this.count && this.sid) {
-        const ghosts = { at: now, n: 0, x: [], y: [], kind: [], level: [] }
+        const ghosts = { at: clock, n: 0, x: [], y: [], kind: [], level: [] }
         for (let index = 0; index < this.count; index += 1) {
           if (!this.level[index]) continue
           ghosts.x.push(this.sx[index])
@@ -354,7 +359,7 @@ export class Flock {
 
     // dots that left: the call reported less than was estimated. They drift off and fade.
     if (count < this.count && !fresh && !this.ghosts) {
-      const ghosts = { at: now, n: 0, x: [], y: [], kind: [], level: [] }
+      const ghosts = { at: clock, n: 0, x: [], y: [], kind: [], level: [] }
       for (let index = count; index < this.count; index += 1) {
         if (!this.level[index]) continue
         ghosts.x.push(this.sx[index])
@@ -369,10 +374,10 @@ export class Flock {
     const spot = [0, 0, 0]
     if (count > this.count) {
       if (!fresh) {
-        this.firedAt = now
+        this.firedAt = clock
         // the flash and the ring show at most some three times a second: a burst of dots is a
         // steady release, never a strobe
-        if (now - (this.flashAt ?? 0) > 380) this.flashAt = now
+        if (clock - (this.flashAt ?? 0) > 380) this.flashAt = clock
       }
       const from = toPlane(view, entry.x, entry.y, [0, 0])
       const reach = Math.hypot(from[0], from[1]) || 1
@@ -387,9 +392,9 @@ export class Flock {
           this.vx[index] = Math.cos(angle) * u(110)
           this.vy[index] = -Math.sin(angle) * u(110)
           this.vz[index] = 0
-          this.wake[index] = now + this.random() * 260
+          this.wake[index] = clock + this.random() * 260
           this.stage[index] = 1
-          this.joined[index] = now
+          this.joined[index] = clock
         } else if (fresh) {
           // a change of focus: the new thread's flock gathers from all around and forms up
           this.stage[index] = 3
@@ -399,7 +404,7 @@ export class Flock {
           spot[0] = Math.cos(angle) * Math.cos(lift) * far
           spot[1] = Math.sin(angle) * Math.cos(lift) * far
           spot[2] = Math.sin(lift) * far
-          this.wake[index] = now + this.random() * 260
+          this.wake[index] = clock + this.random() * 260
           this.vx[index] = 0
           this.vy[index] = 0
           this.vz[index] = 0
@@ -415,7 +420,7 @@ export class Flock {
           this.vx[index] = (dx / length) * u(520)
           this.vy[index] = (dy / length) * u(520)
           this.vz[index] = 0
-          this.wake[index] = now + (index - this.count) * 60
+          this.wake[index] = clock + (index - this.count) * 60
           this.stage[index] = 1
           this.joined[index] = this.wake[index] + 450
         }
@@ -436,15 +441,15 @@ export class Flock {
     for (let index = 0; index < count; index += 1) {
       if (this.stage[index] !== 1) continue
       circling += 1
-      if (index >= sure || this.wake[index] > now) continue
+      if (index >= sure || this.wake[index] > clock) continue
       waiting += 1
-      if (next < 0 && now - this.joined[index] > 900) next = index
+      if (next < 0 && clock - this.joined[index] > 900) next = index
     }
     this.inOrbit = circling
-    if (next >= 0 && now - this.siphonAt > clamp(1600 / waiting, 25, 90)) {
-      this.siphonAt = now
+    if (next >= 0 && clock - this.siphonAt > clamp(1600 / waiting, 25, 90)) {
+      this.siphonAt = clock
       this.stage[next] = 2
-      this.sipAt[next] = now
+      this.sipAt[next] = clock
       this.sipR[next] = Math.hypot(this.x[next], this.y[next])
       this.sipA[next] = Math.atan2(this.x[next], this.y[next])
       this.sipZ[next] = this.z[next]
@@ -459,10 +464,10 @@ export class Flock {
       for (let index = 0; index < count; index += 1) if (this.squad[index] === id) this.squad[index] = null
       const failed = squad.tool.status === "error"
       const at = this.satAt(squad, now, 0, [0, 0, 0])
-      this.sparks.push({ at: now, x: at[0], y: at[1], z: at[2], hex: failed ? INK.bad : spriteHex(PORT_COLOR[squad.port]) })
+      this.sparks.push({ at: clock, x: at[0], y: at[1], z: at[2], hex: failed ? INK.bad : spriteHex(PORT_COLOR[squad.port]) })
       if (failed) {
-        this.failed.set(id, now)
-        this.scatterAt = now
+        this.failed.set(id, clock)
+        this.scatterAt = clock
         for (let index = 0; index < count; index += 1) {
           const angle = this.random() * TAU
           const lift = (this.random() - 0.5) * 2
@@ -489,8 +494,8 @@ export class Flock {
       const port = portOf(tool.name)
       this.squads.set(id, { tool, members: members.length, port, phase: phaseOf(id), lap: lapOf(ports?.get(port)) })
     }
-    for (const [id, at] of this.failed) if (now - at > 2600) this.failed.delete(id)
-    this.sparks = this.sparks.filter((spark) => now - spark.at < 520)
+    for (const [id, at] of this.failed) if (clock - at > 2600) this.failed.delete(id)
+    this.sparks = this.sparks.filter((spark) => clock - spark.at < 520)
 
     // how free the flock is: 0 flying, 1 locked into the lattice
     const silent = (now - (session.last || now)) / 1000
@@ -502,7 +507,7 @@ export class Flock {
     }
     this.lock += (lockWant - this.lock) * ease(lockWant > this.lock ? 2.2 : 3.2)
     this.pace += (paceWant - this.pace) * ease(1.5)
-    const scattering = now - this.scatterAt < 1400
+    const scattering = clock - this.scatterAt < 1400
     const lock = scattering ? Math.min(this.lock, 0.15) : this.lock
     // a tool runs: the globe turns one notch a second, like an escapement, for as long as it waits
     if (working && phase === "tool") {
@@ -517,7 +522,7 @@ export class Flock {
     let breath = 1
     if (!working) {
       const rest = now - (session.idleSince || session.updated || now)
-      if (rest < 45 * 60e3 && session.state !== "stalled") breath = 1 + 0.014 * Math.sin((now / (5000 + Math.min(9000, rest / 200))) * TAU)
+      if (rest < 45 * 60e3 && session.state !== "stalled") breath = 1 + 0.014 * Math.sin((clock / (5000 + Math.min(9000, rest / 200))) * TAU)
     }
     const windSpeed = (u(20) + u(1.5) * Math.min(rate, 90)) * this.pace
     this.speed = windSpeed
@@ -556,10 +561,10 @@ export class Flock {
       this.placeIn[i] = this.ringSize[ring]
       this.ringSize[ring] += 1
     }
-    this.simulate({ count, now, dt: dt * this.slow, lock, windSpeed, jitter, breath, S, scattering })
+    this.simulate({ count, now: clock, at: now, dt: dt * this.slow, lock, windSpeed, jitter, breath, S, scattering })
   }
 
-  simulate({ count, now, dt, lock, windSpeed, jitter, breath, S, scattering }) {
+  simulate({ count, now, at, dt, lock, windSpeed, jitter, breath, S, scattering }) {
     const { x, y, z, vx, vy, vz, ax, ay, az, wake, squad } = this
     const u = (value) => value * S
     const free = 1 - lock
@@ -684,7 +689,7 @@ export class Flock {
       const mine = squad[i] ? this.squads.get(squad[i]) : null
       if (mine) {
         // out with a tool call: in line behind its satellite, on that equipment's lane
-        this.satAt(mine, now, (this.rank[i] + 1) * 0.085, spot)
+        this.satAt(mine, at, (this.rank[i] + 1) * 0.085, spot)
         fx = (spot[0] - px) * 46 - vx[i] * 13
         fy = (spot[1] - py) * 46 - vy[i] * 13
         fz = (spot[2] - pz) * 46 - vz[i] * 13
@@ -825,7 +830,7 @@ export class Flock {
 
   // Projects every dot to the screen and lists it as a sprite: nearer is larger, brighter and on
   // top; south of the ring plane goes behind the still layer, north of it in front.
-  emit(out, { core, S, session, now, dt }) {
+  emit(out, { core, S, session, now, dt, clock = now }) {
     const view = this.view
     if (!view) return
     const u = (value) => value * S
@@ -836,7 +841,7 @@ export class Flock {
     const perSecond = dt > 0 ? 1 / dt : 0
     const odd = this.frame & 1
     for (let i = 0; i < this.count; i += 1) {
-      if (this.wake[i] > now) {
+      if (this.wake[i] > clock) {
         this.level[i] = 0
         continue
       }
@@ -889,12 +894,12 @@ export class Flock {
     // where a satellite's result landed: a flash in the equipment's colour, red when it failed
     for (const spark of this.sparks) {
       project(view, spark.x, spark.y, spark.z, pr)
-      out.push({ key: `spk${spark.at}`, kind: `${now - spark.at < 220 ? "glow" : "glow2"}|${spark.hex}`, x: pr[0] + pr[2] * this.parX, y: pr[1] + pr[2] * this.parY, z: LEVELS + 2 })
+      out.push({ key: `spk${spark.at}`, kind: `${clock - spark.at < 220 ? "glow" : "glow2"}|${spark.hex}`, x: pr[0] + pr[2] * this.parX, y: pr[1] + pr[2] * this.parY, z: LEVELS + 2 })
     }
     // the flock that was here before the focus moved: it flies outward and fades
     const ghosts = this.ghosts
     if (ghosts) {
-      const age = (now - ghosts.at) / GHOST_MS
+      const age = (clock - ghosts.at) / GHOST_MS
       if (age >= 1) this.ghosts = null
       else {
         const e = age * age
@@ -904,7 +909,7 @@ export class Flock {
         }
       }
     }
-    this.emitCharge(out, own, u, now)
+    this.emitCharge(out, own, u, clock)
   }
 
   // The charge where the thread's wire ends. Eight sockets stand round the tip; a socket is an

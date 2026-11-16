@@ -320,8 +320,11 @@ export const reach = {
       let shown = byRecency(groups.map((entry) => entry.group))
       while (shown.length > 1 && shown.length * 2 + 1 > room) shown.pop()
       const rowsAt = (cap) => shown.reduce((sum, group) => sum + 1 + Math.min(cap, group.leaves.size), 0) + 1
+      // (stops at the largest group: when the groups that are left fit whole, a higher cap adds
+      // no row, and this loop once ran for ever on a small room with a few small groups)
+      const most = shown.reduce((size, group) => Math.max(size, group.leaves.size), 1)
       let cap = 1
-      while (rowsAt(cap + 1) <= room) cap += 1
+      while (cap < most && rowsAt(cap + 1) <= room) cap += 1
       const kept = new Set()
       for (const group of shown) for (const leaf of byRecency(group.leaves.values()).slice(0, cap)) kept.add(leaf)
       // rows still free go to the targets touched most recently, whatever their group

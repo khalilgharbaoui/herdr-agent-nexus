@@ -18,12 +18,15 @@ import { Flock } from "./flock.mjs"
 import { hud } from "./hud.mjs"
 import { PORTS, portOf } from "./model.mjs"
 import { reach } from "./reach.mjs"
+import { replay } from "./replay.mjs"
 import { stage } from "./stage.mjs"
 import { terrain } from "./terrain.mjs"
+import { THEN_INK, openAt } from "./replay.mjs"
 import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, intersects, spriteHex } from "./theme.mjs"
 import { FAMILY, INK, TAU, clamp, fontOf, keeps, modelColor, roomFor } from "./util.mjs"
 
 const PORTRAIT_UNITS = 2800 // the height, in layout units, an upright pane is given at least
+const THEN_REGIONS = new Set(["core", "flockline", "plinth", "under", "head"]) // what a held moment replays, see replay.mjs
 
 export class Renderer {
   constructor(flow) {
@@ -587,9 +590,12 @@ export class Renderer {
     const painted = []
     if (rearranged) this.base.clearRect(0, 0, this.W, this.H)
     this.causes ??= {}
+    // a moment held on the terrain: these parts of the stage show the focused thread as it stood then
+    const then = this.thenFor(scene, ui, now)
     for (const region of this.regions) {
       this.signed = null
-      const signature = region.sign(scene, ui, now, meta)
+      const past = then && THEN_REGIONS.has(region.name) ? then : null
+      const signature = past ? `then ${past.at}|${region.sign(past.scene, ui, past.at, meta)}` : region.sign(scene, ui, now, meta)
       const signed = this.signed
       const under = stale.some((rect) => intersects(rect, region.rect))
       if (signature === region.last && !(rewire && region.circuit) && !rearranged && !under) {
@@ -610,7 +616,8 @@ export class Renderer {
         this.causes[key] = (this.causes[key] ?? 0) + 1
       }
       region.last = signature
-      this.paint(region, scene, ui, now, meta)
+      if (past) this.paint(region, past.scene, ui, past.at, meta, past)
+      else this.paint(region, scene, ui, now, meta)
       this.repaints[region.name] = (this.repaints[region.name] ?? 0) + 1
       painted.push(region.rect)
       any = true
@@ -632,7 +639,7 @@ export class Renderer {
     return any
   }
 
-  paint(region, scene, ui, now, meta) {
+  paint(region, scene, ui, now, meta, then = null) {
     const c = this.base
     const { x, y, w, h } = region.rect
     if (w <= 0 || h <= 0) return
@@ -644,6 +651,14 @@ export class Renderer {
     c.clearRect(x, y, w, h)
     if (region.wires) c.drawImage(this.wiresCanvas, x, y, w, h, x, y, w, h)
     region.draw(c, scene, ui, now, meta)
+    if (then) {
+      // the past at about half strength: this takes ink away, it paints no backdrop
+      c.globalCompositeOperation = "destination-out"
+      c.fillStyle = "rgba(0, 0, 0, 0.45)"
+      c.fillRect(x, y, w, h)
+      c.globalCompositeOperation = "source-over"
+      if (region.name === "core") this.thenTag(c, region.rect, then.at, "right")
+    }
     c.restore()
     this.hits.set(region.name, this.sink)
     this.sink = null
@@ -921,16 +936,22 @@ export class Renderer {
     }
     const focus = scene.focused
     if (focus) {
-      const session = focus.session
+      // A moment held on the terrain is replayed here: the flock is stepped with the thread as
+      // it stood then (`at`), on its own running clock (`now`), and everything it lists is grey.
+      const then = this.thenFor(scene, ui, now)
+      const session = then ? then.session : focus.session
+      const moment = then ? then.at : now
       const core = G.core
-      const hex = spriteHex(modelColor(session.model, session.provider))
+      const hex = then ? THEN_INK : spriteHex(modelColor(session.model, session.provider))
       // the flock: the turn's output, flying or in formation
-      const turn = this.turnWindow(session, now)
+      const turn = this.turnWindow(session, moment)
       const started = performance.now()
       const flock = this.flock
       flock.held = ui.hover?.kind === "dot" ? ui.hover.index : -1
-      flock.step({ session, turn, now, dt: this.dt, core, S: this.S, rate: scene.rateOf(session.id, now), entry: this.tipOf(), pointer: ui.pointer && !ui.help ? ui.pointer : null, ports: scene.ports })
-      flock.emit(out, { core, S: this.S, session, now, dt: this.dt })
+      flock.step({ session, turn, now: moment, clock: now, dt: this.dt, core, S: this.S, rate: then ? then.rate : scene.rateOf(session.id, now), entry: this.tipOf(), pointer: ui.pointer && !ui.help ? ui.pointer : null, ports: scene.ports })
+      const flockFrom = out.length
+      flock.emit(out, { core, S: this.S, session, now: moment, clock: now, dt: this.dt })
+      if (then) for (let index = flockFrom; index < out.length; index += 1) out[index].kind = this.thenKind(out[index].kind)
       this.flockMs = performance.now() - started
       const view = flock.view
       const spot = [0, 0, 0, 0]
@@ -941,7 +962,7 @@ export class Renderer {
       }
       if (session.turn) {
         // the head of the turn clock's arc
-        const elapsed = now - session.turn.start
+        const elapsed = moment - session.turn.start
         const at = onRing(core.RA, Math.min(0.999, elapsed / this.turnScale(session, elapsed)) * TAU)
         out.push({ key: "ring-head", kind: `pulse|${hex}`, x: at.x, y: at.y, z: 12 })
       }
@@ -979,7 +1000,8 @@ export class Renderer {
       // of its turn, one more each time that doubles, eight at most); one that rests sits still.
       this.moons = []
       let slot = 0
-      for (const row of scene.threads) {
+      // (what its subagents did at a held moment is not replayed: no moons then)
+      for (const row of then ? [] : scene.threads) {
         if (row.parent?.session.id !== session.id) continue
         const child = row.session
         const tone = spriteHex(child.state === "waiting" ? INK.warn : modelColor(child.model, child.provider))
@@ -1245,6 +1267,25 @@ export class Renderer {
     }
     if (scene.primed) this.logKnown = logged
     const streams = []
+    const then = this.thenKept
+    if (then) {
+      // A held moment: the wires stream as they did then, in the grey of the past. A thread
+      // that had a call open streams along its axon at its rate of that moment (the terrain's
+      // slice; the sparsest stream when the slice holds nothing yet), the focused one also up
+      // into its flock, and a tool call that was out streams to its equipment.
+      for (const g of G.rows) {
+        if (!g.row) continue
+        const open = openAt(g.row.session, then.at)
+        const rate = this.thenRate(g.sid, then.at)
+        if (!open.call && !open.ports.size && !rate) continue
+        const gap = rate ? u(rate >= 80 ? 44 : rate >= 40 ? 66 : rate >= 15 ? 104 : 180) : u(240)
+        streams.push({ key: `then:${g.sid}`, path: `axon:${g.sid}`, kind: `${rate ? "tail" : "mote"}|${THEN_INK}`, speed: u(rate ? 110 : 70), gap })
+        if (g.sid === scene.focus.id && rate) streams.push({ key: `thenfeed:${g.sid}`, path: `focus:${g.sid}`, kind: `dot|${THEN_INK}`, speed: u(150), gap })
+        for (const port of open.ports) streams.push({ key: `thensyn:${g.sid}:${port}`, path: `syn:${g.sid}:${port}`, kind: `tail|${THEN_INK}`, speed: u(64), gap: u(34) })
+      }
+      flow.setStreams(streams, now)
+      return
+    }
     this.reachStreams(scene, streams)
     for (const stream of scene.streams) {
       if (stream.type === "tool") streams.push({ key: stream.key, path: `syn:${stream.sid}:${stream.port}`, kind: `tail|${spriteHex(PORT_COLOR[stream.port])}`, speed: u(64), gap: u(34) })
@@ -1311,4 +1352,4 @@ export class Renderer {
 // the sign a tool call travels as, by the equipment it goes to
 const PACKET = { exec: "pkexec", read: "pkread", write: "pkwrite", web: "pkweb", agent: "pkagent", other: "pkother" }
 
-Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts, reach)
+Object.assign(Renderer.prototype, stage, circuit, hud, terrain, card, charts, reach, replay)
