@@ -75,8 +75,9 @@ It keeps what a run writes (`nexus.pid`, `stats.json`, `input.json`, `shots/`,
 `~/.local/state/herdr/plugins/khalilgharbaoui.agent-nexus/run`, and nothing in the
 installed copy. When it cannot start, the pane says why and waits for enter.
 
-Settings are optional: `KEY=value` lines in `nexus.env` in the plugin's config folder
-(`herdr plugin config-dir khalilgharbaoui.agent-nexus` prints the folder).
+Settings are optional: one `KEY=value` a line in `nexus.env` in the plugin's config folder
+(`herdr plugin config-dir khalilgharbaoui.agent-nexus` prints the folder). The file is read,
+never run, and a line that is not one of these four is skipped.
 
 | Setting           | Meaning                                                                    |
 | ----------------- | -------------------------------------------------------------------------- |
@@ -100,12 +101,12 @@ v5/tools/restart.sh <pane id>              # restart it in place in a herdr pane
 The plugin is four files: `herdr-plugin.toml` (what herdr reads), `herdr/build.sh` (the
 build step), `herdr/pane.sh` (the pane: finds node, runs v5, says why when it cannot) and
 `herdr/ctl.sh` (the actions), with `herdr/lib.sh` shared between them. To try a change to
-them without pushing it, link the checkout in place of the installed copy:
+them without pushing it, link the checkout: the link takes the installed copy's place.
 
 ```sh
-herdr plugin uninstall khalilgharbaoui.agent-nexus   # herdr refuses a link over an install, and the reverse
 herdr plugin link "$PWD"                             # runs from this checkout, with its node_modules
-herdr plugin unlink khalilgharbaoui.agent-nexus
+herdr plugin unlink khalilgharbaoui.agent-nexus      # herdr refuses an install over a link: unlink first
+herdr plugin install khalilgharbaoui/herdr-agent-nexus
 ```
 
 herdr does not build a linked folder. A release is a push: bump `version` in

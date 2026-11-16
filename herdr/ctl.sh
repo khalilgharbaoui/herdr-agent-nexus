@@ -59,7 +59,7 @@ open() {
   if pid=$(nexus_running_pid "$RUN"); then
     if [ -n "$pane" ] && [ "${NEXUS_FOCUS:-1}" != 0 ]; then
       "$H" plugin pane focus "$pane" >/dev/null 2>&1 ||
-        die "already running as pid $pid in pane $pane, which this herdr session cannot go to (another session holds it). Stop it first to open it here."
+        die "already running as pid $pid, in a pane herdr cannot go to as $pane (it was moved to another workspace, or another herdr session holds it). Stop it to open it afresh."
     fi
     say "already running in pane ${pane:-unknown} (pid $pid)"
     return 0
