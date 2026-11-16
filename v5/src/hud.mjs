@@ -734,6 +734,37 @@ export const hud = {
       ]
       return { tone: modelColor(session.model, session.provider), kicker: target.kind === "lean" ? "THE VIEW" : "FLOCK", title: threadOf(session.id), lines, pin: true, foot: "white reply, the model's colour reasoning, an equipment colour tool input" }
     }
+    if (target.kind === "scrub") {
+      // one moment of the terrain's window: every ridge's rate then, and what its thread was doing
+      const geo = this.terrainGeo
+      if (!geo || target.at < geo.from || target.at > geo.from + geo.slice * geo.ridges[0]?.values.length) return null
+      const at = target.at
+      const lines = []
+      for (const ridge of [...geo.ridges].sort((a, b) => a.depth - b.depth).slice(0, 9)) {
+        const session = scene.byId.get(ridge.sid)
+        const spot = this.ridgeSpot(ridge, at)
+        if (!session || !spot) continue
+        // what was open at that moment, from the thread's own record
+        let doing = "nothing open"
+        for (const step of session.steps) {
+          if (step.start > at || (step.end ?? now) < at) continue
+          const tool = step.tools.find((entry) => entry.start <= at && (entry.end ?? now) >= at)
+          // the newest part of the call that had begun by then says what the model was at
+          const part = [...step.items].reverse().find((item) => item.kind !== "tool" && item.at <= at)
+          doing = tool ? `running ${bare(tool.name)}${tool.label ? `: ${shortWords(tool.label, 34)}` : ""}` : part ? (part.kind === "think" ? "the model was reasoning" : "the model was writing its reply") : step.streamed !== null && at >= step.streamed ? "the model was writing" : "waiting for the model's first words"
+          break
+        }
+        lines.push([String(ridge.index + 1).padStart(2, "0"), `${spot.value >= 10 ? Math.round(spot.value) : spot.value.toFixed(1)} tok/s  ·  ${doing}`, ridge.sid === scene.focus.id ? INK.text : undefined, "wrap"])
+      }
+      return {
+        tone: INK.text,
+        kicker: "SCRUB",
+        title: `${clockOf(at)}  ·  ${agoOf(now - at)} ago`,
+        lines: [...lines, ["READ", `each line is a listed thread by its number: its tokens a second in that ${spanOf(geo.slice)} slice, and what it had open then`, undefined, "wrap"]],
+        pin: true,
+        foot: "drag along the terrain: move the moment  ·  escape: let it go",
+      }
+    }
     if (target.kind === "ridge") {
       const session = scene.byId.get(target.sid)
       if (!session) return null

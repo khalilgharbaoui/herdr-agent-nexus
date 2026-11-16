@@ -6,7 +6,7 @@
 //   node v5/tools/poke.mjs wE:p1Q1 "move:420,1055;wait:400;click:420,1055;key:i"
 //   node v5/tools/poke.mjs wE:p1Q1 --sweep 400     400 moves along a diagonal, as fast as herdr takes them
 //
-// Verbs: move:x,y  click:x,y  middle:x,y  wheel:x,y,1 (down) or -1 (up)  key:<char or name>  wait:ms
+// Verbs: move:x,y  click:x,y  middle:x,y  down:x,y  drag:x,y  up:x,y  wheel:x,y,1 (down) or -1 (up)  key:<char or name>  wait:ms
 // This tests v5, not herdr's forwarding of a real mouse: for that, use the mouse.
 
 import { execFileSync } from "node:child_process"
@@ -38,7 +38,8 @@ if (rest[0] === "--sweep") {
       const button = verb === "click" ? "left" : "middle"
       send(sgr("down", x, y, { ...options, button }))
       send(sgr("up", x, y, { ...options, button }))
-    } else if (verb === "wheel") send(sgr(amount < 0 ? "wheel-up" : "wheel-down", x, y, options))
+    } else if (verb === "down" || verb === "drag" || verb === "up") send(sgr(verb, x, y, { ...options, button: "left" }))
+    else if (verb === "wheel") send(sgr(amount < 0 ? "wheel-up" : "wheel-down", x, y, options))
     else console.error(`unknown verb ${verb}`)
     await sleep(120)
   }

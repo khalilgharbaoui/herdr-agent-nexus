@@ -272,12 +272,48 @@ export const terrain = {
     return null
   },
 
+  // Scrubbing. A drag along the terrain holds one moment of the window: it is read on the front
+  // ridge (the focused thread's, at full size) in whole slices, and every ridge shows where it
+  // stood then. The moment is the pinned card's own target, so letting the card go lets it go.
+  scrubAt(ui) {
+    return ui?.pinned?.target.kind === "scrub" ? ui.pinned.target.at : null
+  },
+
+  terrainTimeAt(x, y) {
+    const geo = this.terrainGeo
+    const T = this.G.terrain
+    const front = geo?.ridges.find((ridge) => ridge.depth === 0)
+    if (!front || !T || y < T.y + this.u(26) || y > T.y + T.h || x < T.x || x > T.x + T.w) return null
+    const share = clamp((x - front.left) / (front.right - front.left), 0, 1)
+    return geo.from + Math.min(BINS - 1, Math.round(share * BINS)) * geo.slice
+  },
+
+  // Where a moment stands on a ridge: on its line, at the height the ridge had then.
+  ridgeSpot(ridge, at) {
+    const geo = this.terrainGeo
+    const share = (at - geo.from) / (geo.slice * BINS)
+    if (share < 0 || share > 1) return null
+    const value = ridge.values[clamp(Math.floor(share * BINS), 0, BINS - 1)]
+    return { x: ridge.left + share * (ridge.right - ridge.left), y: ridge.base - (Math.min(value, geo.top) / geo.top) * ridge.height, base: ridge.base, value }
+  },
+
   // The moving parts: a head where each working thread's ridge meets now, at the height of its
   // newest reading, and above it one mote for every five seconds a model call has been running
   // without a first word (the charge before it speaks).
-  terrainSprites(scene, now, out) {
+  terrainSprites(scene, now, out, ui) {
     const geo = this.terrainGeo
     if (!geo) return
+    // the scrubbed moment: a mark on every ridge where it stood then, and one on the ground
+    // under it, so the moment reads as a line running back with the terrain's own perspective
+    const held = this.scrubAt(ui)
+    if (held !== null) {
+      for (const ridge of geo.ridges) {
+        const spot = this.ridgeSpot(ridge, held)
+        if (!spot) continue
+        out.push({ key: `scrub:${ridge.sid}`, kind: `${ridge.depth === 0 ? "pulse" : "dot"}|${INK.text}`, x: spot.x, y: spot.y, z: 12 })
+        if (spot.y < spot.base - this.u(6)) out.push({ key: `scrubbase:${ridge.sid}`, kind: `mote|${INK.text}`, x: spot.x, y: spot.base, z: 12 })
+      }
+    }
     const u = (value) => this.u(value)
     for (const ridge of geo.ridges) {
       const session = scene.byId.get(ridge.sid)

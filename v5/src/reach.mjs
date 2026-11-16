@@ -224,8 +224,8 @@ export const reach = {
     const head = turn.live ? Math.floor((((second - turn.start) / span) * (tx1 - tx0)) / 2) : -1
     const age = now - newest
     const clock = !turn.live ? 0 : running || age < 60e3 ? Math.floor(now / 10e3) : Math.floor(now / 60e3)
-    const labels = ["thread", "turn", "live", "calls", "ended", "failed", "scale", "now line", "ages", "wire"]
-    const parts = [session.id, turn.start, turn.live, tools, ended, failed, span, head, clock, this.G.busX]
+    const labels = ["thread", "turn", "live", "calls", "ended", "failed", "scale", "now line", "ages", "wire", "scrub"]
+    const parts = [session.id, turn.start, turn.live, tools, ended, failed, span, head, clock, this.G.busX, this.scrubAt(ui) ?? ""]
     this.signed = { labels, parts }
     return parts.join("|")
   },
@@ -462,6 +462,12 @@ export const reach = {
       this.note("reach-more", { x: groupX - u(4), y: y - u(16), w: tx0 - groupX, h: rowH }, "REACH · NOT SHOWN", count(hidden.length, "target"), [["WHY", "the rows that fit show the targets touched most recently; these were touched longer ago"], ["WHICH", hidden.slice(0, 14).map((leaf) => leaf.name).join(", ") + (hidden.length > 14 ? ` and ${hidden.length - 14} more` : "")]])
     }
 
+    // a moment scrubbed on the terrain, when it lies in this turn: the white line
+    const held = this.scrubAt(ui)
+    if (held !== null && held >= turn.start && held <= turn.start + span) {
+      const x = Math.round(xOf(held))
+      this.line(c, x, axisY - u(6), x, bottom, rgba(INK.text, 0.8), 1)
+    }
     // now: the cyan line through every row
     if (turn.live) {
       const second = Math.floor(now / 1000) * 1000

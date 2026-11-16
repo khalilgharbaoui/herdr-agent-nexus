@@ -24,6 +24,11 @@ export const card = {
       return { x: flock.sx[target.index], y: flock.sy[target.index] }
     }
     if (target.moon) return (this.moons ?? []).find((moon) => moon.sid === target.id) ?? undefined
+    if (target.kind === "scrub") {
+      // the scrubbed moment steps left with the terrain: its mark is on the front ridge
+      const front = this.terrainGeo?.ridges.find((ridge) => ridge.depth === 0)
+      return (front && this.ridgeSpot(front, target.at)) ?? undefined
+    }
     if (target.sat) return (this.flock.sats ?? []).find((sat) => sat.id === target.id) ?? undefined
     if (target.moving && (target.kind === "tool" || target.kind === "step")) {
       const g = G.rowOf.get(target.sid)

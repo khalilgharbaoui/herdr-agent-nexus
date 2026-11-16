@@ -69,6 +69,8 @@ export class Controller {
       ui.hover = target
       return
     }
+    // a scrubbed moment that has left the terrain's window is let go
+    if (ui.pinned?.target.kind === "scrub" && this.renderer.terrainGeo && ui.pinned.target.at < this.renderer.terrainGeo.from) ui.pinned = null
     if (!ui.pointer || !this.scene.world) return
     const target = this.renderer.hitTest(ui.pointer.x, ui.pointer.y, this.scene, now)
     const same = target && ui.hover && target.kind === ui.hover.kind && target.id === ui.hover.id
@@ -114,6 +116,29 @@ export class Controller {
     const scene = this.scene
     ui.pointer = { x: event.x, y: event.y, at: now }
     ui.walk = null
+    if (event.kind === "up") {
+      // on the terrain a press may become a drag, so its click waits for the release
+      const from = this.dragFrom
+      this.dragFrom = null
+      if (from?.terrain && !from.dragged && scene.world) return this.click(this.renderer.hitTest(from.x, from.y, scene, now), from.event, now)
+      return ""
+    }
+    if (event.kind === "drag" && this.dragFrom?.terrain) {
+      // a drag that began on the terrain holds a moment of it: every ridge shows where it stood
+      // then, and the card reads the moment out
+      this.dragFrom.dragged = true
+      this.counts.moves += 1
+      const at = this.renderer.terrainTimeAt(event.x, this.dragFrom.y)
+      if (at !== null) {
+        const r = this.renderer.u(8)
+        ui.pinned = { target: { kind: "scrub", id: "scrub", at, rect: { x: event.x - r, y: event.y - r, w: r * 2, h: r * 2 } }, anchor: { x: event.x, y: event.y } }
+        ui.card = null
+        ui.hover = null
+        ui.tip = "scrubbing the terrain  ·  escape: let the moment go"
+        return `scrubbing the terrain: ${new Date(at).toTimeString().slice(0, 8)}`
+      }
+      return ""
+    }
     if (event.kind === "move" || event.kind === "drag") {
       this.counts.moves += 1
       this.refresh(now)
@@ -135,7 +160,16 @@ export class Controller {
       return "nothing scrolls here"
     }
     if (event.kind !== "down") return ""
+    const onTerrain = !ui.help && event.button === "left" && !event.alt && !event.ctrl && this.renderer.terrainTimeAt(event.x, event.y) !== null
+    // a press on a mark of the terrain (a diamond, a flag, a name, a button) is a click at once;
+    // on a ridge or the ground it may be the start of a drag
+    const under = onTerrain ? this.renderer.hitTest(event.x, event.y, scene, now) : null
+    this.dragFrom = { x: event.x, y: event.y, event, terrain: onTerrain && (!under || under.kind === "ridge" || under.kind === "terrain") }
     this.counts.clicks += 1
+    if (this.dragFrom.terrain) {
+      ui.flashes.push({ x: event.x, y: event.y, at: now })
+      return "pressed on the terrain: release to click, drag to scrub"
+    }
     ui.flashes.push({ x: event.x, y: event.y, at: now })
     const target = this.renderer.hitTest(event.x, event.y, scene, now)
     return this.click(target, event, now)

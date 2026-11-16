@@ -107,8 +107,9 @@ function parsePoke(script, cell) {
     if (verb === "key") events.push({ type: "key", key: rest })
     else if (verb === "wait") events.push({ wait: numbers[0] })
     else if (verb === "move") events.push({ type: "mouse", kind: "move", button: null, ...at })
-    else if (verb === "click" || verb === "middle") events.push({ type: "mouse", kind: "down", button: verb === "click" ? "left" : "middle", ...at })
+    else if (verb === "click" || verb === "middle") events.push({ type: "mouse", kind: "down", button: verb === "click" ? "left" : "middle", ...at }, { type: "mouse", kind: "up", button: verb === "click" ? "left" : "middle", ...at })
     else if (verb === "wheel") events.push({ type: "mouse", kind: "wheel", button: null, dy: numbers[2] ?? 1, dx: 0, ...at })
+    else if (verb === "down" || verb === "drag" || verb === "up") events.push({ type: "mouse", kind: verb, button: "left", ...at })
   }
   return events
 }

@@ -999,7 +999,7 @@ export class Renderer {
       if (blip) out.push({ key: "link-pane", kind: `ring|${INK.text}`, x: blip.x, y: blip.y, top: true })
       const box = pointing.entry?.port ? G.ports.get(pointing.entry.port) : null
       if (box) out.push({ key: "link-port", kind: `ring2|${INK.text}`, x: box.x, y: box.y, top: true })
-    }    this.terrainSprites(scene, now, out)
+    }    this.terrainSprites(scene, now, out, ui)
     // the inspection card follows its mark, tied to it by a leader
     this.layCard(scene, ui, now)
     // explain mode: a ring on the one mark each tag is about

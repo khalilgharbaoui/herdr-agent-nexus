@@ -52,7 +52,7 @@ export const charts = {
     const newest = session.steps[session.steps.length - 1]
     let running = 0
     for (const tool of newest?.tools ?? []) if (tool.end === null) running += 1
-    return [session.id, span, Math.floor(now / (span / SLICES)), session.steps.length, newest?.end ?? 0, newest?.tools.length ?? 0, running, session.context.used, session.context.limit, account?.name ?? "", account?.five?.used ?? "", account?.five?.resetsAt ?? 0, trail.length, Math.floor(now / 30e3)].join("|")
+    return [this.scrubAt(ui) ?? "", session.id, span, Math.floor(now / (span / SLICES)), session.steps.length, newest?.end ?? 0, newest?.tools.length ?? 0, running, session.context.used, session.context.limit, account?.name ?? "", account?.five?.used ?? "", account?.five?.resetsAt ?? 0, trail.length, Math.floor(now / 30e3)].join("|")
   },
 
   drawCharts(c, scene, ui, now) {
@@ -71,6 +71,14 @@ export const charts = {
     this.chartContext(c, frame(0), session, from, span, now, color)
     this.chartLatency(c, frame(1), session, from, span, now, color)
     this.chartWindow(c, frame(2), scene, session, now)
+    // a moment scrubbed on the terrain stands on the two charts that share its window
+    const held = this.scrubAt(ui)
+    if (held !== null && held >= from && held <= from + span) {
+      for (const f of [frame(0), frame(1)]) {
+        const x = Math.round(f.px + ((held - from) / span) * f.pw)
+        this.line(c, x, f.py, x, f.py + f.ph, rgba(INK.text, 0.75), 1)
+      }
+    }
   },
 
   // The head of a chart: its name, what it measures, and the newest value at the right.
