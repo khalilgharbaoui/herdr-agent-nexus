@@ -397,6 +397,7 @@ export class DemoSource {
         steps,
         marks: session.marks.filter((mark) => mark.at <= now),
         cache: this.cacheOf(session, steps, busy, now),
+        lastTurn: busy ? null : lastTurnOf(session, steps, now),
       }
     })
     const panes = []
@@ -421,4 +422,15 @@ export class DemoSource {
       cost24h: { cost: 212.4 + sessions.reduce((sum, session) => sum + session.cost, 0), sessions: 86 },
     }
   }
+}
+
+// A resting thread's last turn, from what the simulation still holds of it.
+function lastTurnOf(session, steps, now) {
+  let start = 0
+  for (const mark of session.marks) if (mark.kind === "user" && mark.at <= now) start = mark.at
+  const own = steps.filter((step) => step.start >= start)
+  if (!own.length) return null
+  const tools = own.flatMap((step) => step.tools)
+  const end = session.idleSince ?? own[own.length - 1].end ?? now
+  return { start: start || own[0].start, end: Math.max(end, start), calls: own.length, tools: tools.length, failed: tools.filter((tool) => tool.status === "error").length, out: session.turnOut ?? 0, cost: 0, outcome: session.outcome || "succeeded", capped: false }
 }

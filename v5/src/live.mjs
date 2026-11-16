@@ -43,6 +43,7 @@ const columnsFor = (tail) => `
 
 const TAIL_CHARS = 1600
 const CACHE_ASSUMED = 3600e3 // the lifetime taken for a thread's prompt cache when it cannot be measured
+const LAST_TURN_STEPS = 400 // how many of a turn's newest steps its summary is read from
 const SUBAGENT_PREFIX = /^You are a subagent spawned by another session\.\s*/
 
 function readWindow(window, now, span) {
@@ -105,6 +106,7 @@ export class LiveSource {
     this.cacheSeen = new Map() // session id -> the newest call of its transcript that touched the cache, or { none: why }
     this.cacheThreads = []
     this.lastCalls = new Map() // session id -> { updated, call }: its newest model call, for a thread with no recent steps
+    this.lastTurns = new Map() // session id -> { updated, turn }: what its last turn was, see lastTurn
   }
 
   async open() {
@@ -128,6 +130,15 @@ export class LiveSource {
         from session_message m where m.session_id = ? and m.type = 'assistant' order by m.seq desc limit 60`)
     this.costQuery = this.db.prepare("select coalesce(sum(cost), 0) as cost, count(*) as sessions from session_v2 where time_updated > ?")
     this.lastCallQuery = this.db.prepare("select m.time_created as start, json_extract(m.data, '$.time.completed') as end from session_message m where m.session_id = ? and m.type = 'assistant' order by m.seq desc limit 1")
+    // A thread's last turn, however old: from its newest message of the user to its newest step.
+    this.lastUserQuery = this.db.prepare("select seq, time_created as at from session_message where session_id = ? and type = 'user' order by seq desc limit 1")
+    this.lastTurnQuery = this.db.prepare(`
+      select count(*) as calls, min(created) as first, max(ended) as ended, sum(tout) as out, sum(cost) as cost, sum(tools) as tools, sum(failed) as failed
+        from (select m.time_created as created, coalesce(json_extract(m.data, '$.time.completed'), m.time_created) as ended,
+                     coalesce(json_extract(m.data, '$.tokens.output'), 0) as tout, coalesce(json_extract(m.data, '$.cost'), 0) as cost,
+                     (select count(*) from json_each(m.data, '$.content') j where json_extract(j.value, '$.type') = 'tool') as tools,
+                     (select count(*) from json_each(m.data, '$.content') j where json_extract(j.value, '$.type') = 'tool' and json_extract(j.value, '$.state.status') = 'error') as failed
+                from session_message m where m.session_id = ? and m.type = 'assistant' and m.seq > ? order by m.seq desc limit ${LAST_TURN_STEPS})`)
     this.pollHerdr()
     this.readFiles()
     this.readHistory()
@@ -187,6 +198,32 @@ export class LiveSource {
     this.lastCalls.set(session.id, { updated: session.updated, call })
     if (this.lastCalls.size > 600) this.lastCalls.delete(this.lastCalls.keys().next().value)
     return call
+  }
+
+  // What a thread's last turn was, however long ago: when it began and ended, how many model
+  // calls and tool calls it made, how many of those failed, what it wrote and cost, how it
+  // ended. The history this program keeps is half an hour deep, so a thread that rested longer
+  // had nothing to say for itself. This is one small answer per thread, read again only when
+  // the thread's own record moved, from at most LAST_TURN_STEPS of the turn's newest steps
+  // (`capped` says when the turn was longer than that), a few threads a poll.
+  lastTurn(session, budget) {
+    const known = this.lastTurns.get(session.id)
+    if (known && known.updated === session.updated) return known.turn
+    if (budget.left <= 0) return known?.turn // what was read before stands until its turn comes
+    budget.left -= 1
+    let turn = null
+    try {
+      const asked = this.lastUserQuery.get(session.id)
+      const row = this.lastTurnQuery.get(session.id, asked?.seq ?? -1)
+      if (row?.calls) {
+        const start = asked?.at ?? row.first
+        const end = Math.max(row.ended ?? start, start)
+        turn = { start, end, calls: row.calls, tools: row.tools ?? 0, failed: row.failed ?? 0, out: row.out ?? 0, cost: row.cost ?? 0, outcome: session.outcome || "", capped: row.calls >= LAST_TURN_STEPS }
+      }
+    } catch {}
+    this.lastTurns.set(session.id, { updated: session.updated, turn })
+    if (this.lastTurns.size > 600) this.lastTurns.delete(this.lastTurns.keys().next().value)
+    return turn
   }
 
   // The context at every model call, where the thread's transcript has it. opencode records a
@@ -570,7 +607,9 @@ export class LiveSource {
     const sessions = [...byId.values()].map((row) => this.toSession(row, now))
     const asked = this.cacheThreads.length > 0
     this.cacheThreads = []
+    const budget = { left: 4 } // last turns read anew in this poll: the newest threads first
     for (const session of sessions) {
+      if (!session.busy) session.lastTurn = this.lastTurn(session, budget) ?? null
       if (session.busy || session.blocked || now - session.updated < this.options.historyMs) this.timeline(session, now)
       // a cache lives an hour at most: a thread whose last call is older is cold whatever its lifetime was
       session.cache = this.cacheFor(session)

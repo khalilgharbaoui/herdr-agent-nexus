@@ -4,7 +4,15 @@
 import { cacheSign, cacheState, cacheWord } from "./cache.mjs"
 import { FILTER_NAME } from "./model.mjs"
 import { PANEL, PORT_COLOR, bare, clean, homed } from "./theme.mjs"
-import { FAMILY, INK, TAU, agoOf, clamp, clockOf, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+
+// How a turn ended, as the row says it: the word, its colour, its sign and the sentence for the card.
+function lastTurnEnd(last) {
+  if (last.outcome === "failed") return { word: "failed", color: INK.bad, sign: "cross", said: "it failed" }
+  if (last.outcome === "interrupted") return { word: "interrupted", color: INK.soft, sign: "ring", said: "it was interrupted" }
+  if (last.outcome === "succeeded") return { word: "done", color: INK.good, sign: "dot", said: "it finished" }
+  return { word: "ended", color: INK.dim, sign: "ring", said: "the record does not say how" }
+}
 
 export const circuit = {
   // ---------------------------------------------------------------- wires
@@ -275,6 +283,8 @@ export const circuit = {
     if (session.turn) parts.push(Math.floor((now - session.turn.start) / 1000))
     else parts.push(Math.floor((now - (session.idleSince || session.updated)) / 60e3))
     parts.push(cacheSign(session.cache, now))
+    const last = session.lastTurn
+    if (last) parts.push(last.end, last.calls, last.tools, last.outcome)
     const live = g.live ? this.liveOf(session) : null
     if (live?.kind === "tool") parts.push(live.tool.id, live.more, Math.floor((now - live.tool.start) / 1000))
     else if (live?.item) parts.push(live.item.key, this.shownOf(live.item))
@@ -394,7 +404,9 @@ export const circuit = {
       this.hit("cache", session.id, { x: x - u(3), y: metaY - u(15), w: w + u(6), h: u(20) })
       x += w
     }
-    if (row.closed && row.tally) this.run(c, x, metaY, [[`  ·  ${row.tally.threads} subagent${row.tally.threads === 1 ? "" : "s"} folded${row.tally.working ? `, ${row.tally.working} working` : ""}`, { size: 14, color: row.tally.working ? INK.live : INK.soft }]])
+    if (row.closed && row.tally) x = this.run(c, x, metaY, [[`  ·  ${row.tally.threads} subagent${row.tally.threads === 1 ? "" : "s"} folded${row.tally.working ? `, ${row.tally.working} working` : ""}`, { size: 14, color: row.tally.working ? INK.live : INK.soft }]])
+    // a resting thread says what its last turn was, in the right half of this line
+    if (!working && !waiting && session.state !== "stalled" && session.lastTurn) this.drawLastTurn(c, g, session, session.lastTurn, x + u(36), metaY, now)
     if (working) {
       const phase = session.phase
       const word = phase.key === "tool" ? "" : `${phase.key === "calling" ? "calling the model" : phase.key} ${spanOf(Math.max(0, now - (phase.since ?? now)))}`
@@ -436,6 +448,73 @@ export const circuit = {
     } else {
       this.text(c, "waiting for the first words of this step", titleX, liveY, { size, color: INK.faint })
     }
+  },
+
+  // A resting thread's last turn, right-aligned on its meta line: how long it ran, its model
+  // calls and tool calls (failed ones in red), what it wrote, what it cost, and how it ended.
+  // It is one small record per thread (see LiveSource.lastTurn), so it is there however long
+  // the thread has rested. A narrow row drops parts from the left; how it ended always stays.
+  drawLastTurn(c, g, session, last, left, y, now) {
+    const u = (value) => this.u(value)
+    const end = lastTurnEnd(last)
+    const dim = { size: 14, color: INK.dim }
+    const soft = { size: 14, color: INK.soft }
+    const gap = ["  ·  ", { size: 14, color: INK.faint }]
+    // in reading order; `drop` is the order they go when the row is narrow (0 never goes)
+    const parts = [
+      { drop: 1, pieces: [["LAST TURN", { size: 11.5, family: FAMILY.label, weight: "600", color: INK.faint, spacing: 2.4 }]], tail: "   " },
+      { drop: 6, pieces: [["ran ", dim], [spanOf(Math.max(1, last.end - last.start)), soft]] },
+      { drop: 5, pieces: [[`${last.capped ? "over " : ""}${last.calls}`, soft], [last.calls === 1 ? " call" : " calls", dim]] },
+      { drop: 4, pieces: last.tools ? [[String(last.tools), soft], [last.tools === 1 ? " tool" : " tools", dim], ...(last.failed ? [[`, ${last.failed} failed`, { size: 14, color: INK.bad }]] : [])] : [] },
+      { drop: 3, pieces: last.out ? [[compactOf(last.out), soft], [" tok", dim]] : [] },
+      { drop: 2, pieces: last.cost ? [[moneyOf(last.cost), soft]] : [] },
+      { drop: 0, pieces: [[end.word, { size: 14, family: FAMILY.monoMedium, color: end.color }]], mark: true },
+    ].filter((part) => part.pieces.length)
+    const markW = u(16)
+    const measure = () => parts.reduce((sum, part, index) => sum + part.pieces.reduce((width, [value, style]) => width + this.width(c, value, style), 0) + (part.mark ? markW : 0) + (index < parts.length - 1 ? this.width(c, part.tail ?? gap[0], gap[1]) : 0), 0)
+    const room = g.textRight - left
+    for (let drop = 1; drop <= 6 && measure() > room; drop += 1) {
+      const at = parts.findIndex((part) => part.drop === drop)
+      if (at >= 0) parts.splice(at, 1)
+    }
+    const width = measure()
+    if (width > room) return
+    let x = g.textRight - width
+    const x0 = x
+    for (const [index, part] of parts.entries()) {
+      if (part.mark) {
+        // how it ended, as a sign before the word: a full dot when it finished clean, a cross
+        // when it failed, a ring when it was interrupted or the record does not say
+        const cx = x + u(5)
+        const cy = y - u(5)
+        if (end.sign === "cross") {
+          this.line(c, cx - u(4), cy - u(4), cx + u(4), cy + u(4), end.color, 1.5)
+          this.line(c, cx - u(4), cy + u(4), cx + u(4), cy - u(4), end.color, 1.5)
+        } else if (end.sign === "dot") this.dot(c, cx, cy, u(3.5), end.color)
+        else {
+          c.strokeStyle = end.color
+          c.lineWidth = 1.5
+          c.beginPath()
+          c.arc(cx, cy, u(3.5), 0, TAU)
+          c.stroke()
+        }
+        x += markW
+      }
+      x = this.run(c, x, y, part.pieces)
+      if (index < parts.length - 1) x = this.run(c, x, y, [[part.tail ?? gap[0], gap[1]]])
+    }
+    const ago = agoOf(now - last.end)
+    this.note(`last:${session.id}`, { x: x0 - u(4), y: y - u(16), w: width + u(8), h: u(22) }, "LAST TURN", `${end.word}, ${ago} ago`, [
+      ["THREAD", session.title],
+      ["BEGAN", `${clockOf(last.start)}  ·  ${agoOf(now - last.start)} ago`],
+      ["ENDED", `${clockOf(last.end)}  ·  ${ago} ago  ·  ${end.said}`, end.color],
+      ["RAN", spanOf(Math.max(1, last.end - last.start))],
+      ["MODEL CALLS", last.capped ? `over ${last.calls}: only its newest ${last.calls} steps are counted` : String(last.calls)],
+      ["TOOL CALLS", last.tools ? `${last.tools}${last.failed ? `, ${last.failed} failed` : ", none failed"}` : "none", last.failed ? INK.bad : undefined],
+      ["WROTE", last.out ? `${compactOf(last.out)} tok` : "not reported"],
+      ["COST", last.cost ? moneyOf(last.cost) : "not reported"],
+      ["READ FROM", "the thread's own record, from its newest message of yours to its newest step: one small summary a thread, read again only when the thread moves, so it is here however long the thread has rested"],
+    ], end.color)
   },
 
   // ---------------------------------------------------------------- equipment

@@ -254,6 +254,12 @@ export class Renderer {
       }
       first = this.scroll
       end = fit(first)
+      // what the window leaves over is air between the rows it shows, not a band under them
+      const shown = rows.slice(first, end)
+      const threads = shown.filter((row) => row.type !== "project").length
+      const over = room - natural.slice(first, end).reduce((sum, height) => sum + height, 0)
+      const air = threads ? Math.min(u(22), Math.floor(over / threads)) : 0
+      if (air > 0) heights = natural.map((height, index) => (index >= first && index < end && rows[index].type !== "project" ? height + air : height))
     }
     this.follow = false
     this.scrollFocus = scene.focus.id
