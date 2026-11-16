@@ -1,16 +1,24 @@
 {
-  "name": "agent-nexus",
-  "version": "2.0.0",
-  "description": "A flight recorder for opencode sessions, subagents and herdr agents, drawn in the terminal.",
-  "main": "nexus.mjs",
+  "name": "herdr-agent-nexus",
+  "version": "5.0.0",
+  "description": "Every opencode session, subagent and herdr agent on this machine as one living circuit, drawn in the terminal. A herdr plugin.",
+  "main": "v5/nexus.mjs",
   "scripts": {
-    "start": "node --no-warnings nexus.mjs",
-    "demo": "node --no-warnings nexus.mjs --demo",
+    "start": "node --no-warnings v5/nexus.mjs",
+    "demo": "node --no-warnings v5/nexus.mjs --demo",
     "edge": "node --no-warnings tools/edge.mjs"
   },
-  "keywords": [],
+  "keywords": [
+    "herdr-plugin",
+    "herdr",
+    "opencode",
+    "kitty-graphics"
+  ],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=22.13"
+  },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0"
   }
