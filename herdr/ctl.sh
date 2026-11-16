@@ -141,8 +141,10 @@ status() {
   # shellcheck disable=SC2016 # JavaScript, not shell
   "$node" -e '
 const fs = require("node:fs")
-const file = process.argv[1]
+const [file, pidFile] = process.argv.slice(1)
 try {
+  // a report from before this run started is the last run speaking, not this one
+  if (fs.statSync(file).mtimeMs < fs.statSync(pidFile).mtimeMs) throw new Error("stale")
   const stats = JSON.parse(fs.readFileSync(file, "utf8"))
   const age = Math.round((Date.now() - fs.statSync(file).mtimeMs) / 1000)
   const parts = [
@@ -158,9 +160,9 @@ try {
   if (stats.error) parts.push(`error: ${String(stats.error).split("\n")[0]}`)
   console.log(`agent-nexus: ${parts.join(", ")}`)
 } catch {
-  console.log(`agent-nexus: no report yet in ${file}`)
+  console.log(`agent-nexus: no report of this run yet in ${file} (it writes one every two seconds)`)
 }
-' "$RUN/stats.json"
+' "$RUN/stats.json" "$RUN/nexus.pid"
 }
 
 case "${1:-}" in
