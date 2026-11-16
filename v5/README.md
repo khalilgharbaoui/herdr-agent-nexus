@@ -101,6 +101,13 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | Tone of a name in REACH, and the word at its right | How long ago the target was last touched: bright for 20 s, softer for five minutes, dim after that. The word: "now", "20s", "3m", or "running" in cyan while a call on it is out; a clock time for a turn that has ended | Changes every ten seconds under a minute, every minute after | The target | Pins it |
 | Packet on a REACH branch | A call of the focused thread leaving its wire for its target, and its result coming back: the same sign per equipment as on a synapse, red when it failed | Out when the call starts, back when it ends, a flash at the target when the result lands (longer and red for a failure) | n/a | n/a |
 | Motes on a REACH branch | A call that is still out | Run from the wire to the target for as long as the call runs | The branch: what it is, how many calls are out | Pins it |
+| Scrubbed moment (a drag along the terrain) | One moment of the terrain's window, read on the front ridge in whole slices. A white mark on every ridge where it stood then (and one on the ground under it), a white line at the same moment on the CONTEXT and LATENCY charts and, when it lies in the turn, on REACH | Follows the drag; then steps left with the terrain and is let go when it leaves the window | The SCRUB card: the time, and for every listed thread its tokens a second in that slice and what it had open then (the tool it ran, reasoning, writing, or waiting for the first words) | A press on a ridge or the ground is a click when released without a drag, so a drag never moves the focus. Escape lets the moment go |
+| The focused thread's wire (circuit to tip) | The path of what the thread writes: motes run up it while it works (density is the rate), a burst when a call reports | See "Motes along an axon" | What it is, what it carries, where it ends | Pins it |
+| Synapse (curve from a thread's wire to an equipment box) | That the thread acted on that equipment: shown for the three kinds a working thread used last (two for a resting one, for 90 s), brighter the more recent, in the equipment's colour while a call is out, amber to YOU while the thread waits on you | Packets and motes travel it (see "Packet on a synapse") | Thread and equipment, whether a call is out, when it was last used | Pins it |
+| Focus header (right of the core) | FOCUS and the number: which thread is on the stage. Title: the thread. Path line: account, project, parent, agent. Model line: model, effort, subagents, depth, id. "asked": the message that started the turn. Figures: output this turn, rate, context, spent, one dot | Change with the data | The title opens the thread's card; the other lines say each part in full; CONTEXT opens the context card, ONE DOT the flock's, a figure what is counted and from where | Pins it |
+| Section label (TIME TERRAIN, ACCOUNTS, CIRCUIT, EQUIPMENT, COMMS, SECTOR MAP, LOG) and a chart's head | The name of a part of the screen | Still | What the part shows, its marks, its keys; a chart's head opens the chart's own card (context, account) or says what the chart is | Pins it |
+| Workspace name in the sector map | A herdr workspace; its tabs follow on the line | Still | Its panes by state, and whether herdr shows it now | Pins it |
+| Log line "compacted" | A thread's context fell by more than a fiftieth of its window and 5k tokens between two readings: a compaction or a pruning, with both figures | Lights up as any new line; on the stage the head of the context ring runs back | The line in full | Focuses its thread |
 | Everything from v4 | See `../v4/README.md`: rails, cells, axon ticks, pulses, equipment, phase strip, comms, sector map, log, key hints | Unchanged | Unchanged | Unchanged |
 
 ### What the flock does, and when
@@ -129,6 +136,7 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | `{` `}` | previous or next region |
 | `enter` while walking | does what a click on that mark does |
 | `w` | terrain window: 1, 5 or 30 minutes |
+| drag along the terrain | holds one moment of the window (see "Scrubbed moment" in the table); `escape` lets it go |
 
 Mouse: a dot of the flock is a hover and click target, hit in screen space, nearest to the eye
 first. A ridge point, a diamond, a flag and a window button are targets. A moon is a target.
@@ -227,6 +235,17 @@ diff, a quarter of it, no longer makes an object per sprite per frame).
 Not flat by the letter of the brief: six threads worked for the first eight and a half minutes
 of that watch and four after. The line did not move when they dropped.
 
+**Which level is the settled one (2026-11-16).** There is not one level but a band, about 171
+to 218 MB, and it does not leak. One run was left alone for 2 hours 49 minutes at 91 columns:
+210 MB six minutes in, 209 MB at the end (large blocks 64, small blocks 75, V8 53). What moves
+is the allocator's small blocks, 42 to 77 MB: memory the program has already freed and the
+allocator hands back to the system late and in steps. A watch after a restart shows it: 213 to
+218 MB for seven minutes, then 198 to 201, then 185, with small blocks going 77, 56, 42 MB
+and nothing else changing (V8 43 to 50 MB, large blocks flat). The 171 to 176 MB of the fifth
+session was the low end of that band (small blocks 39 to 43) at 84 columns; large blocks were
+64 MB there and are 64 to 77 MB at 91 columns. So the footprint to hold it to is "under about
+220 MB and not rising", not a single figure.
+
 ## Files
 
 As v4, plus `src/flock.mjs` (the swarm: a dot's life from the tip to the globe, simulation,
@@ -236,8 +255,10 @@ projection, hit test), `src/body.mjs` (the view of the core: projection, rings, 
 shows it), `src/cache-worker.mjs` (reads the transcripts off the main thread), `tools/cache-probe.mjs`
 (what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
 `tools/gfx-probe.mjs`, `tools/mem-watch.mjs` and `tools/mem-source.mjs` (see "Memory"),
-`tools/coverage.mjs` (which ink on the still layer no target covers) and `src/allocations.mjs`
-(the allocation sampler). `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
+`tools/coverage.mjs` (which ink on the still layer no target covers), `src/allocations.mjs`
+(the allocation sampler), `src/reach.mjs` (REACH: what the turn touched), `tools/burst-watch.mjs`
+(cost and repaint causes, report by report) and `tools/compact-check.mjs` (provokes a
+compaction in the demo). `src/sprites.mjs` is the paged atlas; `src/terminal.mjs` and
 `src/encoder.mjs` send a z per placement, the page a sprite sits on, and the heartbeat.
 
 ## State of the build
@@ -340,15 +361,53 @@ labels (TIME TERRAIN, ACCOUNTS, CIRCUIT, EQUIPMENT, COMMS, SECTOR MAP, LOG), the
 names in the sector map, the focused thread's wire up to the tip and the synapse wires to the
 equipment.
 
-Seen while measuring, not chased: the core is at times painted 6 times a second instead of
-1.5 to 2.5, and for those seconds the program writes 1.0 to 1.9 MB/s at 11 to 15% of a core
-(the median over the watch was 7.3% and 630 kB/s).
+Sixth session (2026-11-16, 02:55 to 04:55), in the tenth addendum's order:
 
-Not done, in the brief's order: the rest of the small marks (above), the explain-mode tags
-that overlap, scrubbing the terrain by dragging, the context head running back after a
-compaction (not provoked in the demo yet), and the last look at the whole screen. In a
-headless frame the weakest part is the left column between THIS TURN and the terrain: about
-380 by 540 px with only the focused thread's wire in it.
+- **The core repaint bursts.** Not the pointer: a running tool call. Its pillar on the turn
+  clock is on a log scale, 24 steps in the call's first second, and every step painted the
+  whole core again, so a thread that makes quick calls held it at 6 to 8.5 paints a second
+  (816 kB/s and 10.3% of a core in the report where it was caught). Running pillars are now
+  read on one shared half-second grid: 4 steps in a call's first two seconds where there were
+  23. A second, slower one: a turn past its usual length grew its clock's scale every second
+  (one core paint a second); the scale now grows in steps of a quarter of a percent. The core
+  and the flock line name the parts of their signature, and `stats.json` counts which part
+  caused each repaint (`repaintCauses`); `tools/burst-watch.mjs` prints them report by report.
+  A minute with nothing touching the pane: median 5.0% of a core and 281 kB/s, highest 6.3%
+  and 345 kB/s, the core painted 0 to 1 times a second. A minute with the pointer moving
+  across the whole pane (3.5 to 5.5 moves a second, sent through herdr, cards opening):
+  median 5.9% and 358 kB/s, highest 9.8% and 590 kB/s. No report over the class in either.
+- **A fault in the small marks of the session before.** A "note" (the header's marks, the turn
+  readout, the lines of THIS TURN) answered the pointer but its card opened only on a click:
+  the kind was missing from the list of marks that open a card on hover. It is in now.
+- **REACH** fills the left column (see the table of marks). It shows when the thread rows leave
+  the stage room; with many threads listed the stage is at its smallest and neither THIS TURN
+  nor REACH has room.
+- **Small marks.** `tools/coverage.mjs`: 1 of 3051 inked cells of the still layer has no
+  target under it (0.0%); it was 14.6% on the same data when this session began and 10.0% at
+  the end of the one before. The focus header, every section label, the workspace names, each
+  whole chart, the focused thread's wire and every synapse answer now. The wires are a row of
+  small targets along the line; the keyboard walk stops on each wire once.
+- **Explain mode.** No two tags overlap: a tag may stand on any side of its mark and slide
+  along it, twenty places are tried (three rounds), and a tag keeps its place while its mark
+  stays within 30 px. Tags still cover what is under them: that is what the mode is.
+- **Scrubbing** the terrain by dragging (see the table of marks). What is not built: the core
+  and the wires do not replay the scrubbed moment; the moment is read out, not re-enacted.
+- **The context head running back.** Not seen live (no thread compacted). Provoked in the
+  demo: `tools/compact-check.mjs` runs the demo on its own clock until a window nine tenths
+  full is compacted and reports it (898k to 260k of 1.00M, the head at rest 500 ms after the
+  reading, six places on the way, one ripple where it landed, the log line "compacted").
+- **Memory.** A band, not a level, and no leak: see "Memory".
+
+Seen in the real pane through herdr (synthetic input, the terminal holding every page): a
+hover on REACH's head opened its card, and a press, three drags and a release on the terrain
+scrubbed it (`input.json`: "scrubbing the terrain: 04:32:30"). Seen only in this program's
+own frames: how REACH, the scrub marks, the explain tags and the compaction look. Not seen by
+anyone yet: REACH and scrubbing with a real hand, and a packet travelling a REACH branch
+(placed, by the counters, as any packet).
+
+Not done: the replay of a scrubbed moment in the core and on the wires; REACH in landscape
+(the left column does not exist there); the stage's empty space above the terrain in
+landscape.
 
 Not verified: a 206 column pane in the real terminal, a resize while it runs, a quiet machine,
 and how the event-driven marks look in the pane (that they are placed there is counted, see

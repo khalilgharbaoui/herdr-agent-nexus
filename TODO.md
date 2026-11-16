@@ -5,25 +5,26 @@ is done or dropped.
 
 ## In progress
 
-- 2026-11-16 00:10: v5 runs live in herdr pane `wE:p1QF` (84 columns by 82 rows, sprite
+- 2026-11-16 04:55: v5 runs live in herdr pane `wE:p1QF` (91 columns by 82 rows, sprite
   transport, the terminal holds every sprite page; restart it in place with
-  `v5/tools/restart.sh`). A fifth designer session (on `appical`, 22:47 to 00:10) did the ninth
-  addendum's first two items and part of the third, and stopped at a committed step because
-  `appical` neared 80% of its window. Done: memory is under its class, 171 to 176 MB physical
-  footprint where it was 420 to 433 (four causes, each measured: the transcript reader read
-  files whole; the encoder made a deflate stream per tile; the young generation's flag was set
-  too late to count; tile pixels left dead blocks of odd sizes in the allocator). The prompt
-  cache has a ramp of its own: rose, orchid, cold blue, grey when cold. The header's marks,
-  the turn readout and the lines of THIS TURN are targets with cards (bare ink on the still
-  layer: 16.3% of inked cells to 10.0%, counted by `v5/tools/coverage.mjs`). Next, in the
-  brief's order: the rest of the small marks (focus header, section labels, sector map names,
-  the wires), the explain-mode tags that overlap, scrubbing the terrain by dragging, the
-  context head running back after a compaction (provoke it in the demo), then the last look
-  at the whole screen; its weakest part in a headless frame is the left column between THIS
-  TURN and the terrain, about 380 by 540 px with only a wire in it. Seen and not chased: the
-  core is at times painted 6 times a second (1.0 to 1.9 MB/s, 11 to 15% of a core for those
-  seconds). `v5/README.md` has a "Memory" section and ends with what is done, what was only
-  seen in a snapshot, and the measurements.
+  `v5/tools/restart.sh`). A sixth designer session (on `appical`, 02:55 to 04:55) worked
+  through the tenth addendum's list. Done: the core repaint bursts (a running tool call's
+  pillar stepped 24 times in its first second and painted the whole core each time; and a
+  long turn's clock grew its scale every second); REACH in the left column (what the turn
+  touched, as a tree off the thread's wire with one bar per call on the turn's time); a
+  note's card opens on hover (it only opened on a click); every remaining small mark is a
+  target (`v5/tools/coverage.mjs`: 1 of 3051 inked cells without one); explain-mode tags no
+  longer overlap; the terrain is scrubbed by dragging; the context head running back is
+  provoked in the demo (`v5/tools/compact-check.mjs`) and a real fall of a context is a log
+  line. Memory is a band of about 171 to 218 MB and does not leak. `v5/README.md` ends with
+  what was seen where and the measurements.
+- **Commits are waiting for 1Password.** Signing has answered "failed to fill whole buffer"
+  since 03:10 (the app is probably locked while the operator sleeps). Nothing was committed
+  unsigned. Every working step is recorded as a tree with its message in
+  `.git/pending-steps.tsv`; run `.git/step.sh` once 1Password is unlocked and each becomes
+  its own signed commit, in order. Until then the work is in the working tree and the index.
+- Left for a next session: replaying a scrubbed moment in the core and on the wires; REACH
+  and the stage's empty space in landscape; a look at REACH and scrubbing with a real hand.
 
 ## Open from the operator
 
