@@ -1,0 +1,65 @@
+id = "khalilgharbaoui.agent-nexus"
+name = "Agent Nexus"
+version = "5.0.0"
+# What v5 asks of herdr was measured on 0.9.5 and on nothing older: "pane list", "workspace
+# list", "tab list" and "pane current" as JSON (each pane's agent, status and session),
+# "agent focus" to go to a pane, and Kitty graphics and pixel mouse reports passed through
+# to a pane.
+min_herdr_version = "0.9.5"
+description = "Every opencode session, subagent and herdr agent on this machine as one living circuit in a pane, drawn at native resolution with Kitty graphics. Try it without any sessions: the demo action."
+platforms = ["macos", "linux"]
+
+# herdr runs this once when it installs or updates the plugin from GitHub: npm ci for the one
+# dependency (@napi-rs/canvas, a prebuilt Skia), then a check that this node can draw and can
+# open a database. It needs Node.js 22.13 or newer with npm. A linked local folder is not
+# built by herdr: run "sh herdr/build.sh" there by hand.
+[[build]]
+command = ["sh", "herdr/build.sh"]
+
+# The live view. A tab by default, since it wants a whole pane; "plugin pane open" can place
+# it as a split or zoomed too. Not as a popup: herdr passes no terminal graphics through one.
+# pane.sh finds node (herdr starts panes with the PATH of its server, which may hold none),
+# keeps the run's files in herdr's state directory for the plugin, and leaves the reason on
+# screen when v5 cannot start.
+[[panes]]
+id = "nexus"
+title = "Agent Nexus"
+placement = "tab"
+command = ["sh", "herdr/pane.sh"]
+
+# There is one Agent Nexus per user. Opening it again goes to the pane it already runs in.
+[[actions]]
+id = "open"
+title = "Agent Nexus: open in a new tab"
+description = "Start the live view in its own tab, or go to it when it already runs"
+contexts = ["workspace"]
+command = ["sh", "herdr/ctl.sh", "open", "tab"]
+
+[[actions]]
+id = "open-split"
+title = "Agent Nexus: open beside this pane"
+description = "Start the live view in a split to the right of the focused pane"
+contexts = ["pane", "workspace"]
+command = ["sh", "herdr/ctl.sh", "open", "split"]
+
+[[actions]]
+id = "demo"
+title = "Agent Nexus: demo (simulated data)"
+description = "The same view over made-up sessions: needs no opencode and reads nothing"
+contexts = ["workspace"]
+command = ["sh", "herdr/ctl.sh", "open", "tab", "demo"]
+
+[[actions]]
+id = "stop"
+title = "Agent Nexus: stop"
+description = "Quit the live view and close its pane"
+contexts = ["workspace"]
+command = ["sh", "herdr/ctl.sh", "stop"]
+
+# What it prints is in herdr's plugin log: herdr plugin log list --plugin khalilgharbaoui.agent-nexus
+[[actions]]
+id = "status"
+title = "Agent Nexus: status"
+description = "Whether it runs, in which pane, and what it last reported about itself"
+contexts = ["workspace"]
+command = ["sh", "herdr/ctl.sh", "status"]
