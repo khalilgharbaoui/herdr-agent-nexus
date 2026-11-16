@@ -55,40 +55,134 @@ export const explain = {
     return list
   },
 
+  // Where the tags go. A tag stands beside its mark, with a wedge on its edge at the point
+  // nearest the mark. It may stand on any of the four sides and slide along that side, so of the
+  // twenty places tried the one is taken that covers no other tag and no other mark (the wanted
+  // corner first). A place is kept from frame to frame while its mark stays near where it was,
+  // so tags do not jump when a mark creeps.
+  explainPlaces(items, w) {
+    const u = (value) => this.u(value)
+    const gap = u(11)
+    const key = `${this.W}x${this.H}`
+    if (this.explainKept?.key !== key) this.explainKept = { key, map: new Map() }
+    const kept = this.explainKept.map
+    const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+    const candidates = (item) => {
+      const { ax, ay, h, corner } = item
+      const list = []
+      const sides = corner === "tl" ? ["r", "b", "l", "t"] : corner === "tr" ? ["l", "b", "r", "t"] : corner === "bl" ? ["r", "t", "l", "b"] : ["l", "t", "r", "b"]
+      // along a side: the wanted corner first, then the tag slid past the mark in quarters
+      const slides = corner.startsWith("t") ? [0, 0.25, 0.5, 0.75, 1] : [1, 0.75, 0.5, 0.25, 0]
+      const across = corner.endsWith("l") ? [0, 0.25, 0.5, 0.75, 1] : [1, 0.75, 0.5, 0.25, 0]
+      for (const side of sides) {
+        for (let index = 0; index < 5; index += 1) {
+          let x
+          let y
+          if (side === "r" || side === "l") {
+            x = side === "r" ? ax + gap : ax - gap - w
+            y = ay - slides[index] * h + (slides[index] === 0 ? gap : slides[index] === 1 ? -gap : 0)
+          } else {
+            y = side === "b" ? ay + gap : ay - gap - h
+            x = ax - across[index] * w + (across[index] === 0 ? gap : across[index] === 1 ? -gap : 0)
+          }
+          list.push({ x: Math.round(Math.max(4, Math.min(this.W - w - 4, x))), y: Math.round(Math.max(4, Math.min(this.H - h - 4, y))), w, h })
+        }
+      }
+      return list
+    }
+    const costOf = (item, rect, order, others) => {
+      let cost = order * 40
+      for (const other of others) if (other) cost += overlap({ x: rect.x - u(6), y: rect.y - u(6), w: rect.w + u(12), h: rect.h + u(12) }, other) * 4
+      for (const other of items) {
+        const insideIt = other.ax > rect.x - u(8) && other.ax < rect.x + rect.w + u(8) && other.ay > rect.y - u(8) && other.ay < rect.y + rect.h + u(8)
+        if (insideIt) cost += other === item ? 1e9 : 3e4
+      }
+      // pushed off its mark by the edge of the screen
+      const dx = Math.max(rect.x - item.ax, 0, item.ax - (rect.x + rect.w))
+      const dy = Math.max(rect.y - item.ay, 0, item.ay - (rect.y + rect.h))
+      return cost + Math.max(0, Math.hypot(dx, dy) - gap * 1.5) * 400
+    }
+    const choose = (item, others) => {
+      let best = null
+      let bestCost = Infinity
+      candidates(item).forEach((rect, order) => {
+        const cost = costOf(item, rect, order, others)
+        if (cost < bestCost) {
+          bestCost = cost
+          best = rect
+        }
+      })
+      return best
+    }
+    const placed = items.map(() => null)
+    const fresh = []
+    items.forEach((item, index) => {
+      const before = kept.get(item.title)
+      if (before && before.h === item.h && Math.hypot(item.ax - before.ax, item.ay - before.ay) < u(30)) placed[index] = { x: Math.round(Math.max(4, Math.min(this.W - w - 4, item.ax + before.dx))), y: Math.round(Math.max(4, Math.min(this.H - item.h - 4, item.ay + before.dy))), w, h: item.h }
+      else fresh.push(index)
+    })
+    // the new ones one after another, then twice more each against all the others, so an early
+    // choice gives way to a later one that had nowhere else to go
+    for (const index of fresh) placed[index] = choose(items[index], placed)
+    for (let round = 0; round < 2; round += 1) for (const index of fresh) placed[index] = choose(items[index], placed.map((rect, other) => (other === index ? null : rect)))
+    for (const index of fresh) kept.set(items[index].title, { ax: items[index].ax, ay: items[index].ay, h: items[index].h, dx: placed[index].x - items[index].ax, dy: placed[index].y - items[index].ay })
+    return placed
+  },
+
   explainTags(scene, now) {
     const u = (value) => this.u(value)
     const overlays = []
     const anchors = []
     const perLine = 44
     const w = u(336)
-    this.explainList(scene).forEach(([title, text, ax, ay, corner], index) => {
+    const items = this.explainList(scene).map(([title, text, ax, ay, corner]) => {
       const lines = wrap(text, perLine)
-      const h = u(34) + lines.length * u(17)
-      const gap = u(11)
-      const x = corner.endsWith("l") ? ax + gap : ax - gap - w
-      const y = corner.startsWith("t") ? ay + gap : ay - gap - h
-      const rect = { x: Math.round(Math.max(4, Math.min(this.W - w - 4, x))), y: Math.round(Math.max(4, Math.min(this.H - h - 4, y))), w, h }
+      return { title, text, ax, ay, corner, lines, h: u(34) + lines.length * u(17) }
+    })
+    const places = this.explainPlaces(items, w)
+    items.forEach(({ title, text, ax, ay, lines }, index) => {
+      const rect = places[index]
       anchors.push({ x: ax, y: ay })
+      // the wedge: on the tag's edge, at the point nearest the mark
+      const mx = Math.max(rect.x, Math.min(rect.x + rect.w, ax))
+      const my = Math.max(rect.y, Math.min(rect.y + rect.h, ay))
       overlays.push({
         name: `over:explain:${index}`,
         rect,
-        signature: `${title}|${text}`,
+        signature: `${title}|${text}|${Math.round(mx - rect.x)}|${Math.round(my - rect.y)}`,
         draw: (c) => {
           c.fillStyle = PANEL
           c.fillRect(rect.x, rect.y, rect.w, rect.h)
           c.strokeStyle = INK.faint
           c.lineWidth = 1
           c.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1)
-          // the corner that touches the mark
           c.fillStyle = INK.live
-          const cx = corner.endsWith("l") ? rect.x : rect.x + rect.w
-          const cy = corner.startsWith("t") ? rect.y : rect.y + rect.h
-          const sx = corner.endsWith("l") ? 1 : -1
-          const sy = corner.startsWith("t") ? 1 : -1
+          const arm = u(12)
+          const onLeft = mx <= rect.x
+          const onRight = mx >= rect.x + rect.w
+          const onTop = my <= rect.y
+          const onBottom = my >= rect.y + rect.h
           c.beginPath()
-          c.moveTo(cx, cy)
-          c.lineTo(cx + sx * u(12), cy)
-          c.lineTo(cx, cy + sy * u(12))
+          if ((onLeft || onRight) && (onTop || onBottom)) {
+            // at a corner: the corner itself
+            const sx = onLeft ? 1 : -1
+            const sy = onTop ? 1 : -1
+            c.moveTo(mx, my)
+            c.lineTo(mx + sx * arm, my)
+            c.lineTo(mx, my + sy * arm)
+          } else if (onLeft || onRight) {
+            const sx = onLeft ? 1 : -1
+            const cy = Math.max(rect.y + arm * 0.6, Math.min(rect.y + rect.h - arm * 0.6, my))
+            c.moveTo(mx, cy - arm * 0.6)
+            c.lineTo(mx + sx * arm * 0.75, cy)
+            c.lineTo(mx, cy + arm * 0.6)
+          } else {
+            const sy = onTop ? 1 : -1
+            const cx = Math.max(rect.x + arm * 0.6, Math.min(rect.x + rect.w - arm * 0.6, mx))
+            c.moveTo(cx - arm * 0.6, my)
+            c.lineTo(cx, my + sy * arm * 0.75)
+            c.lineTo(cx + arm * 0.6, my)
+          }
           c.closePath()
           c.fill()
           this.text(c, title, rect.x + u(16), rect.y + u(21), { size: 11.5, family: FAMILY.label, weight: "600", color: INK.live, spacing: 2.4 })
@@ -106,8 +200,10 @@ export const explain = {
     const add = (region, target) => groups.get(region)?.push(target)
     for (const [name, list] of this.hits) {
       if (name.startsWith("over:")) continue
-      const region = name === "layout" || name === "top" || name === "rest" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name === "comms" || name === "log" || name === "hints" ? "footer" : STAGE_PARTS.has(name) ? "stage" : name
-      for (const target of list) {
+      const region = name === "layout" || name === "top" || name === "rest" || name === "wires" || name.startsWith("row:") || name.startsWith("proj:") ? "circuit" : name === "comms" || name === "log" || name === "hints" ? "footer" : STAGE_PARTS.has(name) ? "stage" : name
+      // a wire is a row of targets with one card: the keyboard stops on it once, at its middle
+      const walked = name === "wires" ? [...Map.groupBy(list, (target) => target.id).values()].map((same) => same[same.length >> 1]) : list
+      for (const target of walked) {
         if (target.kind === "terrain" || target.kind === "tail" || target.kind === "clock" || target.kind === "key") continue
         if (target.kind === "port") add("ports", target)
         else if (target.kind === "account") add("rails", target)

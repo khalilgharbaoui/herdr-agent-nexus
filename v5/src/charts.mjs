@@ -75,8 +75,13 @@ export const charts = {
 
   // The head of a chart: its name, what it measures, and the newest value at the right.
   // `brief` is the value in fewer words, for a chart too narrow to hold the name and the value.
-  chartHead(c, f, name, note, value, tone = INK.text, brief = "") {
+  // `target` makes the whole chart answer where no point of it is under the pointer: a card
+  // that exists already ({ kind, id }) or what the chart is ({ lines }).
+  chartHead(c, f, name, note, value, tone = INK.text, brief = "", target = null) {
     const u = (v) => this.u(v)
+    const whole = { x: f.x - u(3), y: f.y, w: f.w + u(6), h: f.py + f.ph + u(22) - f.y }
+    if (target?.kind) this.hit(target.kind, target.id, whole)
+    else if (target?.lines) this.note(`chart:${name}`, whole, "CHART", `${name}${value ? `: ${value}` : ""}`, target.lines)
     this.label(c, name, f.x, f.y + u(13), INK.dim, "left", 11.5)
     const nameW = this.width(c, name, { size: 11.5, family: FAMILY.label, weight: "600", spacing: 2.6 })
     const valueStyle = { size: 12.5, family: FAMILY.monoMedium, color: tone, align: "right" }
@@ -105,7 +110,7 @@ export const charts = {
     const used = session.context.used || readings[readings.length - 1]?.ctx || 0
     const share = limit && used ? used / limit : null
     const tone = share === null ? INK.soft : share >= 0.92 ? INK.bad : share >= 0.8 ? INK.warn : INK.text
-    this.chartHead(c, f, "CONTEXT", "at every model call", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone, used && limit ? `${Math.round(share * 100)}%` : "")
+    this.chartHead(c, f, "CONTEXT", "at every model call", used ? `${compactOf(used)}${limit ? ` of ${compactOf(limit)}  ·  ${Math.round(share * 100)}%` : ""}` : "n/a", tone, used && limit ? `${Math.round(share * 100)}%` : "", { kind: "context", id: session.id })
     this.timeAxis(c, f, span)
     const top = limit || Math.max(1, ...readings.map((step) => step.ctx)) * 1.15
     const xOf = (time) => f.px + clamp((time - from) / span, 0, 1) * f.pw
@@ -175,7 +180,7 @@ export const charts = {
     }
     const done = tools.filter((entry) => entry.tool.end !== null).map((entry) => entry.tool.end - entry.tool.start).sort((a, b) => a - b)
     const median = done.length ? done[Math.floor(done.length / 2)] : null
-    this.chartHead(c, f, "LATENCY", "tool calls and model calls", median === null ? (tools.length ? "running" : "n/a") : `median tool ${spanOf(median)}`, INK.text, median === null ? "" : spanOf(median))
+    this.chartHead(c, f, "LATENCY", "tool calls and model calls", median === null ? (tools.length ? "running" : "n/a") : `median tool ${spanOf(median)}`, INK.text, median === null ? "" : spanOf(median), { lines: [["WHAT", "every tool call of the focused thread as a stem at the moment it started: as tall as it took, on a log scale from 0.1 s to 10 min, in its equipment's colour, red when it failed, hollow while it runs. A thin bar is a model call"], ["DOTTED", "the median tool call in the window"], ["WINDOW", "the terrain's own (1, 5 or 30 minutes): w changes it"], ["POINT", "a stem is a target: the call's own card"]] })
     this.timeAxis(c, f, span)
     for (const [ms, word] of [[1000, "1s"], [10e3, "10s"], [60e3, "1m"], [600e3, "10m"]]) {
       const y = Math.round(yOf(ms))
@@ -238,13 +243,13 @@ export const charts = {
     const known = five && five.used !== null && five.resetsAt && five.span
     const name = `WINDOW${account ? `  ${String(account.name).toUpperCase()}` : ""}`
     if (!known) {
-      this.chartHead(c, f, name, "five hours of the account", five && five.used !== null ? `${Math.round(five.used)}% used` : "n/a", INK.soft)
+      this.chartHead(c, f, name, "five hours of the account", five && five.used !== null ? `${Math.round(five.used)}% used` : "n/a", INK.soft, "", account ? { kind: "account", id: account.name } : { lines: [["WHAT", "the focused thread's account: the used share of its five hour window over the window's own time, against an even pace"], ["NOW", "this thread's account is not known, so there is nothing to draw"]] })
       this.text(c, account ? "the account has not reported a window yet" : "this thread's account is not known", f.px, f.py + f.ph - u(10), { size: 11, color: INK.faint })
       return
     }
     const start = five.resetsAt - five.span
     const tone = five.used >= 90 ? INK.bad : account.dryAt ? INK.warn : INK.text
-    this.chartHead(c, f, name, "used against an even pace", `${Math.round(five.used)}% used${account.dryAt ? `  ·  dry ${hourMinuteOf(account.dryAt)}` : ""}`, tone, `${Math.round(five.used)}%`)
+    this.chartHead(c, f, name, "used against an even pace", `${Math.round(five.used)}% used${account.dryAt ? `  ·  dry ${hourMinuteOf(account.dryAt)}` : ""}`, tone, `${Math.round(five.used)}%`, { kind: "account", id: account.name })
     const xOf = (time) => f.px + clamp((time - start) / five.span, 0, 1) * f.pw
     const yOf = (used) => f.py + f.ph - clamp(used / 100, 0, 1) * f.ph
     // the axis is the window itself: when it began, when it resets

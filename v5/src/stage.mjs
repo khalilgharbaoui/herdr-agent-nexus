@@ -613,6 +613,7 @@ export const stage = {
     const head = G.head
     let y = head.y + u(18)
     let x = this.run(c, head.x, y, [[`FOCUS ${String(focus.index + 1).padStart(2, "0")}`, { size: 12.5, family: FAMILY.label, weight: "600", color: INK.live, spacing: 2.6 }]]) + u(16)
+    this.note("focus-label", { x: head.x - u(4), y: y - u(16), w: x - u(12) - head.x, h: u(22) }, "FOCUS", `thread ${String(focus.index + 1).padStart(2, "0")} of ${scene.threads.length} listed`, [["WHAT", "the thread on the stage: the core, the charts, the tail and REACH are all its own"], ["MOVES", scene.focus.auto ? "by itself, to the thread where something happens (following the action)" : "only when you move it (locked)"], ["KEYS", "up and down move it, a click on a row or a moon takes it there, s follows the action again"]])
     const follow = this.chip(c, scene.focus.auto ? "FOLLOWING THE ACTION" : "LOCKED", x, y, { color: scene.focus.auto ? INK.dim : INK.live })
     this.hit("action", scene.focus.auto ? "lock" : "follow", { x, y: y - u(16), w: follow, h: u(22) }, { tip: scene.focus.auto ? "click to hold this thread" : "click to follow the action again" })
     x += follow + u(8)
@@ -621,7 +622,10 @@ export const stage = {
     }
     y += u(54)
     const titleStyle = { size: 44, family: FAMILY.label, weight: "600", color: INK.text }
-    this.text(c, this.fit(c, session.title, head.w, titleStyle), head.x, y, titleStyle)
+    const shownTitle = this.fit(c, session.title, head.w, titleStyle)
+    this.text(c, shownTitle, head.x, y, titleStyle)
+    // the title is the thread itself: its own card
+    this.hit("thread", session.id, { x: head.x - u(4), y: y - u(40), w: this.width(c, shownTitle, titleStyle) + u(8), h: u(50) })
     y += u(30)
     // account › project › parent › this agent, and on the right the herdr place
     const crumbs = [session.account || "no account", homed(session.project) || "no project"]
@@ -630,7 +634,12 @@ export const stage = {
     const where = scene.whereOf(session.pane || (scene.byId.get(session.rootId)?.pane ?? ""))
     const whereW = where ? this.width(c, where, { size: 13.5 }) + u(20) : 0
     const crumbStyle = { size: 13.5, color: INK.dim }
-    this.text(c, this.fit(c, crumbs.join("  ›  "), head.w - whereW, crumbStyle), head.x, y, crumbStyle)
+    const shownCrumbs = this.fit(c, crumbs.join("  ›  "), head.w - whereW, crumbStyle)
+    this.text(c, shownCrumbs, head.x, y, crumbStyle)
+    const crumbLines = [["ACCOUNT", session.account || "not known"], ["PROJECT", homed(session.project) || "none"]]
+    if (focus.parent) crumbLines.push(["PARENT", clean(focus.parent.session.title)])
+    crumbLines.push(["AGENT", session.agent || "main (no agent named)"], ["READ", "left to right: the account that pays, the project folder, the thread that dispatched it when it is a subagent, the agent it runs as"])
+    this.note("focus-crumbs", { x: head.x - u(4), y: y - u(16), w: this.width(c, shownCrumbs, crumbStyle) + u(8), h: u(22) }, "FOCUS · WHERE IT BELONGS", crumbs[crumbs.length - 1], crumbLines)
     const pane = session.pane || scene.byId.get(session.rootId)?.pane
     if (where) {
       this.text(c, where, head.x + head.w, y, { size: 13.5, color: INK.soft, align: "right" })
@@ -640,13 +649,16 @@ export const stage = {
     const small = { size: 15, color: INK.dim }
     const meta = [[shortModel(session.model), { size: 15, family: FAMILY.monoMedium, color: modelColor(session.model, session.provider) }]]
     for (const part of [session.effort, session.kids ? `${session.kids} subagent${session.kids === 1 ? "" : "s"}` : "", focus.depth ? `depth ${focus.depth}` : "", session.id.slice(0, 16)]) if (part) meta.push([`  ·  ${part}`, small])
-    this.run(c, head.x, y, meta)
+    const metaEnd = this.run(c, head.x, y, meta)
+    this.note("focus-meta", { x: head.x - u(4), y: y - u(17), w: metaEnd - head.x + u(8), h: u(23) }, "FOCUS · WHAT RUNS IT", shortModel(session.model), [["MODEL", `${session.model || "not known"}${session.provider ? `, through ${session.provider}` : ""}`], ["EFFORT", session.effort || "not set"], ["SUBAGENTS", session.kids ? `${session.kids} dispatched by this thread` : "none"], ["DEPTH", focus.depth ? `${focus.depth} below a main thread` : "a main thread"], ["ID", session.id]], modelColor(session.model, session.provider))
     y += u(28)
     if (session.prompt) {
       const style = { size: 14.5, color: INK.soft }
       const asked = this.width(c, "asked  ", { size: 14.5 })
       this.text(c, "asked", head.x, y, { size: 14.5, color: INK.faint })
-      this.text(c, this.fit(c, session.prompt, head.w - asked, style), head.x + asked, y, style)
+      const shownPrompt = this.fit(c, session.prompt, head.w - asked, style)
+      this.text(c, shownPrompt, head.x + asked, y, style)
+      this.note("focus-asked", { x: head.x - u(4), y: y - u(17), w: asked + this.width(c, shownPrompt, style) + u(8), h: u(23) }, "FOCUS · ASKED", "the message that started this turn", [["TEXT", session.prompt], ["FROM", "opencode's record of the thread: its newest user message, the first 600 characters"]])
     }
     // the numbers behind the instrument, with their units
     y += u(42)
@@ -658,12 +670,24 @@ export const stage = {
       ["SPENT", session.cost ? moneyOf(session.cost) : "n/a"],
       ["ONE DOT", `${compactOf(unit)} tok`],
     ]
+    // every figure is a target: its own card where it has one, else what is counted and from where
+    const about = {
+      "OUT THIS TURN": [["WHAT", "tokens the model has written in this turn: reasoning, reply and tool input together"], ["COUNTED", "when a model call reports, once per call; an open call adds nothing until it does"]],
+      "OUT LAST TURN": [["WHAT", "tokens the model wrote in the turn that ended last"], ["COUNTED", "from every model call of that turn, as each reported"]],
+      RATE: [["WHAT", "tokens a second, from the newest report: what the call wrote over the time since the report before it (or since the turn began)"], ["VALID", "for 45 s after that report; n/a after, and for a thread that has reported nothing"], ["DRIVES", "the charge at the tip, the orbit's speed and the motes on the thread's wire"]],
+      SPENT: [["WHAT", "what this thread has cost so far, as opencode records it"], ["NOTE", "n/a until opencode has a figure: for most threads that is when a turn ends"]],
+    }
     x = head.x
     for (const [name, value] of cells) {
+      const from = x
       x = this.run(c, x, y, [
         [`${name}  `, { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
         [value, { size: 15, family: FAMILY.monoMedium, color: value === "n/a" ? INK.faint : INK.text }],
       ])
+      const rect = { x: from - u(4), y: y - u(17), w: x - from + u(8), h: u(23) }
+      if (name === "CONTEXT") this.hit("context", session.id, rect)
+      else if (name === "ONE DOT") this.hit("flock", session.id, rect)
+      else this.note(`focus-figure:${name}`, rect, "FOCUS · FIGURE", `${name.toLowerCase()}: ${value}`, about[name] ?? [])
       x += u(34)
     }
   },

@@ -4,7 +4,7 @@
 import { cacheSign, cacheState, cacheWord } from "./cache.mjs"
 import { FILTER_NAME } from "./model.mjs"
 import { PANEL, PORT_COLOR, bare, clean, homed } from "./theme.mjs"
-import { FAMILY, INK, TAU, agoOf, clamp, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
+import { FAMILY, INK, TAU, agoOf, clamp, clockOf, hourMinuteOf, mix, modelColor, moneyOf, rgba, shortModel, spanOf, timerOf, toolMeta } from "./util.mjs"
 
 export const circuit = {
   // ---------------------------------------------------------------- wires
@@ -33,6 +33,12 @@ export const circuit = {
     c.clearRect(0, 0, this.W, this.H)
     const lit = new Map()
     for (const stream of scene.streams) lit.set(stream.type === "kid" ? `kid:${stream.sid}` : `${stream.sid}:${stream.port}`, stream)
+    // the wires answer to the pointer too: a row of small targets along each one
+    const targets = []
+    const along = (points, id, card, every = 1) => {
+      const reach = u(5)
+      for (let index = 0; index < points.length; index += every) targets.push({ kind: "note", id, rect: { x: points[index][0] - reach, y: points[index][1] - reach, w: reach * 2, h: reach * 2 }, card })
+    }
     for (const g of G.rows) {
       if (!g.row) continue
       const session = g.row.session
@@ -67,6 +73,20 @@ export const circuit = {
           const age = now - faint.get(id)
           this.poly(c, path.points, rgba(INK.dim, age < 60e3 ? 0.36 : age < 240e3 ? 0.2 : 0.1), 1)
         }
+        const port = scene.ports.get(id)
+        const used = port.used?.get(session.id)
+        along(path.points, `syn:${g.sid}:${id}`, {
+          kicker: "SYNAPSE",
+          title: `${clean(session.title).slice(0, 40)}  ›  ${port.label}`,
+          tone: stream?.type === "wait" ? INK.warn : PORT_COLOR[id],
+          lines: [
+            ["WHAT", stream?.type === "wait" ? "this thread waits on you: the wire to YOU stays lit until it is answered" : "the wire from this thread to a kind of equipment it acted on"],
+            ["CARRIES", "a tool call leaves along it as a packet with the equipment's sign, and the result comes back the same way, red when it failed"],
+            ["NOW", stream ? (stream.type === "wait" ? "waiting on an answer" : "a call is out: motes run along it") : "nothing out"],
+            ["LAST USED", used ? clockOf(used) : "not in this program's memory"],
+            ["SHOWN", "for the three kinds of equipment a working thread used last, two for a resting one within 90 s; brighter the more recent"],
+          ],
+        })
       }
       // the link to the parent
       if (g.row.parent) {
@@ -75,7 +95,31 @@ export const circuit = {
       }
     }
     const focus = this.flow.paths.get(`focus:${scene.focus.id}`)
-    if (focus) this.poly(c, focus.points, rgba(INK.live, 0.5), 1)
+    if (focus) {
+      this.poly(c, focus.points, rgba(INK.live, 0.5), 1)
+      // a target every few pixels of its length, so the whole run answers
+      const card = {
+        kicker: "WIRE",
+        title: "from the focused thread up to the tip",
+        tone: INK.live,
+        lines: [
+          ["WHAT", "the focused thread's own wire: it leaves the thread's cell body in the circuit and climbs to the tip under the core"],
+          ["CARRIES", "what the thread writes. While it works, motes run up it, closer together the faster it writes (one every 180, 104, 66 or 44 px for under 15, 15 to 40, 40 to 80 and over 80 tokens a second), and a burst when a model call reports"],
+          ["ENDS", "at the tip, where the tokens gather as a charge until a dot is released into the rings"],
+          ["BRANCH", "REACH leaves it on the way: what this turn touched"],
+        ],
+      }
+      const step = u(12)
+      for (let index = 1; index < focus.points.length; index += 1) {
+        const [x0, y0] = focus.points[index - 1]
+        const [x1, y1] = focus.points[index]
+        const count = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / step))
+        const points = []
+        for (let part = 0; part <= count; part += 1) points.push([x0 + ((x1 - x0) * part) / count, y0 + ((y1 - y0) * part) / count])
+        along(points, `wire:${scene.focus.id}`, card)
+      }
+    }
+    this.hits.set("wires", targets)
   },
 
   // ---------------------------------------------------------------- rails (accounts)
@@ -88,6 +132,7 @@ export const circuit = {
     const G = this.G
     const u = (value) => this.u(value)
     this.label(c, "ACCOUNTS", G.circuit.x + G.M, G.circuit.y + u(36))
+    this.note("section:accounts", { x: G.circuit.x + G.M - u(4), y: G.circuit.y + u(20), w: this.width(c, "ACCOUNTS", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(8), h: u(22) }, "SECTION", "ACCOUNTS", [["WHAT", "one tube per account: the tube is its five hour window, the level what is left of it"], ["MARKS", "cyan triangle: where an even pace would stand. Hollow amber triangle: when it runs dry at this pace. Motes sink through it while a thread draws on it"], ["FROM", "the Claude Code plugin's usage readings, as each model call reports them"], ["WIRES", "every thread taps the rail of the account that pays for it"]])
     for (const rail of G.rails) {
       const account = scene.world.accounts.find((candidate) => candidate.name === rail.name)
       const five = account?.five
@@ -165,6 +210,7 @@ export const circuit = {
       ["CIRCUIT", { size: 12.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
       [`   ${scene.threads.length} thread${scene.threads.length === 1 ? "" : "s"}  ·  ${scene.projects.length} project${scene.projects.length === 1 ? "" : "s"}`, { size: 13, color: INK.soft }],
     ]) + u(18)
+    this.note("section:circuit", { x: G.busX + u(8), y: y - u(16), w: x - u(18) - (G.busX + u(8)), h: u(22) }, "SECTION", "CIRCUIT", [["WHAT", "every listed thread as a cell on a wire, under its project: the cell body is the thread, the line to its right its last minutes, the curves at the far end what it acted on"], ["LISTED", `${scene.threads.length} thread${scene.threads.length === 1 ? "" : "s"} in ${scene.projects.length} project${scene.projects.length === 1 ? "" : "s"}, showing ${FILTER_NAME[scene.filter].toLowerCase()}`], ["NESTED", "a subagent hangs under the thread that dispatched it"], ["KEYS", "up and down move the focus, f changes which threads are listed, left and right fold a project"]])
     const w = this.chip(c, `SHOWING ${FILTER_NAME[scene.filter]}`, x, y, { color: scene.filter === "active" ? INK.dim : INK.live })
     this.hit("action", "filter", { x, y: y - u(16), w, h: u(22) }, { tip: "click to change which threads are listed" })
     x += w + u(14)
@@ -408,6 +454,7 @@ export const circuit = {
     const u = (value) => this.u(value)
     this.label(c, "EQUIPMENT", G.portX, G.circuit.y + u(36))
     this.text(c, `last ${Math.round(scene.windowMs / 60e3)} min`, G.portX + G.boxW, G.circuit.y + u(36), { size: 11.5, color: INK.faint, align: "right" })
+    this.note("section:equipment", { x: G.portX - u(4), y: G.circuit.y + u(20), w: G.boxW + u(8), h: u(22) }, "SECTION", "EQUIPMENT", [["WHAT", "what the models act with. Every tool call of every listed thread goes to exactly one of these"], ["COUNT", `the figure on a box is its calls in the last ${Math.round(scene.windowMs / 60e3)} minutes`], ["MARKS", "the line under a box: each call as a stem, as tall as it took. A lamp: a call in flight. A red flash: a call through it just failed"], ["WIRES", "a curve from a thread's wire to a box is a synapse: its calls leave along it and their results come back"]])
     for (const port of scene.ports.values()) {
       const spot = G.ports.get(port.id)
       const color = PORT_COLOR[port.id]

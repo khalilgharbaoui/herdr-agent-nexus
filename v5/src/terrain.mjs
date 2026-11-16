@@ -84,7 +84,9 @@ export const terrain = {
     // title, unit and the window buttons
     this.label(c, "TIME TERRAIN", T.x, T.y + u(16), INK.dim, "left", 11.5)
     const titleW = this.width(c, "TIME TERRAIN", { size: 11.5, family: FAMILY.label, weight: "600", spacing: 2.6 })
-    this.text(c, "tokens a second, every listed thread, the focused one in front", T.x + titleW + u(18), T.y + u(16), { size: 11.5, color: INK.faint })
+    const about = "tokens a second, every listed thread, the focused one in front"
+    this.text(c, about, T.x + titleW + u(18), T.y + u(16), { size: 11.5, color: INK.faint })
+    this.note("section:terrain", { x: T.x - u(4), y: T.y, w: titleW + u(26) + this.width(c, about, { size: 11.5 }), h: u(24) }, "SECTION", "TIME TERRAIN", [["WHAT", "one ridge per listed thread: its tokens a second over the window, the focused thread in front at full size and the others receding behind it"], ["WINDOW", `the last ${windowWord(span).toLowerCase()}: w or a button at the right changes it`], ["MARKS", "diamond: a tool call, red and taller when it failed. Flag: an alert. Ring: a dispatch. Dashed step: an open call's estimate. Dot at the right edge: now"], ["CLICK", "a ridge focuses its thread; a point on the focused ridge is pinned"]])
     let chipX = T.x + T.w
     for (const option of [...WINDOWS].reverse()) {
       const on = option === span

@@ -281,10 +281,11 @@ export const hud = {
     this.codec = null
     this.commsMarks = new Map()
     let y = top
-    this.run(c, x, y, [
+    const commsEnd = this.run(c, x, y, [
       ["COMMS", { size: 12.5, family: FAMILY.label, weight: "600", color: calls.length ? INK.warn : INK.dim, spacing: 2.6 }],
       [calls.length ? `   ${calls.length} call${calls.length === 1 ? "" : "s"}` : "   no calls", { size: 13, color: calls.length ? INK.warn : INK.faint }],
     ])
+    this.note("section:comms", { x: x - u(4), y: y - u(16), w: commsEnd - x + u(8), h: u(22) }, "SECTION", "COMMS", [["WHAT", "what asks for you: a thread that waits on an answer (a call) first, then every flag that is raised, the ones that need you now on top"], ["NOW", `${calls.length ? `${calls.length} call${calls.length === 1 ? "" : "s"}` : "no calls"}, ${others.length} flag${others.length === 1 ? "" : "s"}`], ["MARKER", "filled red square: needs you now. Amber outline: watch it. Grey outline: worth a look"], ["KEYS", "tab goes to the next flagged thread, c answers a call, m mutes a flag"]], calls.length ? INK.warn : undefined)
     y += u(16)
     if (calls.length) {
       const call = calls[0]
@@ -356,6 +357,7 @@ export const hud = {
       ["SECTOR MAP", { size: 12.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
       [`   ${panes.length} panes`, { size: 13, color: INK.soft }],
     ])
+    this.note("section:map", { x: x - u(4), y: top - u(16), w: w + u(8), h: u(22) }, "SECTION", "SECTOR MAP", [["WHAT", "every herdr pane as a square, by workspace (a line) and tab (a box)"], ["LEGEND", "filled cyan: working. Filled amber: it calls you. Green outline with a dot: finished, not read yet. Grey outline: resting. A dot alone: a shell. The cross: this pane"], ["NOW", `${panes.length} panes: ${panes.filter((pane) => pane.status === "working").length} working, ${panes.filter((pane) => pane.status === "blocked").length} calling, ${panes.filter((pane) => pane.status === "done").length} unread`], ["FROM", "herdr, asked every 2.5 s"], ["CLICK", "a square focuses its thread; enter goes to the pane in herdr"]])
     // legend
     let lx = x + w
     for (const [name, tone, solid] of [["unread", INK.good, false], ["call", INK.warn, true], ["working", INK.live, true]]) {
@@ -394,6 +396,8 @@ export const hud = {
       }
       const style = { size: 12.5, color: workspace.focused ? INK.text : INK.soft }
       this.text(c, this.fit(c, workspace.label || workspace.id, labelW - u(16), style), x + u(11), base, style)
+      const mine = tabs.flatMap(([, list]) => list)
+      this.note(`workspace:${workspace.id}`, { x: x - u(2), y: y, w: labelW - u(4), h: side + pad * 2 }, "SECTOR MAP · WORKSPACE", workspace.label || workspace.id, [["WHAT", "a herdr workspace: its tabs follow on this line, one square per pane"], ["PANES", `${mine.length} in ${tabs.length} tab${tabs.length === 1 ? "" : "s"}: ${mine.filter((pane) => pane.status === "working").length} working, ${mine.filter((pane) => pane.status === "blocked").length} calling, ${mine.filter((pane) => pane.status === "done").length} unread`], ["SHOWN", workspace.focused ? "this is the workspace herdr shows now" : "not the workspace herdr shows now"]], workspace.mark || undefined)
       let tx = x + labelW
       for (const [tabId, list] of tabs) {
         const cellW = list.length * (side + u(4)) - u(4) + pad * 2
@@ -447,6 +451,7 @@ export const hud = {
   drawLog(c, scene, now, x, top, w, h) {
     const u = (value) => this.u(value)
     this.label(c, "LOG", x, top)
+    this.note("section:log", { x: x - u(4), y: top - u(16), w: this.width(c, "LOG", { size: 12.5, family: FAMILY.label, weight: "600", spacing: 2.6 }) + u(8), h: u(22) }, "SECTION", "LOG", [["WHAT", "what just happened, newest first, from every listed thread: a tool call, a turn that began or ended, a call for you, a dispatch"], ["TONE", "bright for 20 s, dimmer for five minutes, faint after that"], ["RUNNING", "a call that has not come back counts its seconds, with a track under it that has a tick at that equipment's usual time"], ["CLICK", "focuses the line's thread; on the focused thread it pins the line"]])
     const lineH = u(25)
     const marks = []
     scene.log.slice(0, Math.floor(h / lineH)).forEach((entry, index) => {
@@ -479,7 +484,10 @@ export const hud = {
       this.hit("log", entry.key, { x, y: lineY - u(18), w, h: lineH }, { entry, sid: entry.sid })
     })
     this.logMarks = marks
-    if (!scene.log.length) this.text(c, "nothing has happened since this started", x, top + lineH, { size: 13, color: INK.faint })
+    if (!scene.log.length) {
+      this.text(c, "nothing has happened since this started", x, top + lineH, { size: 13, color: INK.faint })
+      this.note("log-empty", { x: x - u(4), y: top + lineH - u(16), w: this.width(c, "nothing has happened since this started", { size: 13 }) + u(8), h: u(22) }, "LOG", "empty", [["WHY", "the log holds what happened since this program started: a tool call, a turn that began or ended, a call for you, a dispatch. Nothing has yet"]])
+    }
   },
 
   // The input monitor, in place of the log: what the terminal last sent and what it landed on.
