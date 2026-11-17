@@ -26,9 +26,11 @@ import { LEVEL_COLOR, LOG_USUAL_AT, NICE_SPANS, PANEL, PORT_COLOR, inside, inter
 import { FAMILY, INK, TAU, clamp, fontOf, keeps, modelColor, rgba, roomFor } from "./util.mjs"
 
 const PORTRAIT_UNITS = 2800 // the height, in layout units, an upright pane is given at least
+const PAD_LIMIT = 450e3 // pixels: a region up to this size is painted on a pad (see paint)
+const PAD_ROOM = 3e6 // pixels the pads hold together at most (12 MB)
 // What a held moment replays (see replay.mjs): the whole stage. Every other part of the screen
 // that carries a section label stays the present and says so with a NOW chip beside its label.
-const THEN_REGIONS = new Set(["core", "flockline", "plinth", "cache", "under", "reach", "head", "charts", "tail"])
+const THEN_REGIONS = new Set(["core", "flockline", "plinth", "cache", "under", "reach", "head", "charts", "tail", "tail:lines"])
 const NOW_REGIONS = new Set(["header", "rails", "top", "ports", "comms", "footer", "log"])
 // For measuring what the two savings of 2026-11-16 are worth, on the same data (tools/cost-watch.mjs):
 // NEXUS_COARSE=1 paints a working row as one region and the whole circuit at every change of the wires, as before.
@@ -90,6 +92,8 @@ export class Renderer {
       this.wires.clearRect(0, 0, this.wiresCanvas.width, this.wiresCanvas.height)
     }
     this.fits.clear()
+    this.pads = new Map() // the pads follow the size of what they hold: a new size, new pads
+    this.padPixels = 0
     this.arranged = ""
     this.wiresSignature = ""
     this.extra = 0
@@ -439,6 +443,16 @@ export class Renderer {
     add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
     add("charts", G.chartsBox, (scene, ui, now) => this.signCharts(scene, ui, now), (c, scene, ui, now) => this.drawCharts(c, scene, ui, now))
     add("tail", G.tailBox, (scene, ui, now) => this.signTail(scene, ui, now), (c, scene, ui, now) => this.drawTail(c, scene, ui, now))
+    // The lines of the live text that move by themselves (the block that is being typed, the
+    // seconds of a tool call that is still out) are painted again as one strip, from the first
+    // such line to the last, instead of the whole text: see signTailLines. The strip's place
+    // is set anew at every frame, and it is empty when no line moved.
+    if (!COARSE) {
+      const strip = { name: "tail:lines", rect: { x: 0, y: 0, w: 0, h: 0 }, circuit: false, wires: false, last: null }
+      strip.sign = (scene, ui, now) => this.signTailLines(scene, ui, now, strip)
+      strip.draw = (c, scene, ui, now) => this.drawTailLines(c, scene, ui, now)
+      regions.push(strip)
+    }
     add("terrain", G.band, (scene, ui, now) => this.signTerrain(scene, ui, now), (c, scene, ui, now) => this.drawTerrain(c, scene, ui, now))
     const left = G.railsRight
     const right = G.termX + this.u(12)
@@ -628,6 +642,7 @@ export class Renderer {
   // Repaints what changed. Returns true when anything did; this.marks then flags the tile rows
   // that have to be read back.
   update(scene, ui, now, meta) {
+    this.frameNo = (this.frameNo ?? 0) + 1
     this.present = now // a region that replays a held moment is drawn at that moment: this is still now
     this.dt = this.lastUpdate ? Math.min(0.25, (now - this.lastUpdate) / 1000) : 0
     this.lastUpdate = now
@@ -647,9 +662,20 @@ export class Renderer {
     this.advance(scene, now, this.dt)
     const bands = Math.ceil(this.H / this.bandHeight)
     this.marks = new Uint8Array(bands)
-    // per tile row, the columns that were painted: x0 and x1
-    this.spans = new Int32Array(bands * 2)
-    for (let band = 0; band < bands; band += 1) this.spans[band * 2] = this.W
+    // per tile row, what was painted of it: the columns x0 to x1 and the lines y0 to y1. A
+    // timer or one line of text is a third of a tile row's height, and reading pixels back
+    // is what the picture costs most (measured 2026-11-17: 2.7 ms a megabyte, two fifths of
+    // the main thread's work), so only the lines that were painted are read.
+    this.spans = new Int32Array(bands * 4)
+    for (let band = 0; band < bands; band += 1) {
+      this.spans[band * 4] = this.W
+      this.spans[band * 4 + 2] = this.H
+    }
+    // of the tile rows that were painted, the ones to read back from the still layer (`spans`
+    // says what of them); what was painted on a pad is handed over as it is, in `blocks`
+    this.reads = new Uint8Array(bands)
+    this.blocks = []
+    this.direct = rearranged || this.straight === true // (`straight`: tools/check.mjs paints one frame the other way)
     const wires = this.signWires(scene, now)
     const rewire = wires !== this.wiresSignature || rearranged
     this.repaints ??= {}
@@ -706,6 +732,11 @@ export class Renderer {
       if (signature === region.last && !wired && !rearranged && !under) {
         continue
       }
+      // a part with nothing to paint this frame (the strip of the live text when no line of it moved)
+      if (region.rect.w <= 0 || region.rect.h <= 0) {
+        region.last = signature
+        continue
+      }
       // why it is painted again: the named parts of its signature that changed (where the region
       // names them), or what forced it
       const before = region.parts
@@ -739,12 +770,44 @@ export class Renderer {
     this.occluders = overlays.map((overlay) => overlay.rect)
     if (rearranged) {
       this.marks.fill(1)
+      this.reads.fill(1)
       for (let band = 0; band < bands; band += 1) {
-        this.spans[band * 2] = 0
-        this.spans[band * 2 + 1] = this.W
+        this.spans[band * 4] = 0
+        this.spans[band * 4 + 1] = this.W
+        this.spans[band * 4 + 2] = band * this.bandHeight
+        this.spans[band * 4 + 3] = Math.min(this.H, (band + 1) * this.bandHeight)
       }
     }
     return any
+  }
+
+  // The pad a region of this place and size is painted on, or null when it is painted straight
+  // onto the still layer (see paint). Pads are kept by size, on a grid of 64 by 32 pixels, so
+  // regions of one size share one (every row of a height, every strip of the live text), and
+  // together they stay under PAD_ROOM: the one used longest ago goes.
+  padFor(x, y, w, h) {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(w) || !Number.isInteger(h)) return null
+    if (w * h > PAD_LIMIT || x < 0 || y < 0 || x + w > this.W || y + h > this.H) return null
+    const width = Math.ceil(w / 64) * 64
+    const height = Math.ceil(h / 32) * 32
+    const key = width * 65536 + height
+    this.pads ??= new Map()
+    let pad = this.pads.get(key)
+    if (!pad) {
+      const canvas = createCanvas(width, height)
+      pad = { canvas, context: canvas.getContext("2d"), pixels: width * height, used: 0 }
+      this.pads.set(key, pad)
+      this.padPixels = (this.padPixels ?? 0) + pad.pixels
+      while (this.padPixels > PAD_ROOM && this.pads.size > 1) {
+        let oldest = null
+        for (const [other, entry] of this.pads) if (entry !== pad && (!oldest || entry.used < oldest[1].used)) oldest = [other, entry]
+        if (!oldest) break
+        this.pads.delete(oldest[0])
+        this.padPixels -= oldest[1].pixels
+      }
+    }
+    pad.used = this.frameNo
+    return pad
   }
 
   // Which region each tile that went out belongs to: the one painted this frame that covers
@@ -772,17 +835,35 @@ export class Renderer {
   }
 
   paint(region, scene, ui, now, meta, then = null, present = null) {
-    const c = this.base
     const { x, y, w, h } = region.rect
     if (w <= 0 || h <= 0) return
+    // A region is painted on a pad of its own size, set into the still layer from there, and
+    // the terminal's side gets its pixels from the pad. Reading them back from the still
+    // layer itself costs a copy of the whole layer whenever it was painted since the last
+    // read (measured 2026-11-17 with this canvas library: 0.7 ms for the 27 MB of a pane of
+    // 183 columns, whatever the size of the read, and nothing when no paint came between).
+    // With something painted in most frames that was the largest single cost of the picture.
+    // A pad's copy is the size of the region. Painted straight onto the still layer and read
+    // back from it, as before: a region larger than PAD_LIMIT or with edges that are not
+    // whole pixels, everything at a new layout, and NEXUS_COARSE=1.
+    const pad = this.direct || COARSE ? null : this.padFor(x, y, w, h)
+    const c = pad ? pad.context : this.base
     this.sink = []
     this.nowSpot = null
     this.heldLines = []
     c.save()
-    c.beginPath()
-    c.rect(x, y, w, h)
-    c.clip()
-    c.clearRect(x, y, w, h)
+    if (pad) {
+      c.clearRect(0, 0, pad.canvas.width, pad.canvas.height)
+      c.beginPath()
+      c.rect(0, 0, w, h)
+      c.clip()
+      c.translate(-x, -y)
+    } else {
+      c.beginPath()
+      c.rect(x, y, w, h)
+      c.clip()
+      c.clearRect(x, y, w, h)
+    }
     if (region.wires) c.drawImage(this.wiresCanvas, x, y, w, h, x, y, w, h)
     region.draw(c, scene, ui, now, meta)
     if (then) {
@@ -803,12 +884,24 @@ export class Renderer {
     c.restore()
     this.hits.set(region.name, this.sink)
     this.sink = null
+    if (pad) {
+      this.base.clearRect(x, y, w, h)
+      this.base.drawImage(pad.canvas, 0, 0, w, h, x, y, w, h)
+      this.blocks.push({ x, y, w, h, pixels: pad.context.getImageData(0, 0, w, h).data })
+    }
     const first = Math.max(0, Math.floor(y / this.bandHeight))
     const last = Math.min(this.marks.length - 1, Math.floor((y + h - 1) / this.bandHeight))
     for (let band = first; band <= last; band += 1) {
-      this.marks[band] = 1
-      if (x < this.spans[band * 2]) this.spans[band * 2] = Math.max(0, Math.floor(x))
-      if (x + w > this.spans[band * 2 + 1]) this.spans[band * 2 + 1] = Math.min(this.W, Math.ceil(x + w))
+      this.marks[band] = 1 // painted (the painted transport composes these tile rows again)
+      if (pad) continue
+      this.reads[band] = 1 // and to be read back from the still layer
+      if (x < this.spans[band * 4]) this.spans[band * 4] = Math.max(0, Math.floor(x))
+      if (x + w > this.spans[band * 4 + 1]) this.spans[band * 4 + 1] = Math.min(this.W, Math.ceil(x + w))
+      // (NEXUS_COARSE=1: the whole tile row, as it was read before)
+      const top = COARSE ? band * this.bandHeight : Math.max(band * this.bandHeight, Math.floor(y))
+      const bottom = COARSE ? (band + 1) * this.bandHeight : Math.min((band + 1) * this.bandHeight, Math.ceil(y + h))
+      if (top < this.spans[band * 4 + 2]) this.spans[band * 4 + 2] = Math.max(0, top)
+      if (bottom > this.spans[band * 4 + 3]) this.spans[band * 4 + 3] = Math.min(this.H, bottom)
     }
   }
 

@@ -390,7 +390,8 @@ async function runTerminal() {
         outcome = terminal.send(context, bands, [], atlas, null, renderer.card)
       } else {
         terminal.lastDirty = null
-        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.marks : null, sprites, atlas, readAll ? null : renderer.spans, renderer.card)
+        // what was painted: read back from the still layer (reads, spans) or handed over as painted (blocks)
+        outcome = terminal.send(renderer.base, readAll ? new Uint8Array(terminal.bandCount).fill(1) : changed ? renderer.reads : null, sprites, atlas, readAll ? null : renderer.spans, renderer.card, readAll || !changed ? null : renderer.blocks)
         if (!readAll && changed) renderer.attribute(terminal.lastDirty)
       }
       if (outcome === "sent") {

@@ -47,6 +47,7 @@ const { Scene } = await import("../src/model.mjs")
 const { Atlas } = await import("../src/sprites.mjs")
 const { Controller } = await import("../src/ui.mjs")
 const { THEN_INK } = await import("../src/replay.mjs")
+const { Terminal } = await import("../src/terminal.mjs")
 
 const argument = (name, fallback) => {
   const index = process.argv.indexOf(`--${name}`)
@@ -69,6 +70,7 @@ const ui = controller.ui
 let now = Date.now()
 let lastPoll = 0
 let sprites = []
+let changedNow = false // whether the last step painted anything
 const step = (count = 1) => {
   for (let index = 0; index < count; index += 1) {
     now += 33
@@ -78,7 +80,7 @@ const step = (count = 1) => {
     }
     if (!scene.world) continue
     controller.refresh(now)
-    renderer.update(scene, ui, now, { line: "check" })
+    changedNow = renderer.update(scene, ui, now, { line: "check" })
     sprites = []
     renderer.react(scene, scene.takeSignals(), now)
     flow.frame(now, sprites)
@@ -322,10 +324,27 @@ if (held !== null) {
 //   rows   a working row is four regions (what stands still, its timer, the word under it,
 //          its live line). After half a minute the three small ones must be, pixel for pixel,
 //          what painting them afresh gives.
+//   text   the live text is the whole and a strip: the lines that move by themselves (a block
+//          being typed, the seconds of a call that is still out) are painted as a strip.
+//          After half a minute the text must be, pixel for pixel, what painting it afresh gives.
+//   read   a region is painted on a pad and its pixels are handed to the terminal's side as
+//          painted; of what is painted straight onto the still layer only the painted lines
+//          are read back. What the terminal is taken to show (the shadow those keep up) must
+//          be the picture itself, and a pad must give what painting straight gives.
 // (A region that draws a quantity finer than it signs it, such as the turn clock's head
 // between two of its steps or a cache arc within its minute, may differ from a fresh paint by
 // that much: that is the price of not repainting it every frame, and not what is checked.)
 {
+  // the terminal's side of a frame, without a terminal: its account of what the screen shows
+  const probe = new Terminal()
+  probe.cell = cell
+  probe.width = renderer.W
+  probe.height = renderer.H
+  probe.diffTiles(renderer.base, new Uint8Array(probe.bandCount).fill(1), null)
+  probe.reset = false // (send clears it; here the terminal's side is driven by hand)
+  const readBefore = probe.readBytes ?? 0
+  let strips = 0
+  let wholes = 0
   const grabWires = () => Buffer.from(renderer.wires.getImageData(0, 0, renderer.W, renderer.H).data)
   const draw = renderer.drawWires.bind(renderer)
   let changedBy = null // names of the circuit regions whose wire pixels the last redraw changed
@@ -357,6 +376,9 @@ if (held !== null) {
     changedBy = null
     const layout = renderer.arranged
     step(1)
+    probe.diffTiles(renderer.base, changedNow ? renderer.reads : null, renderer.spans, changedNow ? renderer.blocks : null)
+    if (changedNow && renderer.paintedNow.some((region) => region.name === "tail:lines")) strips += 1
+    if (changedNow && renderer.paintedNow.some((region) => region.name === "tail")) wholes += 1
     if (!changedBy || renderer.arranged !== layout) continue // no redraw of the wires, or a new layout (everything is painted)
     const painted = new Set(renderer.paintedNow.map((region) => region.name))
     regionsChanged += changedBy.size
@@ -369,6 +391,14 @@ if (held !== null) {
 
   const grab = () => Buffer.from(renderer.base.getImageData(0, 0, renderer.W, renderer.H).data)
   const kept = grab()
+  {
+    // the shadow against the picture, byte for byte
+    let unlike = 0
+    const shadow = probe.shadow
+    for (let at = 0; at < kept.length; at += 4) if (kept[at] !== shadow[at] || kept[at + 1] !== shadow[at + 1] || kept[at + 2] !== shadow[at + 2] || kept[at + 3] !== shadow[at + 3]) unlike += 1
+    const read = (probe.readBytes ?? 0) - readBefore
+    check("repaint: what is read back of a tile row is enough to know the picture", unlike === 0 && read > 0, unlike ? `${unlike} pixels of the shadow are not the picture's` : `${(read / 1e6 / 30).toFixed(1)} MB a second read back over half a minute, the picture is ${(kept.length / 1e6).toFixed(1)} MB`)
+  }
   for (const region of renderer.regions) region.last = null
   renderer.wiresSignature = ""
   renderer.update(scene, ui, now, { line: "check" })
@@ -383,6 +413,73 @@ if (held !== null) {
     if (differing) off.push(`${region.name}: ${differing} pixels`)
   }
   check("repaint: the parts of a working row are what a fresh paint gives", off.length === 0 && parts.length > 0, off.length ? off.join("; ") : `${parts.length / 3} working rows, each in four regions`)
+  {
+    const { x, y, w, h } = renderer.G.tailBox
+    let differing = 0
+    for (let row = Math.floor(y); row < Math.ceil(y + h); row += 1) for (let at = row * stride + Math.floor(x) * 4, to = row * stride + Math.ceil(x + w) * 4; at < to; at += 4) if (kept[at] !== fresh[at] || kept[at + 1] !== fresh[at + 1] || kept[at + 2] !== fresh[at + 2] || kept[at + 3] !== fresh[at + 3]) differing += 1
+    check("repaint: the live text painted in strips is what a fresh paint gives", differing === 0 && strips > 0, differing ? `${differing} pixels differ` : strips ? `${strips} strips and ${wholes} whole paints in half a minute` : "no line moved by itself in half a minute: nothing was checked")
+  }
+  {
+    // `fresh` was painted region by region on pads. The same moment painted again the same
+    // way says what does not come out the same twice (nothing should); painted once more
+    // straight onto the still layer, it must give the same picture as on pads.
+    // `slack`: how far apart two pixels may be and still count as alike, in levels of 255 of
+    // what ends up on the screen (colour times opacity). Counted per region.
+    const unlike = (one, two, slack = 0) => {
+      let differing = 0
+      let widest = 0
+      let near = 0
+      const by = new Map() // region -> pixels of it that differ by more than the slack
+      for (let at = 0; at < one.length; at += 4) {
+        if (one[at] === two[at] && one[at + 1] === two[at + 1] && one[at + 2] === two[at + 2] && one[at + 3] === two[at + 3]) continue
+        let gap = Math.abs(one[at + 3] - two[at + 3])
+        for (let channel = 0; channel < 3; channel += 1) gap = Math.max(gap, Math.abs((one[at + channel] * one[at + 3]) / 255 - (two[at + channel] * two[at + 3]) / 255))
+        if (gap <= slack) {
+          near += 1
+          widest = Math.max(widest, gap)
+          continue
+        }
+        differing += 1
+        const px = (at / 4) % renderer.W
+        const py = Math.floor(at / 4 / renderer.W)
+        const region = renderer.regions.find((entry) => entry.rect.w > 0 && px >= entry.rect.x && px < entry.rect.x + entry.rect.w && py >= entry.rect.y && py < entry.rect.y + entry.rect.h)
+        by.set(region, (by.get(region) ?? 0) + 1)
+      }
+      // the region with the largest share of its pixels unlike
+      let worst = null
+      for (const [region, count] of by) {
+        const share = region ? count / (region.rect.w * region.rect.h) : 1
+        if (!worst || share > worst.share) worst = { name: region?.name ?? "no region", count, share }
+      }
+      return { differing, near, widest, worst }
+    }
+    const again = () => {
+      for (const region of renderer.regions) region.last = null
+      renderer.update(scene, ui, now, { line: "check" })
+      return grab()
+    }
+    const second = again()
+    const onPads = renderer.blocks.length
+    const twice = unlike(fresh, second)
+    check("repaint: the same moment painted twice is the same picture", twice.differing === 0, twice.differing ? `${twice.differing} pixels differ, most of them in ${twice.worst.name}` : "")
+    renderer.straight = true
+    const straight = again()
+    const blocks = renderer.blocks.length
+    renderer.straight = false
+    // A pad is painted with the canvas shifted, and two things round differently then. A
+    // gradient, and the edge of a curve, by a level of 255; where several see-through fills
+    // lie over each other, as the ridges of the terrain do, that adds up (3.2 levels is the
+    // widest gap measured, four are allowed). And small type: under some 8 px the edges of
+    // a letter can come out a fraction of a pixel apart (seen at 120 by 40 cells, where the
+    // scale is 0.49: 1.1% of the log's pixels, 0.2% of THIS TURN's). So at the scales a pane
+    // usually has (0.7 and up) nothing may differ by more than the four levels, and below
+    // that no region may differ in more than 3% of its pixels: a region that is shifted,
+    // cut or missing a part differs in far more.
+    const other = unlike(second, straight, 4)
+    const allowed = renderer.S >= 0.7 ? 0 : 0.03
+    const share = other.worst?.share ?? 0
+    check("repaint: a region painted on a pad is what painting it straight onto the still layer gives", share <= allowed && onPads > 0 && blocks === 0, share > allowed ? `${other.differing} pixels differ by more than four levels of 255, ${(share * 100).toFixed(1)}% of ${other.worst.name}` : `${onPads} regions on pads, then all of them straight: ${other.near} pixels within ${other.widest.toFixed(1)} levels of 255${other.differing ? `, ${other.differing} of small type further apart (at most ${(share * 100).toFixed(1)}% of a region, in ${other.worst.name})` : ""}, the rest alike`)
+  }
 }
 
 // ---------------------------------------------------------------- a resize

@@ -271,9 +271,13 @@ export class Terminal {
 
   // Finds the tiles that differ from what the terminal is showing. `marks` flags the tile rows
   // worth reading back (one per tile row); null means none, and a reset reads all of them.
-  // `spans` narrows a row to the columns that were painted (x0, x1 per row), so a small region
-  // costs a small read.
-  diffTiles(context, marks, spans) {
+  // `spans` narrows a row to what was painted of it (x0, x1, y0, y1 per row), so a small
+  // region costs a small read. Nothing outside it changed, so a tile that differs is sent
+  // from the shadow, which then holds the new lines beside the ones the terminal already has.
+  // `blocks` are regions that were painted on a pad: their pixels as painted, { x, y, w, h,
+  // pixels }, in the order they were painted. They go into the shadow first; what is read back
+  // from the still layer after them is its final state, so the two never disagree.
+  diffTiles(context, marks, spans, blocks = null) {
     const { width, height } = this
     const tileWidth = TILE_COLS * this.cell.width
     const bandHeight = this.bandHeight
@@ -293,8 +297,44 @@ export class Terminal {
       all = true
     }
     const shadow = this.shadow
-    const dirty = []
-    let need = 0
+    const touched = [] // the tiles that differ from what the terminal shows
+    const seen = new Set()
+    const touch = (index) => {
+      if (seen.has(index)) return
+      seen.add(index)
+      touched.push(index)
+    }
+    if (!all && blocks) {
+      for (const block of blocks) {
+        const right = Math.min(width, block.x + block.w)
+        const bottom = Math.min(height, block.y + block.h)
+        if (block.x < 0 || block.y < 0 || right <= block.x || bottom <= block.y) continue
+        const data = Buffer.from(block.pixels.buffer, block.pixels.byteOffset, block.pixels.length)
+        const local = block.w * 4
+        this.readBytes = (this.readBytes ?? 0) + block.w * block.h * 4
+        this.reads = (this.reads ?? 0) + 1
+        for (let band = Math.floor(block.y / bandHeight); band * bandHeight < bottom; band += 1) {
+          const y0 = Math.max(block.y, band * bandHeight)
+          const y1 = Math.min(bottom, (band + 1) * bandHeight)
+          for (let column = Math.floor(block.x / tileWidth); column * tileWidth < right; column += 1) {
+            const x0 = Math.max(block.x, column * tileWidth)
+            const bytes = (Math.min(right, (column + 1) * tileWidth) - x0) * 4
+            let same = true
+            for (let row = y0; row < y1 && same; row += 1) {
+              const at = (row - block.y) * local + (x0 - block.x) * 4
+              const was = row * stride + x0 * 4
+              same = data.compare(shadow, was, was + bytes, at, at + bytes) === 0
+            }
+            if (same) continue
+            for (let row = y0; row < y1; row += 1) {
+              const at = (row - block.y) * local + (x0 - block.x) * 4
+              shadow.set(data.subarray(at, at + bytes), row * stride + x0 * 4)
+            }
+            touch(band * across + column)
+          }
+        }
+      }
+    }
     if (all || marks) {
       for (let band = 0; band < down; band += 1) {
         if (!all && !marks[band]) continue
@@ -302,35 +342,51 @@ export class Terminal {
         const rows = Math.min(bandHeight, height - top)
         let first = 0
         let end = across
+        let from = top // the lines of this tile row that are read: all of it, or what was painted
+        let lines = rows
         if (!all && spans) {
-          if (spans[band * 2 + 1] <= spans[band * 2]) continue
-          first = Math.min(across - 1, Math.max(0, Math.floor(spans[band * 2] / tileWidth)))
-          end = Math.min(across, Math.max(first + 1, Math.ceil(spans[band * 2 + 1] / tileWidth)))
+          if (spans[band * 4 + 1] <= spans[band * 4]) continue
+          first = Math.min(across - 1, Math.max(0, Math.floor(spans[band * 4] / tileWidth)))
+          end = Math.min(across, Math.max(first + 1, Math.ceil(spans[band * 4 + 1] / tileWidth)))
+          from = Math.min(top + rows, Math.max(top, spans[band * 4 + 2]))
+          lines = Math.min(top + rows, Math.max(from, spans[band * 4 + 3])) - from
+          if (lines <= 0) continue
         }
         const x0 = first * tileWidth
         const span = Math.min(width, end * tileWidth) - x0
         const local = span * 4
-        const image = context.getImageData(x0, top, span, rows).data
-        this.readBytes = (this.readBytes ?? 0) + span * rows * 4
+        const image = context.getImageData(x0, from, span, lines).data
+        this.readBytes = (this.readBytes ?? 0) + span * lines * 4
         this.reads = (this.reads ?? 0) + 1
         const bytes = Buffer.from(image.buffer, image.byteOffset, image.length)
-        let changed = false
+        const changed = []
         for (let column = first; column < end; column += 1) {
           const left = column * tileWidth - x0
           const wide = Math.min(tileWidth, width - column * tileWidth)
           let same = true
-          for (let row = 0; row < rows && same; row += 1) {
+          for (let row = 0; row < lines && same; row += 1) {
             const at = row * local + left * 4
-            const was = (top + row) * stride + (x0 + left) * 4
+            const was = (from + row) * stride + (x0 + left) * 4
             same = bytes.compare(shadow, was, was + wide * 4, at, at + wide * 4) === 0
           }
-          if (same) continue
-          changed = true
-          dirty.push({ index: band * across + column, width: wide, height: rows, offset: need, length: wide * rows * 4, bytes, left, local })
-          need += wide * rows * 4
+          if (!same) changed.push(column)
         }
-        if (changed) for (let row = 0; row < rows; row += 1) shadow.set(bytes.subarray(row * local, (row + 1) * local), (top + row) * stride + x0 * 4)
+        if (!changed.length) continue
+        for (let row = 0; row < lines; row += 1) shadow.set(bytes.subarray(row * local, (row + 1) * local), (from + row) * stride + x0 * 4)
+        for (const column of changed) touch(band * across + column)
       }
+    }
+    // every tile that differs goes out whole, from the shadow, in the order of the screen
+    touched.sort((a, b) => a - b)
+    const dirty = []
+    let need = 0
+    for (const index of touched) {
+      const column = index % across
+      const top = Math.floor(index / across) * bandHeight
+      const rows = Math.min(bandHeight, height - top)
+      const wide = Math.min(tileWidth, width - column * tileWidth)
+      dirty.push({ index, width: wide, height: rows, offset: need, length: wide * rows * 4, bytes: shadow, base: top * stride, left: column * tileWidth, local: stride })
+      need += wide * rows * 4
     }
     // The pixels travel in buffers of a few fixed sizes: one of 32 KB to 1 MB when that holds
     // them all, otherwise as many of 1 MB as it takes. A freed block of a size that comes again
@@ -359,7 +415,7 @@ export class Terminal {
       tile.offset = used
       used += tile.length
       for (let row = 0; row < tile.height; row += 1) {
-        const at = row * tile.local + tile.left * 4
+        const at = tile.base + row * tile.local + tile.left * 4
         target.set(tile.bytes.subarray(at, at + tile.width * 4), tile.offset + row * tile.width * 4)
       }
       let any = 0
@@ -439,7 +495,7 @@ export class Terminal {
   // Returns "busy" when two frames are already on their way, "still" when nothing changed.
   // `card` is the inspection card as its own image: { key, left, top, w, h, padX, padY, winW,
   // winH, width, height, pixels() }, or null when none is open.
-  send(context, marks, sprites, atlas, spans = null, card = null) {
+  send(context, marks, sprites, atlas, spans = null, card = null, blocks = null) {
     if (this.inflight >= 2 || !this.worker || this.resizing) return "busy"
     const reset = this.reset
     if (reset) {
@@ -480,7 +536,7 @@ export class Terminal {
       this.cardShown = null
       this.cardBytes = 0
     }
-    const { chunks, dirty, across, down } = this.diffTiles(context, marks, spans)
+    const { chunks, dirty, across, down } = this.diffTiles(context, marks, spans, blocks)
     const { places, deletes, pages } = this.diffSprites(sprites, atlas)
     // pages that were dropped to make room leave the terminal too, and their placements with them
     const dropPages = atlas.retired.map((id) => PAGE_BASE + id)

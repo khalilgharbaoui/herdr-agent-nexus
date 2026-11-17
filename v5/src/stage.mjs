@@ -21,6 +21,13 @@ import { FAMILY, INK, TAU, agoOf, clamp, clockOf, compactOf, hourMinuteOf, model
 const easeOut = (t) => 1 - (1 - t) ** 3
 const DEG = Math.PI / 180
 
+// NEXUS_COARSE=1 paints the live text whole at every step, as before 2026-11-17 (see draw.mjs).
+const COARSE = process.env.NEXUS_COARSE === "1"
+
+// What a line of the live tail shows of the things that move by themselves: how far it has
+// been typed and whether the cursor stands on it, or the time at the end of a tool call's line.
+const movingOf = (line) => (line.tool ? `t${line.right}` : `${line.value.length}${line.cursor ? "c" : ""}`)
+
 export const stage = {
   // The view the still layer is drawn with: the flock's own, in whole degrees, so the rings are
   // repainted only when the lean really changed.
@@ -707,31 +714,44 @@ export const stage = {
     if (!focus) return "none"
     const session = focus.session
     const parts = [session.id, session.state, session.phase.key, ui.tailScroll]
+    // What lays the text out, and what a line looks like while it stands still. What moves by
+    // itself (how far a block has been typed, the seconds of a call that is still out) is the
+    // strip's to follow: see signTailLines. (NEXUS_COARSE=1: all of it here, as before.)
     for (const item of session.tail ?? []) {
-      if (item.kind === "tool") parts.push(item.tool.id, item.tool.status, item.tool.end === null ? Math.floor((now - item.tool.start) / 1000) : "")
-      else parts.push(item.key, this.shownOf(item))
+      if (item.kind === "tool") parts.push(item.tool.id, item.tool.status, COARSE ? (item.tool.end === null ? Math.floor((now - item.tool.start) / 1000) : "") : item.tool.end === null ? "out" : item.tool.end)
+      else parts.push(item.key, COARSE ? this.shownOf(item) : `${item.text.length}/${item.length}${item.pending ? "p" : ""}`)
     }
+    // (the strip counts on the whole having been painted with these very lines)
+    const laid = COARSE ? null : this.tailLayout(scene, ui, now)
+    if (laid && this.tailPainted && this.tailPainted.length !== laid.view.length) parts.push(`relaid ${this.frameNo}`)
     return parts.join("|")
   },
 
-  // The live tail: what the thread just thought, said and ran, read downwards, newest last.
-  drawTail(c, scene, ui, now) {
+  // The live tail laid out: what the thread just thought, said and ran, as lines, the ones in
+  // view and where they stand. Made once a frame and shared by the tail's two regions: the
+  // whole text, and the strip of its lines that moved.
+  tailLayout(scene, ui, now) {
+    const kept = this.tailLaid
+    if (kept && kept.frame === this.frameNo && kept.scene === scene && kept.now === now && kept.G === this.G && kept.scroll === (ui.tailScroll ?? 0)) return kept.layout
+    const layout = this.layTail(scene, ui, now)
+    this.tailLaid = { frame: this.frameNo, scene, now, G: this.G, scroll: ui.tailScroll ?? 0, layout }
+    return layout
+  },
+
+  layTail(scene, ui, now) {
     const focus = scene.focused
-    if (!focus) return
+    if (!focus) return null
     const session = focus.session
-    const color = session.state === "waiting" ? INK.warn : modelColor(session.model, session.provider)
     const G = this.G
     const u = (value) => this.u(value)
     const box = G.tail
     const size = 16.5
     const lineH = u(28)
-    const charW = this.width(c, "M", { size })
+    const charW = this.width(this.base, "M", { size })
     const gutter = u(18)
     // a line of prose stops well short of the timing column, and never runs past a readable measure
     const perLine = Math.max(20, Math.min(116, Math.floor((box.w - gutter - u(90)) / charW)))
     const maxLines = Math.max(2, Math.floor(box.h / lineH))
-    this.line(c, box.x, box.y - u(12), box.x + box.w, box.y - u(12), INK.ghost)
-    this.hit("tail", "tail", { x: box.x, y: box.y - u(10), w: box.w, h: box.h + u(10) })
     const lines = []
     const items = session.tail ?? []
     items.forEach((item, index) => {
@@ -767,44 +787,111 @@ export const stage = {
         lines.push({ value: value.slice(0, clamp(before, 0, value.length)), kind: item.kind, cursor: front || (!typing && newest && at === keep.length - 1 && generating) })
       })
     })
-    if (!lines.length) {
-      this.text(c, scene.then ? "nothing is kept of what it had said or run by that moment" : session.state === "working" ? "waiting for the first words of this step" : "nothing said in the last quarter hour", box.x + gutter, box.y + lineH, { size, color: INK.faint })
-      return
-    }
     // once the box is full the oldest lines leave at the top; the wheel brings them back
     const back = clamp(ui.tailScroll ?? 0, 0, Math.max(0, lines.length - maxLines))
-    ui.tailScroll = back
+    if (lines.length) ui.tailScroll = back
     const view = lines.slice(Math.max(0, lines.length - maxLines - back), lines.length - back)
-    const top = box.y + lineH - u(6)
-    if (lines.length > maxLines) this.text(c, back ? `${back} newer line${back === 1 ? "" : "s"} below  ·  wheel` : `${lines.length - maxLines} earlier  ·  wheel`, box.x + box.w, box.y - u(20), { size: 11.5, color: back ? INK.live : INK.faint, align: "right" })
-    view.forEach((line, index) => {
-      const y = top + index * lineH
-      if (line.tool) {
-        const name = bare(line.tool.name)
-        const rightW = line.right ? this.width(c, line.right, { size: 14.5 }) + u(14) : 0
-        c.fillStyle = line.running ? line.meta.color : rgba(line.meta.color, 0.55)
-        c.beginPath()
-        c.moveTo(box.x + u(2), y - u(11))
-        c.lineTo(box.x + u(11), y - u(5.5))
-        c.lineTo(box.x + u(2), y)
-        c.closePath()
-        c.fill()
-        const nameStyle = { size, family: FAMILY.monoMedium, color: line.running ? line.meta.color : rgba(line.meta.color, 0.8) }
-        this.text(c, name, box.x + gutter, y, nameStyle)
-        const nameW = this.width(c, `${name}  `, nameStyle)
-        const style = { size, color: line.running ? INK.text : INK.soft }
-        this.text(c, this.fit(c, line.tool.label, box.w - gutter - nameW - rightW, style), box.x + gutter + nameW, y, style)
-        if (line.right) this.text(c, line.right, box.x + box.w, y, { size: 14.5, family: FAMILY.monoMedium, color: line.rightColor, align: "right" })
-        this.hit("tool", line.tool.id, { x: box.x, y: y - u(20), w: box.w, h: lineH }, { sid: session.id, tool: line.tool })
-        return
+    return { session, color: session.state === "waiting" ? INK.warn : modelColor(session.model, session.provider), box, size, lineH, charW, gutter, maxLines, total: lines.length, back, view, top: box.y + lineH - u(6) }
+  },
+
+  // The live tail: what the thread just thought, said and ran, read downwards, newest last.
+  drawTail(c, scene, ui, now) {
+    const laid = this.tailLayout(scene, ui, now)
+    if (!laid) return
+    const u = (value) => this.u(value)
+    const { box, session, view } = laid
+    this.line(c, box.x, box.y - u(12), box.x + box.w, box.y - u(12), INK.ghost)
+    this.hit("tail", "tail", { x: box.x, y: box.y - u(10), w: box.w, h: box.h + u(10) })
+    if (!view.length) {
+      this.text(c, scene.then ? "nothing is kept of what it had said or run by that moment" : session.state === "working" ? "waiting for the first words of this step" : "nothing said in the last quarter hour", box.x + laid.gutter, box.y + laid.lineH, { size: laid.size, color: INK.faint })
+      this.tailPainted = []
+      return
+    }
+    if (laid.total > laid.maxLines) this.text(c, laid.back ? `${laid.back} newer line${laid.back === 1 ? "" : "s"} below  ·  wheel` : `${laid.total - laid.maxLines} earlier  ·  wheel`, box.x + box.w, box.y - u(20), { size: 11.5, color: laid.back ? INK.live : INK.faint, align: "right" })
+    view.forEach((line, index) => this.drawTailLine(c, laid, line, index, true))
+    // what each line showed, as painted, of the things that move by themselves
+    this.tailPainted = view.map(movingOf)
+  },
+
+  // One line of the live tail, at its place. `targets`: whether it registers what answers
+  // the pointer (the whole text does; the strip paints over lines that already have theirs).
+  drawTailLine(c, laid, line, index, targets) {
+    const u = (value) => this.u(value)
+    const { box, size, gutter, lineH, charW, session, color } = laid
+    const y = laid.top + index * lineH
+    if (line.tool) {
+      const name = bare(line.tool.name)
+      const rightW = line.right ? this.width(c, line.right, { size: 14.5 }) + u(14) : 0
+      c.fillStyle = line.running ? line.meta.color : rgba(line.meta.color, 0.55)
+      c.beginPath()
+      c.moveTo(box.x + u(2), y - u(11))
+      c.lineTo(box.x + u(11), y - u(5.5))
+      c.lineTo(box.x + u(2), y)
+      c.closePath()
+      c.fill()
+      const nameStyle = { size, family: FAMILY.monoMedium, color: line.running ? line.meta.color : rgba(line.meta.color, 0.8) }
+      this.text(c, name, box.x + gutter, y, nameStyle)
+      const nameW = this.width(c, `${name}  `, nameStyle)
+      const style = { size, color: line.running ? INK.text : INK.soft }
+      this.text(c, this.fit(c, line.tool.label, box.w - gutter - nameW - rightW, style), box.x + gutter + nameW, y, style)
+      if (line.right) this.text(c, line.right, box.x + box.w, y, { size: 14.5, family: FAMILY.monoMedium, color: line.rightColor, align: "right" })
+      if (targets) this.hit("tool", line.tool.id, { x: box.x, y: y - u(20), w: box.w, h: lineH }, { sid: session.id, tool: line.tool })
+      return
+    }
+    c.fillStyle = line.kind === "say" ? color : rgba(color, 0.32)
+    c.fillRect(box.x + u(4), y - u(15), u(2), u(20))
+    this.text(c, line.unkept ? this.fit(c, line.value, box.w - gutter, { size }) : line.value, box.x + gutter, y, { size, color: line.unkept ? INK.faint : line.kind === "say" ? INK.text : INK.dim })
+    if (line.cursor) {
+      c.fillStyle = INK.live
+      c.fillRect(Math.round(box.x + gutter + line.value.length * charW + u(3)), y - u(14), u(8), u(17))
+    }
+  },
+
+  // The strip: the lines of the live tail that moved by themselves since they were painted.
+  // A block that is being typed changes one or two lines fifteen times a second, and a call
+  // that is still out changes the seconds at the end of its line once a second. Painting the
+  // whole text again for that, and reading it back, was the largest single cost of the
+  // picture (2026-11-17: in a pane of 183 columns the text is some 1900 by 600 px, 4.8 MB a
+  // read; with the focused thread typing, 73 MB a second). So those lines are painted as one
+  // strip, from the first of them to the last: a line is 28 units tall and its ink stays
+  // inside it, so the strip takes nothing from the lines beside it. Whatever else changes
+  // (a new block, a call that ends, the wheel) paints the whole text, which is always whole.
+  signTailLines(scene, ui, now, region) {
+    const laid = this.tailLayout(scene, ui, now)
+    const painted = this.tailPainted
+    let first = -1
+    let last = -1
+    const parts = []
+    if (laid && painted && painted.length === laid.view.length) {
+      for (let index = 0; index < laid.view.length; index += 1) {
+        const moving = movingOf(laid.view[index])
+        parts.push(moving)
+        if (moving === painted[index]) continue
+        if (first < 0) first = index
+        last = index
       }
-      c.fillStyle = line.kind === "say" ? color : rgba(color, 0.32)
-      c.fillRect(box.x + u(4), y - u(15), u(2), u(20))
-      this.text(c, line.unkept ? this.fit(c, line.value, box.w - gutter, { size }) : line.value, box.x + gutter, y, { size, color: line.unkept ? INK.faint : line.kind === "say" ? INK.text : INK.dim })
-      if (line.cursor) {
-        c.fillStyle = INK.live
-        c.fillRect(Math.round(box.x + gutter + line.value.length * charW + u(3)), y - u(14), u(8), u(17))
-      }
-    })
+    }
+    if (first < 0) {
+      region.rect.w = 0
+      region.rect.h = 0
+      this.tailStrip = null
+    } else {
+      region.rect.x = Math.floor(laid.box.x) - 2
+      region.rect.w = Math.ceil(laid.box.w) + 4
+      region.rect.y = laid.top + first * laid.lineH - this.u(20)
+      region.rect.h = (last - first + 1) * laid.lineH
+      this.tailStrip = { first, last }
+    }
+    return parts.join(",")
+  },
+
+  drawTailLines(c, scene, ui, now) {
+    const laid = this.tailLayout(scene, ui, now)
+    const strip = this.tailStrip
+    if (!laid || !strip || !this.tailPainted) return
+    for (let index = strip.first; index <= strip.last && index < laid.view.length; index += 1) {
+      this.drawTailLine(c, laid, laid.view[index], index, false)
+      this.tailPainted[index] = movingOf(laid.view[index])
+    }
   },
 }
