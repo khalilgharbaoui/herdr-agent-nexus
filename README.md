@@ -127,6 +127,7 @@ their files apart, so both can run at once):
 npm install
 node --no-warnings v5/nexus.mjs            # live, in the current terminal
 node --no-warnings v5/nexus.mjs --demo     # simulated data
+node --no-warnings v5/tools/check.mjs      # 36 checks of v5 in the demo (--size 2445x1770 for landscape)
 v5/tools/restart.sh [--tab]                # in a herdr pane of its own, or restart it there in place
 ```
 

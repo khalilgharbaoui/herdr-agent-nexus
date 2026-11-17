@@ -22,8 +22,8 @@ No pane id is written down any more: herdr hands out new ones, and the server re
 
 ## In progress
 
-- 2026-11-17 01:30, ninth session (directed from the AAV session), four tasks. Done, each a
-  signed commit on local `master`:
+- 2026-11-17, ninth session (directed from the AAV session, 00:40 to 01:30 on `appical`,
+  09:20 to 10:15 on `default`), four tasks. Done, each a signed commit on local `master`:
   - `03af1c6`, `dc27d80`: **the startup entry.** herdr 0.9.5 runs a plugin's `[[startup]]`
     command when its server has started; ours brings Agent Nexus back in the place of its
     pane when it ran as the server stopped (README, "After a herdr server restart"). Proven
@@ -33,19 +33,28 @@ No pane id is written down any more: herdr hands out new ones, and the server re
     what the entry did.
   - `0f2ac6b`: **`restart.sh` names no pane.** It finds the dev pane or makes one.
   - `bee73b7`: **landscape.** REACH and THIS TURN have their column, the charts stack in a
-    narrow head, the terrain is taller, the focused thread's wire has a route, and
-    `check.mjs` (32 checks now) passes at 91, 139, 183 columns and in landscape. Also a fault
+    narrow head, the terrain is taller, the focused thread's wire has a route. Also a fault
     in the thread list's window (`v5/README.md`, ninth session).
-- **NOT PUSHED.** This session's permission rules refuse `git push`. The directing session
-  has to run `git push origin master`, then
-  `herdr plugin update khalilgharbaoui.agent-nexus --yes`, then the plugin's stop and open
-  actions, for the installed pane to run the new build.
-- Still open from the four tasks: **the measured minute with eight or more threads working**
-  (bytes a second, per cent of a core, memory, at 183 columns; the class to beat is 350 to
-  820 kB/s and 5.3 to 9.9% of a core).
+  - **The measured minute** (`v5/README.md`, "What the picture costs"), at 183 columns by 82
+    rows on a stand-in terminal, 2026-11-17 09:40 to 09:50:
+    - the demo held at eight or more working (`--demo-working 8`: 11 to 13 of 28 working):
+      **788 to 3418 kB/s (median 1432), 10.5 to 38.9% of a core (median 19.1%), 219 to 279
+      MB.** Above the class (350 to 820 kB/s, 5.3 to 9.9%). It was 861 to 3946 kB/s and 27.3
+      to 63.3% (median 42.3%) before this session's three changes;
+    - live data, 7 of 12 working: **412 to 470 kB/s (median 432), 5.9 to 9.5% of a core
+      (median 7.6%), 208 to 209 MB.** Inside the class. It was 9.1 to 14.9% (median 11.3%)
+      the old way, side by side in the same minute. But only one of those seven was really
+      writing; the other six carry a busy flag from turns cut off hours before.
+    - **So: still open, a live minute with eight or more threads really writing.** The
+      machine had none, and making them costs the usage window: the operator's call.
+  - `tools/check.mjs`: 36 checks, all passing at 91, 139 and 183 columns by 82 rows and in
+    landscape (163 by 59, 206 by 59, 120 by 40).
+- **NOT PUSHED.** This agent's permission rules refuse `git push`. The directing session has
+  to run `git push origin master`. The installed copy was brought to the local commits
+  without it (see the report of the ninth session); after the push
+  `herdr plugin update khalilgharbaoui.agent-nexus --yes` says it is up to date.
 - Left from the eighth session: the result of the thirteen-minute side-by-side watch for cost
-  bursts; a look at the held moment in the installed pane through herdr (done in the dev pane
-  in landscape, see `v5/README.md`).
+  bursts (the bursts' cause is found now: the read back, see above).
 - For the operator to judge, each a decision taken for him that he can overrule: during a
   hold the circuit's rows stay the present under a NOW chip (their wires carry the grey
   motes of then); in a working row the chips stand in one column, clear of the widest timer

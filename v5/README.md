@@ -25,6 +25,7 @@ explains the phase strip, the circuit, comms, equipment, the sector map and the 
 ```sh
 node --no-warnings v5/nexus.mjs              # live, in the current terminal
 node --no-warnings v5/nexus.mjs --demo       # simulated data, labelled as such on screen
+node --no-warnings v5/nexus.mjs --demo --demo-working 8   # the same, with never fewer than eight threads at work
 node --no-warnings v5/nexus.mjs --frames 4 --every 300 --size 1890x2460 [--demo] [--poke "key:e;key:];move:330,560"]
 node v5/tools/poke.mjs <pane id> "move:330,560;wait:500;click:330,560;key:e;key:]"   # synthetic input into the live pane
 node v5/tools/look.mjs out.png x y w h scale in.png [more.png]                       # crop and scale frames to look at
@@ -307,7 +308,7 @@ settled on under `resizes`); the footprint after it was not caught on its own.
 
 `node --no-warnings v5/tools/check.mjs [--size 1365x2460] [--shots]` runs the demo on a clock
 of its own and sends it the events a mouse and a keyboard send, at places taken from the
-picture's own geometry, so it holds at any size, upright or landscape. 32 checks, exit code 0
+picture's own geometry, so it holds at any size, upright or landscape. 36 checks, exit code 0
 when all pass, and a loop that never ends is reported as a hang (it runs itself as a child with
 a time limit):
 
@@ -319,7 +320,8 @@ a time limit):
 | Scrubbing | a drag on the terrain holds a moment, the focus does not move, the SCRUB card shows, a mark stands on every ridge |
 | The replay | the stage is read as of the moment, the thread shown has nothing from after it, every target of the stage carries the moment, every part that is not replayed has its NOW chip, the moving marks of the core are grey |
 | Cards during a hold | a line of THIS TURN, a dot of the flock of then and a moon read the moment; a part that is not replayed says NOW; a pinned card leaves the moment held; escape lets go of the card first and the moment second; nothing of the moment is left afterwards |
-| Partial repaints | a change of the wires repaints every region a changed wire runs through (against the wires' own pixels); the three ticking parts of a working row are pixel for pixel what a fresh paint gives |
+| Partial repaints | a change of the wires repaints every region a changed wire runs through (against the wires' own pixels); the three ticking parts of a working row are pixel for pixel what a fresh paint gives; so is the live text after half a minute of being painted in strips |
+| What the terminal is taken to show | over half a minute of frames, the shadow that the terminal's side keeps (from the pixels of the pads and from what it reads back) is the picture itself, pixel for pixel; the same moment painted twice is the same picture; a region painted on a pad is what painting it straight onto the still layer gives (to within four levels of 255, see "What the picture costs") |
 | A resize | three sizes in a row are laid out with nothing thrown |
 
 They pass at 91, 139 and 183 columns by 82 rows and in landscape (163 by 59, 206 by 59, and
@@ -327,7 +329,71 @@ the squarest and smallest shapes tried: 163 by 70 and 120 by 40).
 `tools/cost-watch.mjs [seconds] [folder]` averages a stretch of `stats.json` reports (cost,
 and what it is spent on); with `tools/resize-check.py --fresh --to 91 --settle 120 --run <folder>`
 it measures a second copy on a stand-in terminal, and `NEXUS_COARSE=1` in front of that runs
-the repaints the old way for a side-by-side reading.
+the repaints the old way for a side-by-side reading (as they were before 2026-11-16, and
+before 2026-11-17: see "What the picture costs").
+
+## What the picture costs
+
+Measured with `tools/cost-watch.mjs` over one minute each, on stand-in terminals of 183
+columns by 82 rows (2745 by 2460 px), the old way (`NEXUS_COARSE=1`) and the new side by
+side on the same data in the same minute (2026-11-17, 09:40 to 09:50):
+
+| One minute at 183 by 82 | Working | Per cent of a core | kB/s | Read back | Footprint |
+| --- | --- | --- | --- | --- | --- |
+| Live data, the old way | 7 of 12 | 9.1 to 14.9, median 11.3 | 428 to 486, median 447 | 26.8 MB/s | 194 to 196 MB |
+| Live data, now | 7 of 12 | 5.9 to 9.5, median 7.6 | 412 to 470, median 432 | 7.9 MB/s | 208 to 209 MB |
+| Demo held at eight or more, the old way | 11 to 13 of 28 | 27.3 to 63.3, median 42.3 | 861 to 3946, median 2171 | 265 MB/s | 217 to 252 MB |
+| Demo held at eight or more, now | 11 to 13 of 28 | 10.5 to 38.9, median 19.1 | 788 to 3418, median 1432 | 57 MB/s | 219 to 279 MB |
+
+**The classes, honestly.** Live, the pane is inside the class it was given (350 to 820 kB/s
+and 5.3 to 9.9% of a core) at 183 columns: 412 to 470 kB/s and 5.9 to 9.5%. But of the seven
+threads that counted as working in that minute, one was writing (the session that took the
+measurement). The other six carry a busy flag from turns that were cut off hours before: a
+row of theirs counts its seconds and types nothing. So this is the class for many rows that
+tick, not for many threads that write. The machine had no eight threads writing at once, and
+making them costs the operator's usage window, so it was not done.
+
+The demo is the reading with eight or more really at work (`--demo-working 8` holds eleven
+to thirteen), and it is above the class: **10.5 to 38.9% of a core, median 19.1%, and 0.8 to
+3.4 MB/s, median 1.4 MB/s**. It is a harder load than threads of flesh and blood: every one
+of its threads makes a tool call every few seconds, a block of text lands whole and is typed
+out at 260 characters a second or more, and its turns are minutes long, so the turn clock
+runs fast. What it is spent on there: the live text being typed (104 of some 260 tiles a
+second), the terrain, the core, the rows, the equipment. Between the two readings lies what
+eight real threads writing would cost; that minute is still to be measured when the machine
+has them.
+
+**What was found, and changed** (a CPU profile of the live minute: two fifths of the main
+thread's work was one call, the read back of pixels):
+
+- **A read back copied the whole picture.** With this canvas library a read of pixels after
+  a paint costs a copy of the whole still layer, whatever the size of the read: 0.7 ms for
+  the 27 MB of a pane of 183 columns, and next to nothing when no paint came between
+  (measured: 0.69 ms for 104 by 27 px after a paint, 0.003 ms without one). Something is
+  painted in most frames (a timer, a typed line), so that was up to thirty copies of 27 MB a
+  second. A region is now painted on a pad of its own size, set into the still layer from
+  there, and the terminal's side takes its pixels from the pad: the copy is the size of the
+  region. Regions over 450,000 px (the terrain in a wide pane, the whole live text) and
+  everything at a new layout are painted straight and read back as before. The pads are
+  kept by size, 12 MB of them at most, and go at a resize.
+- **The live text was painted whole for one line.** A block that is being typed changes one
+  or two lines fifteen times a second, and a tool call that is still out changes the seconds
+  at the end of its line: each painted the whole text again (some 1900 by 600 px at 183
+  columns). Those lines are now painted as one strip, from the first of them to the last.
+- **A tile row was read whole for a line of it.** Of what is still read back from the still
+  layer, only the lines that were painted are read (a timer is 27 px of a tile row's 90).
+
+A pad is painted with the canvas shifted to the region's corner, and two things round
+differently then: a gradient and the edge of a curve by a level of 255 (3.2 levels where the
+terrain's see-through ridges lie over each other), and small type under some 8 px, whose
+edges can come out a fraction of a pixel apart (seen at 120 by 40 cells: 1.2% of the log's
+pixels). The eye sees neither, and `tools/check.mjs` holds both to those bounds.
+
+Memory: the pads and the pixels on their way to the terminal's side add some 13 MB at 183
+columns (208 to 209 MB against 194 to 196 the old way). At 91 columns a fresh start stands
+at 178 to 195 MB over three minutes, under the 220 it is held to, and a drag from 91 to 139
+columns leaves nothing behind: 201 MB right after it, 196 to 197 MB over the two minutes
+after (`tools/resize-check.py --from 91 --to 139`).
 
 ## Files
 
@@ -644,10 +710,18 @@ Ninth session (2026-11-17, 00:40 to 01:30), from the director's four tasks:
   cell again once a second until the terminal says, and takes the answer as a resize
   (`tools/late-cell-check.py`).
 
+- **What the picture costs with many threads** (see "What the picture costs"): a profile
+  found that reading pixels back copied the whole picture every time, which was the largest
+  single cost. Regions are painted on pads now, the live text in strips. Side by side on the
+  same live minute at 183 columns: 7.6% of a core where it was 11.3%. The demo held at eight
+  or more working: 19.1% where it was 42.3%, and still above the class, which is written
+  down there as it is. `--demo-working N` holds the demo at N threads at work or more.
+
 Seen in the real pane (the dev copy in a tab of its own, 163 by 59, the terminal holding
 every page, synthetic input through herdr): the landscape layout in the pane's own frame, a
 hover on REACH's head ("note reach") and on a line of THIS TURN ("port exec"), a drag on the
 terrain that held a moment ("scrubbing the terrain: 01:20:06") with the stage of then in the
-pane's own frame, and escape letting it go. Seen only in headless frames: 206 by 59 (charts
-side by side there), 163 by 70, 120 by 40, explain mode in landscape. Not seen by anyone yet:
-any of it with a real hand.
+pane's own frame, and escape letting it go; and all of that once more with the regions on
+pads (09:52, 24 of 24 pages held, no error, 8.7% of a core with seven rows ticking). Seen
+only in headless frames: 206 by 59 (charts side by side there), 163 by 70, 120 by 40,
+explain mode in landscape. Not seen by anyone yet: any of it with a real hand.
