@@ -6,6 +6,8 @@
 // the picture's own geometry and targets, so the checks hold at any size. It checks:
 //   reach        REACH is drawn for the focused thread, its head and a target open their cards,
 //                and a bar is the tool call's own target
+//   layout       THIS TURN is drawn, no two parts of the stage share ground, and the focused
+//                thread's wire ends at the tip (in landscape: across parts that carry it)
 //   resting row  a resting row says what its last turn was, and that reading opens its card
 //   scrub        a drag along the terrain holds a moment: on the terrain, the charts and REACH
 //   replay       while it is held the whole stage is of that moment (every target on it carries
@@ -145,6 +147,48 @@ save("check-0-now.png")
       check("reach: a bar is its tool call", ui.hover?.kind === "tool" && Boolean(barCard), barCard ? `${barCard.kicker}: ${barCard.title}` : `hover is ${ui.hover?.kind ?? "nothing"}`)
     } else check("reach: a bar is its tool call", false, "no bar is drawn")
   }
+}
+
+// ---------------------------------------------------------------- the layout of the stage
+{
+  const G = renderer.G
+  const turnList = targets("under").find((target) => target.kind === "note" && target.id === "turn-list")
+  check("layout: THIS TURN is drawn", Boolean(G.under && turnList), G.under ? `${targets("under").length} targets` : "the layout gave THIS TURN no room")
+  // every part of the stage has its own ground: no two of them share a pixel
+  const names = ["flockline", "core", "plinth", "cache", "under", "reach", "lane", "head", "charts", "tail", "terrain"]
+  const parts = renderer.regions.filter((region) => names.includes(region.name))
+  const clashes = []
+  for (let a = 0; a < parts.length; a += 1) {
+    for (let b = a + 1; b < parts.length; b += 1) {
+      const one = parts[a].rect
+      const two = parts[b].rect
+      if (one.x < two.x + two.w && two.x < one.x + one.w && one.y < two.y + two.h && two.y < one.y + one.h) clashes.push(`${parts[a].name} and ${parts[b].name}`)
+    }
+  }
+  const outside = parts.filter((region) => region.rect.x < 0 || region.rect.y < 0 || region.rect.x + region.rect.w > W || region.rect.y + region.rect.h > H || region.rect.w <= 0 || region.rect.h <= 0).map((region) => region.name)
+  check("layout: the parts of the stage do not overlap", clashes.length === 0 && outside.length === 0, clashes.length ? clashes.join("; ") : outside.length ? `off the picture: ${outside.join(", ")}` : `${parts.length} parts, ${G.wide ? "landscape" : "upright"}`)
+  // the focused thread's wire: from its row to the tip. In landscape it runs under the
+  // equipment and up the stage's edge, and every part it crosses has to carry the wires
+  // (a part that does not would paint over it). Upright it climbs behind the terrain.
+  const wire = renderer.flow.paths.get(`focus:${sid}`)
+  const tip = renderer.tipOf()
+  const end = wire?.points[wire.points.length - 1]
+  let lost = []
+  if (wire && G.wide) {
+    for (let index = 1; index < wire.points.length; index += 1) {
+      const [x0, y0] = wire.points[index - 1]
+      const [x1, y1] = wire.points[index]
+      const count = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 6))
+      for (let part = 0; part <= count; part += 1) {
+        const x = x0 + ((x1 - x0) * part) / count
+        const y = y0 + ((y1 - y0) * part) / count
+        const over = renderer.regions.filter((region) => x >= region.rect.x && x < region.rect.x + region.rect.w && y >= region.rect.y && y < region.rect.y + region.rect.h)
+        for (const region of over) if (!region.wires && !lost.includes(region.name)) lost.push(region.name)
+        if (!over.length && !lost.includes("no part at all")) lost.push("no part at all")
+      }
+    }
+  }
+  check("layout: the focused thread's wire ends at the tip", Boolean(end) && Math.abs(end[0] - tip.x) <= 2 && Math.abs(end[1] - tip.y) <= renderer.u(30) && lost.length === 0, !end ? "no wire is laid out" : lost.length ? `it crosses what does not carry it: ${lost.join(", ")}` : `${wire.points.length} points, ${G.wide ? "under the equipment and up the stage's edge" : "up the bus"}`)
 }
 
 // ---------------------------------------------------------------- a resting row

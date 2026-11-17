@@ -68,18 +68,25 @@ export const charts = {
   drawCharts(c, scene, ui, now) {
     const box = this.G.charts
     const focus = scene.focused
-    if (!box || !focus || box.w < this.u(360)) return
+    // side by side, or (a narrow column in landscape) one above the other at the column's width
+    const stacked = box?.stacked === true
+    if (!box || !focus || box.w < this.u(stacked ? 240 : 360)) return
     const u = (value) => this.u(value)
     const session = focus.session
-    const gap = u(26)
-    const w = Math.floor((box.w - 2 * gap) / 3)
+    const gap = stacked ? box.gap : u(26)
+    const w = stacked ? box.w : Math.floor((box.w - 2 * gap) / 3)
+    const each = stacked ? Math.floor((box.h - 2 * gap) / 3) : box.h
     const span = ui.window ?? WINDOWS[1]
     const slice = span / SLICES
     const held = scene.then ?? null
     const present = held === null ? now : this.present
     const from = Math.floor(present / slice) * slice + slice - span
     const color = modelColor(session.model, session.provider)
-    const frame = (index) => ({ x: box.x + index * (w + gap), y: box.y, w, h: box.h, px: box.x + index * (w + gap), py: box.y + u(34), pw: w, ph: box.h - u(34) - u(20) })
+    const frame = (index) => {
+      const x = stacked ? box.x : box.x + index * (w + gap)
+      const y = stacked ? box.y + index * (each + gap) : box.y
+      return { x, y, w, h: each, px: x, py: y + u(34), pw: w, ph: each - u(34) - u(20) }
+    }
     this.chartContext(c, frame(0), session, from, span, now, color, held)
     this.chartLatency(c, frame(1), session, from, span, now, color, held)
     this.chartWindow(c, frame(2), scene, session, present, held)

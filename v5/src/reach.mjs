@@ -189,7 +189,7 @@ export const reach = {
   reachColumns() {
     const G = this.G
     const box = G.reach
-    const x0 = G.busX + this.u(34)
+    const x0 = G.trunkX + this.u(34)
     const x1 = box.x + box.w - this.u(20)
     const tx1 = x1 - this.u(56)
     const tx0 = Math.min(tx1 - this.u(120), x0 + Math.round((x1 - x0) * 0.44))
@@ -225,7 +225,7 @@ export const reach = {
     const age = now - newest
     const clock = !turn.live ? 0 : running || age < 60e3 ? Math.floor(now / 10e3) : Math.floor(now / 60e3)
     const labels = ["thread", "turn", "live", "calls", "ended", "failed", "scale", "now line", "ages", "wire", "scrub"]
-    const parts = [session.id, turn.start, turn.live, tools, ended, failed, span, head, clock, this.G.busX, this.scrubAt(ui) ?? ""]
+    const parts = [session.id, turn.start, turn.live, tools, ended, failed, span, head, clock, this.G.trunkX, this.scrubAt(ui) ?? ""]
     this.signed = { labels, parts }
     return parts.join("|")
   },
@@ -344,7 +344,7 @@ export const reach = {
 
     // the tree: a branch leaves the wire at the first row and runs down a stem; every group
     // hangs on that stem, every target on its group's own
-    const busX = G.busX
+    const busX = G.trunkX
     const stem = x0 + u(5)
     const groupX = x0 + u(20)
     const inner = x0 + u(26)

@@ -96,14 +96,14 @@ Every mark is data or a control. Hover says what it is; the screen matches this 
 | This program's line (right of the counts) | The pane's size, frames a second, sprites and whether the terminal holds them, kB/s, CPU | Rewritten every 2 s | What each figure is | Pins it |
 | Turn readout under the core | The state word, the turn's time and its usual length (median; "3 in 4 end by" is the third quartile) | The timer runs with real time | The thread's card | Pins it |
 | A line of THIS TURN | Model calls, then each kind of equipment the turn called: how often, how long together, how many failed | Changes when a call lands | The equipment's card; for model calls, what one is | Pins it |
-| REACH tree (left column, under THIS TURN) | What the focused thread's turn has touched: every file under the folder it is in, every program, search, host and dispatch under its equipment. Folders are named from the root they share ("in ~/code/..."); when a stray file makes that root the disk or the home folder, the branch with the most calls is followed down and the rest is named in full, as outside. Read from each tool call's name and the first field of its input in opencode's record (path, command, pattern, address). A program is the first word of its command after any leading `cd` and assignments, with the subcommand for git, npm and the like. Shown when the thread rows leave the stage room for its head and three rows | A target appears when it is first touched. When the rows do not fit, every group shows as many of its most recently touched targets as all can show alike, and a last line counts the rest | The target: its path or last command, calls by kind, failures, time together, first and last touch. A folder or a kind of equipment: what it holds. The root. The rest that is not shown | Pins it |
+| REACH tree (left column, under THIS TURN) | What the focused thread's turn has touched: every file under the folder it is in, every program, search, host and dispatch under its equipment. Folders are named from the root they share ("in ~/code/..."); when a stray file makes that root the disk or the home folder, the branch with the most calls is followed down and the rest is named in full, as outside. Read from each tool call's name and the first field of its input in opencode's record (path, command, pattern, address). A program is the first word of its command after any leading `cd` and assignments, with the subcommand for git, npm and the like. Upright it is shown when the thread rows leave the stage room for its head and three rows; in landscape it has the whole column under THIS TURN, down to the terrain | A target appears when it is first touched. When the rows do not fit, every group shows as many of its most recently touched targets as all can show alike, and a last line counts the rest | The target: its path or last command, calls by kind, failures, time together, first and last touch. A folder or a kind of equipment: what it holds. The root. The rest that is not shown | Pins it |
 | Bar on a REACH row | One tool call on that target, on the turn's time: where it starts is when the call started, its length how long it took (3 px at least), its colour the equipment, red when it failed, hollow while it runs. One scale for every row: the first round span the turn still fits in (1, 2, 5, 10, 20, 30 minutes, 1 hour and so on) | A running call's bar grows. The scale stands still until the turn outgrows it | The tool call (the same card as its pillar, its diamond and its log line) | Pins it |
 | Cyan line through REACH | Now, on the turn's time | Moves right in whole seconds, two pixels at a time | The axis: when the turn began, the span across | Pins it |
 | Tone of a name in REACH, and the word at its right | How long ago the target was last touched: bright for 20 s, softer for five minutes, dim after that. The word: "now", "20s", "3m", or "running" in cyan while a call on it is out; a clock time for a turn that has ended | Changes every ten seconds under a minute, every minute after | The target | Pins it |
 | Packet on a REACH branch | A call of the focused thread leaving its wire for its target, and its result coming back: the same sign per equipment as on a synapse, red when it failed | Out when the call starts, back when it ends, a flash at the target when the result lands (longer and red for a failure) | n/a | n/a |
 | Motes on a REACH branch | A call that is still out | Run from the wire to the target for as long as the call runs | The branch: what it is, how many calls are out | Pins it |
 | Scrubbed moment (a drag along the terrain) | One moment of the terrain's window, read on the front ridge in whole slices. A white mark on every ridge where it stood then (and one on the ground under it), and a white line at the same moment on the CONTEXT, LATENCY and WINDOW charts and, when it lies in the turn, on REACH. The moment is held by itself, apart from any pinned card | Follows the drag; then steps left with the terrain and is let go when it leaves the window | The SCRUB card (marked HELD): the time, and for every listed thread its tokens a second in that slice and what it had open then (the tool it ran, reasoning, writing, or waiting for the first words). It shows while nothing else is under the pointer, and stays while the pointer rests on the terrain | A press on a ridge or the ground is a click when released without a drag, so a drag never moves the focus. While the moment is held any mark can be hovered and pinned as usual. Escape lets a pinned card go first and the moment second; a click on nothing does the same |
-| The focused thread's wire (circuit to tip) | The path of what the thread writes: motes run up it while it works (density is the rate), a burst when a call reports | See "Motes along an axon" | What it is, what it carries, where it ends | Pins it |
+| The focused thread's wire (circuit to tip) | The path of what the thread writes: motes run up it while it works (density is the rate), a burst when a call reports. Upright it leaves the thread's cell body and climbs the bus to the tip. In landscape the stage stands to the right of the circuit, so it goes on from the end of the thread's own line: down through the fan of the synapses as one of them, under the equipment, and up the stage's left edge to the tip, with REACH hanging off it | See "Motes along an axon" | What it is, what it carries, where it ends | Pins it |
 | Synapse (curve from a thread's wire to an equipment box) | That the thread acted on that equipment: shown for the three kinds a working thread used last (two for a resting one, for 90 s), brighter the more recent, in the equipment's colour while a call is out, amber to YOU while the thread waits on you | Packets and motes travel it (see "Packet on a synapse") | Thread and equipment, whether a call is out, when it was last used | Pins it |
 | Focus header (right of the core) | FOCUS and the number: which thread is on the stage. Title: the thread. Path line: account, project, parent, agent. Model line: model, effort, subagents, depth, id. "asked": the message that started the turn. Figures: output this turn, rate, context, spent, one dot | Change with the data | The title opens the thread's card; the other lines say each part in full; CONTEXT opens the context card, ONE DOT the flock's, a figure what is counted and from where | Pins it |
 | Section label (TIME TERRAIN, ACCOUNTS, CIRCUIT, EQUIPMENT, COMMS, SECTOR MAP, LOG) and a chart's head | The name of a part of the screen | Still | What the part shows, its marks, its keys; a chart's head opens the chart's own card (context, account) or says what the chart is | Pins it |
@@ -307,12 +307,14 @@ settled on under `resizes`); the footprint after it was not caught on its own.
 
 `node --no-warnings v5/tools/check.mjs [--size 1365x2460] [--shots]` runs the demo on a clock
 of its own and sends it the events a mouse and a keyboard send, at places taken from the
-picture's own geometry, so it holds at any upright size. 29 checks, exit code 0 when all pass,
-and a loop that never ends is reported as a hang (it runs itself as a child with a time limit):
+picture's own geometry, so it holds at any size, upright or landscape. 32 checks, exit code 0
+when all pass, and a loop that never ends is reported as a hang (it runs itself as a child with
+a time limit):
 
 | Interaction | What is checked |
 | --- | --- |
 | REACH | it is drawn, its head and a target open their cards, a bar is its tool call's own target |
+| The layout of the stage | THIS TURN is drawn, no two parts of the stage share ground, and the focused thread's wire ends at the tip (in landscape: every part it crosses carries the wires, so none paints over it) |
 | A resting row | the reading of its last turn opens the LAST TURN card |
 | Scrubbing | a drag on the terrain holds a moment, the focus does not move, the SCRUB card shows, a mark stands on every ridge |
 | The replay | the stage is read as of the moment, the thread shown has nothing from after it, every target of the stage carries the moment, every part that is not replayed has its NOW chip, the moving marks of the core are grey |
@@ -320,7 +322,8 @@ and a loop that never ends is reported as a hang (it runs itself as a child with
 | Partial repaints | a change of the wires repaints every region a changed wire runs through (against the wires' own pixels); the three ticking parts of a working row are pixel for pixel what a fresh paint gives |
 | A resize | three sizes in a row are laid out with nothing thrown |
 
-In landscape two of them fail on purpose: REACH and THIS TURN have no place there yet.
+They pass at 91, 139 and 183 columns by 82 rows and in landscape (163 by 59, 206 by 59, and
+the squarest and smallest shapes tried: 163 by 70 and 120 by 40).
 `tools/cost-watch.mjs [seconds] [folder]` averages a stretch of `stats.json` reports (cost,
 and what it is spent on); with `tools/resize-check.py --fresh --to 91 --settle 120 --run <folder>`
 it measures a second copy on a stand-in terminal, and `NEXUS_COARSE=1` in front of that runs
@@ -616,3 +619,35 @@ the live text and the terrain); a live minute at eight or more working; the rows
 circuit at a held moment (they say NOW; replaying them needs what a past moment does not
 keep: cost, flags, the last turn).
 
+Ninth session (2026-11-17, 00:40 to 01:30), from the director's four tasks:
+
+- **Landscape** (a pane wider than 1.15 times its height). The stage has the same two columns
+  as upright, as tall as the pane. Under the core: the turn's time, the prompt cache, THIS
+  TURN and REACH, which runs down to the terrain. Beside the core: the focus header, the
+  charts and the live text. Where the column beside the core is narrow (under some 180 columns
+  at 59 rows) the five figures wrap and the three charts stand one above the other at the
+  column's whole width, so CONTEXT and LATENCY share one time axis and a held moment is one
+  line through both. The live text is then some 56 characters a line and 34 lines tall; before,
+  it ran 116 characters wide over a region it filled only at the top. The terrain is half as
+  tall again as upright (480 units, more in a squarer pane) and stands clear of the focused
+  thread's wire, which has a route here too (see "The focused thread's wire" in the table of
+  marks). Before this the landscape stage had no THIS TURN, no REACH and no wire, and a band
+  some 580 px tall above the terrain stood empty. What is still air: a young turn fills
+  neither REACH's column nor the live text's.
+- **A fault in the thread list, found by a new check.** The list kept its window by place.
+  When a thread above the window left the list, every row moved up one place and the window's
+  first row fell out of it: often the focused thread, which then had no row, no wire and a
+  REACH hanging off nothing. The window is anchored to the row it begins with now; a turn of
+  the wheel still moves it.
+- **A pane that starts before its terminal has pixels** (the plugin's startup entry opens one
+  right after a herdr server restart, when no client may be attached yet): v5 asks for its
+  cell again once a second until the terminal says, and takes the answer as a resize
+  (`tools/late-cell-check.py`).
+
+Seen in the real pane (the dev copy in a tab of its own, 163 by 59, the terminal holding
+every page, synthetic input through herdr): the landscape layout in the pane's own frame, a
+hover on REACH's head ("note reach") and on a line of THIS TURN ("port exec"), a drag on the
+terrain that held a moment ("scrubbing the terrain: 01:20:06") with the stage of then in the
+pane's own frame, and escape letting it go. Seen only in headless frames: 206 by 59 (charts
+side by side there), 163 by 70, 120 by 40, explain mode in landscape. Not seen by anyone yet:
+any of it with a real hand.

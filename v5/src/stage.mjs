@@ -428,7 +428,7 @@ export const stage = {
   cacheSpan() {
     const G = this.G
     const box = G.cacheBox
-    return { x0: (G.wide || !G.busX ? G.core.left : G.busX) + this.u(34), x1: box.x + box.w - this.u(20) }
+    return { x0: (G.trunkX || G.core.left) + this.u(34), x1: box.x + box.w - this.u(20) }
   },
 
   signCache(scene, ui, now) {
@@ -557,7 +557,7 @@ export const stage = {
         tally.set(id, entry)
       }
     }
-    const x0 = G.busX + u(34)
+    const x0 = G.trunkX + u(34)
     const x1 = box.x + box.w - u(20)
     const fade = turn.live ? 1 : 0.6
     this.label(c, turn.live ? "THIS TURN" : "LAST TURN", x0, listTop, INK.dim, "left", 11.5)
@@ -680,11 +680,19 @@ export const stage = {
     // (a held moment: opencode keeps one running total, so what the thread had cost by then is not known)
     if (session.then) about.SPENT = [["THEN", "not kept: opencode records one running total of a thread's cost, so what it had cost at the held moment is not known"]]
     x = head.x
+    const nameStyle = { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }
     for (const [name, value] of cells) {
+      const valueStyle = { size: 15, family: FAMILY.monoMedium, color: value === "n/a" ? INK.faint : INK.text }
+      // a figure that would run past the column starts the next line, where the layout has
+      // left the lines for it (a narrow head in landscape: the charts stand lower there)
+      if (G.charts.stacked && x > head.x && x + this.width(c, `${name}  `, nameStyle) + this.width(c, value, valueStyle) > head.x + head.w) {
+        x = head.x
+        y += u(27)
+      }
       const from = x
       x = this.run(c, x, y, [
-        [`${name}  `, { size: 11.5, family: FAMILY.label, weight: "600", color: INK.dim, spacing: 2.6 }],
-        [value, { size: 15, family: FAMILY.monoMedium, color: value === "n/a" ? INK.faint : INK.text }],
+        [`${name}  `, nameStyle],
+        [value, valueStyle],
       ])
       const rect = { x: from - u(4), y: y - u(17), w: x - from + u(8), h: u(23) }
       if (name === "CONTEXT") this.hit("context", session.id, rect)

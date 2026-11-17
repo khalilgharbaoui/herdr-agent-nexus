@@ -148,15 +148,40 @@ export class Renderer {
     const underTop = G.cacheBox.y + G.cacheBox.h
     G.charts = { x: headX, y: G.stage.y + u(262), w: G.head.w, h: u(170) }
     const stageBottom = G.stage.y + G.stage.h
+    // what the turn was made of: THIS TURN's five lines, under the prompt cache
+    const listH = u(26) + 5 * u(25) + u(18)
     if (wide) {
-      // landscape: the tail runs under the core across the stage, the terrain closes the stage
-      G.terrain = { x: G.stage.x + M, y: stageBottom - u(350), w: G.stage.w - 2 * M, h: u(330) }
-      G.band = { x: G.stage.x, y: G.terrain.y - u(10), w: G.stage.w, h: stageBottom - (G.terrain.y - u(10)) }
-      const tailTop = underTop + u(46)
-      G.tail = { x: G.stage.x + M + u(20), y: tailTop, w: G.stage.w - 2 * M - u(20), h: G.band.y - u(20) - tailTop }
-      G.under = null
-      G.reach = null
-      G.tailBox = { x: G.stage.x, y: tailTop - u(36), w: G.stage.w, h: G.band.y - (tailTop - u(36)) }
+      // Landscape: the stage in the same two columns as upright, as tall as the pane. Under
+      // the core the turn's time, the prompt cache, THIS TURN and REACH, which gets the whole
+      // run down to the terrain; beside the core the focus header, the charts and the live
+      // text. The terrain closes the stage, half as tall again as it is upright: the stage
+      // has the height here, and a young turn fills neither REACH nor the live text.
+      // The focused thread's wire comes in under the equipment, on a lane just above the
+      // footer's line (see arrange), and climbs the stage's left edge to the tip: past the
+      // terrain, which stands clear of it, and then with REACH hanging off it as upright.
+      G.trunkX = core.left + u(40)
+      G.laneY = H - footerH - u(14)
+      // (a pane nearer to square has a taller stage: three fifths of what it has over the
+      // squat shape's 2310 units go to the terrain too)
+      const bandH = u(480) + Math.round(Math.max(0, G.stage.h - u(2310)) * 0.6)
+      G.band = { x: G.trunkX + u(14), y: stageBottom - bandH, w: G.stage.x + G.stage.w - (G.trunkX + u(14)), h: bandH }
+      G.terrain = { x: G.trunkX + u(30), y: G.band.y + u(6), w: G.stage.x + G.stage.w - M - (G.trunkX + u(30)), h: bandH - u(12) }
+      // the strip beside the terrain where the wire comes in and turns up: nothing but the wire
+      G.lane = { x: G.stage.x, y: G.band.y, w: G.band.x - G.stage.x, h: G.laneY + u(10) - G.band.y }
+      // A head column too narrow for five figures in a row and three charts side by side
+      // (under some 180 columns at this shape) wraps the figures and stacks the charts: each
+      // chart then has the column's whole width, and the two that share the terrain's window
+      // stand on one time axis.
+      const narrow = G.head.w < u(900)
+      if (narrow) {
+        const gap = u(18)
+        G.charts = { x: headX, y: G.stage.y + u(318), w: G.head.w, h: 3 * u(150) + 2 * gap, stacked: true, gap }
+      }
+      const tailTop = G.charts.y + G.charts.h + u(46)
+      G.tail = { x: headX, y: tailTop, w: G.head.w, h: G.band.y - u(22) - tailTop }
+      G.under = { x: G.stage.x, y: underTop, w: split - G.stage.x, h: listH }
+      G.reach = { x: G.stage.x, y: underTop + listH, w: split - G.stage.x, h: G.band.y - (underTop + listH) }
+      G.tailBox = { x: split, y: tailTop - u(36), w: G.stage.x + G.stage.w - split, h: G.band.y - (tailTop - u(36)) }
       G.headBox = { x: split, y: G.stage.y, w: G.stage.x + G.stage.w - split, h: G.charts.y - G.stage.y }
       G.chartsBox = { x: split, y: G.charts.y, w: G.stage.x + G.stage.w - split, h: G.tailBox.y - G.charts.y }
     } else {
@@ -164,7 +189,6 @@ export class Renderer {
       G.under = { x: G.stage.x, y: underTop, w: split - G.stage.x, h: stageBottom - underTop }
       // what the turn touched takes the room under THIS TURN's five lines, when there is room
       // for its head and three rows (the stage is as tall as the thread rows let it be)
-      const listH = u(26) + 5 * u(25) + u(18)
       G.reach = null
       if (G.under.h - listH >= u(150)) {
         G.reach = { x: G.stage.x, y: underTop + listH, w: split - G.stage.x, h: G.under.h - listH }
@@ -235,6 +259,9 @@ export class Renderer {
     G.rails = accounts.map((account, index) => ({ name: account.name, x: G.railX0 + index * (accounts.length > 3 ? Math.round((G.railPitch * 3) / accounts.length) : G.railPitch) }))
     G.railsRight = (G.rails.length ? G.rails[G.rails.length - 1].x : G.railX0) + u(30)
     G.busX = G.railsRight + u(14)
+    // where the focused thread's wire climbs to the tip, with REACH hanging off it: upright
+    // that is the bus itself, in landscape the stage's own left edge (set by layout)
+    if (!G.wide) G.trunkX = G.busX
     const somaX0 = G.busX + u(66)
     const room = G.rowsBottom - G.rowsTop
     // which rows are on screen: everything when it fits, else a window that keeps the focus in view
@@ -251,6 +278,14 @@ export class Renderer {
         let index = from
         while (index < rows.length && used + natural[index] <= room) used += natural[index++]
         return index
+      }
+      // The window is anchored to the row it begins with, not to a place in the list: when a
+      // thread above it leaves the list, every row moves up one place, and a window kept by
+      // its place would lose its first row (often the focused thread itself, with its wire).
+      // A turn of the wheel moves the place, and is taken as it is.
+      if (this.scroll === this.scrollAt && this.scrollKey !== undefined && rows[this.scroll]?.key !== this.scrollKey) {
+        const moved = rows.findIndex((row) => row.key === this.scrollKey)
+        if (moved >= 0) this.scroll = moved
       }
       this.scroll = clamp(this.scroll, 0, rows.length - 1)
       while (this.scroll > 0 && fit(this.scroll - 1) === rows.length) this.scroll -= 1
@@ -272,6 +307,8 @@ export class Renderer {
     }
     this.follow = false
     this.scrollFocus = scene.focus.id
+    this.scrollKey = rows[first]?.key
+    this.scrollAt = this.scroll
     this.arranged = [this.W, this.H, scene.focus.id, this.scroll, ui.zoom, false, signature.split("|").slice(6).join("|")].join("|")
     let y = G.rowsTop
     G.rows = []
@@ -334,10 +371,15 @@ export class Renderer {
       }
     }
     const focus = G.rowOf.get(scene.focus.id)
-    if (focus && !G.wide) {
-      // straight up the bus to the tip, where what it writes gathers before it enters the core
+    if (focus) {
       const tip = this.tipOf()
-      flow.setPath(`focus:${focus.sid}`, [[focus.somaX - focus.r, focus.axonY], [G.busX, focus.axonY], [G.busX, Math.round(tip.y + u(24))]])
+      // Upright: straight up the bus to the tip, where what it writes gathers before it enters
+      // the core. Landscape: the stage stands to the right of the circuit, where the thread's
+      // own line already runs. So the wire goes on from the end of that line: down through
+      // the fan of the synapses as one of them, under the equipment on the lane, and up the
+      // stage's left edge to the tip.
+      if (!G.wide) flow.setPath(`focus:${focus.sid}`, [[focus.somaX - focus.r, focus.axonY], [G.busX, focus.axonY], [G.busX, Math.round(tip.y + u(24))]])
+      else flow.setPath(`focus:${focus.sid}`, [...this.curve(G.termX, focus.axonY, G.portX - u(3), G.laneY), [G.trunkX, G.laneY], [G.trunkX, Math.round(tip.y + u(24))]])
     }
     this.buildRegions()
     this.layoutHits()
@@ -349,8 +391,7 @@ export class Renderer {
   tipOf() {
     const G = this.G
     const core = G.core
-    if (G.wide || !G.busX) return { x: core.left + this.u(40), y: core.bottom - this.u(30) }
-    return { x: G.busX, y: core.bottom - this.u(30) }
+    return { x: G.trunkX || core.left + this.u(40), y: core.bottom - this.u(30) }
   }
 
   // A synapse: leaves horizontally, arrives horizontally.
@@ -393,6 +434,8 @@ export class Renderer {
     add("cache", G.cacheBox, (scene, ui, now) => this.signCache(scene, ui, now), (c, scene, ui, now) => this.drawCache(c, scene, ui, now), false, true)
     if (G.under) add("under", G.under, (scene, ui, now) => this.signUnder(scene, ui, now), (c, scene, ui, now) => this.drawUnder(c, scene, ui, now), false, true)
     if (G.reach) add("reach", G.reach, (scene, ui, now) => this.signReach(scene, ui, now), (c, scene, ui, now) => this.drawReach(c, scene, ui, now), false, true)
+    // (landscape) the strip the focused thread's wire comes in on: nothing of its own, only the wire
+    if (G.lane) add("lane", G.lane, () => "", () => {}, false, true)
     add("head", G.headBox, (scene, ui, now) => this.signHead(scene, ui, now), (c, scene, ui, now) => this.drawHead(c, scene, ui, now))
     add("charts", G.chartsBox, (scene, ui, now) => this.signCharts(scene, ui, now), (c, scene, ui, now) => this.drawCharts(c, scene, ui, now))
     add("tail", G.tailBox, (scene, ui, now) => this.signTail(scene, ui, now), (c, scene, ui, now) => this.drawTail(c, scene, ui, now))

@@ -162,7 +162,7 @@ export const circuit = {
         title: "from the focused thread up to the tip",
         tone: INK.live,
         lines: [
-          ["WHAT", "the focused thread's own wire: it leaves the thread's cell body in the circuit and climbs to the tip under the core"],
+          ["WHAT", G.wide ? "the focused thread's own wire: it goes on from the end of the thread's line in the circuit, passes under the equipment and climbs to the tip under the core" : "the focused thread's own wire: it leaves the thread's cell body in the circuit and climbs to the tip under the core"],
           ["CARRIES", "what the thread writes. While it works, motes run up it, closer together the faster it writes (one every 180, 104, 66 or 44 px for under 15, 15 to 40, 40 to 80 and over 80 tokens a second), and a burst when a model call reports"],
           ["ENDS", "at the tip, where the tokens gather as a charge until a dot is released into the rings"],
           ["BRANCH", "REACH leaves it on the way: what this turn touched"],
