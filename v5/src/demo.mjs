@@ -111,6 +111,9 @@ export class DemoSource {
     this.sessions = []
     this.clock = 0
     this.serial = 0
+    // --demo-working N: never fewer than N threads at work, to measure what many cost
+    this.floor = options.quiet ? 0 : Math.max(0, Math.floor(Number(options.working) || 0))
+    this.played = false
   }
 
   pick(list) {
@@ -124,7 +127,11 @@ export class DemoSource {
   async open() {
     const now = Date.now()
     const start = now - this.options.historyMs - 4 * 60e3
-    CAST.forEach((role, index) => {
+    // --demo-working N (see advance): the cast is seven main threads, so a floor near or past
+    // that gets more of them, the same roles again under a numbered title and without a pane
+    const cast = [...CAST]
+    for (let extra = 0; cast.length < this.floor + 2; extra += 1) cast.push({ ...CAST[extra % CAST.length], title: `${CAST[extra % CAST.length].title} (${Math.floor(extra / CAST.length) + 2})`, pane: "" })
+    cast.forEach((role, index) => {
       const session = this.spawn(role, null, start)
       session.nextAt = start + this.between(0, 150e3) + index * 9000
       session.context = this.between(0.12, 0.7) * contextLimit(role.model || "") || 60e3
@@ -143,6 +150,7 @@ export class DemoSource {
     ]
     this.clock = start
     this.advance(now)
+    this.played = true // the history is in: from here on the floor of --demo-working holds
     // --demo-quiet: the same cast with nobody working and nobody waiting, to see a still machine
     if (this.options.quiet) {
       for (const session of this.sessions) {
@@ -283,6 +291,18 @@ export class DemoSource {
 
   advance(to) {
     for (let at = this.clock; at <= to; at += 200) {
+      if (this.floor && this.played) {
+        // the floor: while fewer threads work than asked for, a resting main thread that waits
+        // on nobody begins its next turn now instead of when it would have
+        let working = 0
+        for (const session of this.sessions) if (session.phase !== "idle") working += 1
+        for (const session of this.sessions) {
+          if (working >= this.floor) break
+          if (session.phase !== "idle" || session.done || session.parentId || session.blockedUntil > at) continue
+          session.nextAt = at
+          working += 1
+        }
+      }
       for (let index = 0; index < this.sessions.length; index += 1) {
         const session = this.sessions[index]
         let guard = 0

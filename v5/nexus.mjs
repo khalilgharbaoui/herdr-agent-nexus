@@ -7,7 +7,7 @@
 // answers to the pointer and the keyboard.
 //
 //   node --no-warnings v5/nexus.mjs                 live, in the current terminal
-//   node --no-warnings v5/nexus.mjs --demo          simulated data
+//   node --no-warnings v5/nexus.mjs --demo          simulated data (--demo-working 9: never fewer than nine threads at work)
 //   node --no-warnings v5/nexus.mjs --frames 2 --size 1890x2460 [--demo] [--poke "move:900,1300;key:?"]
 //
 // Press ? for the keys and what the mouse does. SIGUSR1 writes v5/shots/latest.png. It reads
@@ -42,6 +42,7 @@ const argument = (name, fallback) => {
 const OPTIONS = {
   demo: process.argv.includes("--demo") || process.argv.includes("--demo-quiet"),
   quiet: process.argv.includes("--demo-quiet"), // simulated data with nobody working: what a still machine costs
+  working: Number(argument("demo-working", process.env.NEXUS_DEMO_WORKING ?? 0)), // simulated data with never fewer than this many threads at work: what many working threads cost
   frames: Number(argument("frames", 0)),
   size: argument("size", "1890x2460"),
   cell: argument("cell", "15x30"),
