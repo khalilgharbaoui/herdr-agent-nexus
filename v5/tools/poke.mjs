@@ -3,8 +3,11 @@
 // the keys without a hand on the mouse. The bytes are the reports a terminal would send (SGR
 // with pixels, counted from 1 as herdr does), written with `herdr pane send-text`.
 //
-//   node v5/tools/poke.mjs wE:p1Q1 "move:420,1055;wait:400;click:420,1055;key:i"
-//   node v5/tools/poke.mjs wE:p1Q1 --sweep 400     400 moves along a diagonal, as fast as herdr takes them
+//   node v5/tools/poke.mjs <pane id> "move:420,1055;wait:400;click:420,1055;key:i"
+//   node v5/tools/poke.mjs <pane id> --sweep 400     400 moves along a diagonal, as fast as herdr takes them
+//
+// The dev pane's id is in v5/dev-pane (tools/restart.sh writes it); the installed plugin's is
+// in the file "pane" of its run folder.
 //
 // Verbs: move:x,y  click:x,y  middle:x,y  down:x,y  drag:x,y  up:x,y  wheel:x,y,1 (down) or -1 (up)  key:<char or name>  wait:ms
 // This tests v5, not herdr's forwarding of a real mouse: for that, use the mouse.

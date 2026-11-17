@@ -333,7 +333,7 @@ projection, hit test), `src/body.mjs` (the view of the core: projection, rings, 
 `src/card.mjs` (the card as its own image and its leader line), `src/terrain.mjs` (the ridges),
 `src/explain.mjs` (explain mode and the keyboard walk), `src/charts.mjs` (the three live charts), `src/cache.mjs` (the prompt cache as the screen
 shows it), `src/cache-worker.mjs` (reads the transcripts off the main thread), `tools/cache-probe.mjs`
-(what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (restarts v5 in its pane in place) and
+(what the worker finds for every thread), `tools/look.mjs`, `tools/restart.sh` (starts v5 in a herdr pane of its own or restarts it there in place: it finds the pane by the id in `v5/dev-pane` or by its label, and makes one when there is none) and
 `tools/gfx-probe.mjs`, `tools/mem-watch.mjs` and `tools/mem-source.mjs` (see "Memory"),
 `tools/coverage.mjs` (which ink on the still layer no target covers), `src/replay.mjs` (a held
 moment replayed: the thread as it stood then), `tools/resize-check.py` (what a resize costs,

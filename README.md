@@ -127,8 +127,13 @@ their files apart, so both can run at once):
 npm install
 node --no-warnings v5/nexus.mjs            # live, in the current terminal
 node --no-warnings v5/nexus.mjs --demo     # simulated data
-v5/tools/restart.sh <pane id>              # restart it in place in a herdr pane
+v5/tools/restart.sh [--tab]                # in a herdr pane of its own, or restart it there in place
 ```
+
+`restart.sh` finds the dev pane (the id it wrote to `v5/dev-pane`, else the pane labelled
+"Agent Nexus dev" in this checkout) or makes one: a split to the right of the pane it is
+called from, or with `--tab` a tab of its own. It types into no pane that is not the dev
+pane (one in this checkout, with no agent and nothing but its shell in the foreground).
 
 The plugin is four files: `herdr-plugin.toml` (what herdr reads), `herdr/build.sh` (the
 build step), `herdr/pane.sh` (the pane: finds node, runs v5, says why when it cannot) and
