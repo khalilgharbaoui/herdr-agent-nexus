@@ -37,8 +37,11 @@ fi
 # what that leaves.
 printf '%s\n' "${HERDR_PANE_ID:-}" >"$RUN/pane"
 trap 'rm -f "$RUN/pane"' EXIT
-trap 'exit 129' HUP
-trap 'exit 143' TERM
+# A hangup or a TERM is not v5 quitting by its own hand: the pane was closed, or herdr's
+# server stopped. It is only noted here, and looked at when v5 has returned (see below).
+nexus_cut=
+trap 'nexus_cut=129' HUP
+trap 'nexus_cut=143' TERM
 
 node=$(nexus_find_node) || fail "$(nexus_node_missing)"
 
@@ -70,9 +73,23 @@ if [ -n "${HERDR_BIN_PATH:-}" ]; then
   export PATH
 fi
 
+# What to bring back after a herdr server restart (see "reopen" in lib.sh). Written last,
+# when nothing stands in the way of v5 any more, and whole or not at all.
+if [ "${NEXUS_DEMO:-}" = 1 ]; then nexus_mode=demo; else nexus_mode=live; fi
+if printf 'socket=%s\npane=%s\nroot=%s\nmode=%s\n' \
+  "${HERDR_SOCKET_PATH:-}" "${HERDR_PANE_ID:-}" "$(pwd -P)" "$nexus_mode" >"$RUN/reopen.new" 2>/dev/null; then
+  mv -f "$RUN/reopen.new" "$RUN/reopen"
+fi
+
 # shellcheck disable=SC2086 # NEXUS_ARGS is a list of arguments
 NEXUS_RUN="$RUN" "$node" --no-warnings "$NEXUS_ROOT/v5/nexus.mjs" "$@" ${NEXUS_ARGS:-} 2>"$RUN/stderr.log"
 status=$?
+# Cut off: the record stays. Whether that was the server stopping (bring it back) or the pane
+# being closed (do not) is read later from what herdr restores: the pane is still in the
+# layout after the first and gone after the second.
+[ -z "$nexus_cut" ] || exit "$nexus_cut"
+# v5 ended by its own hand, with q or with an error: there is nothing to bring back.
+rm -f "$RUN/reopen"
 [ "$status" -eq 0 ] && exit 0
 
 # It did not end by its own hand, so the terminal is as v5 left it: give it back first (what

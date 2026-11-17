@@ -16,6 +16,14 @@ platforms = ["macos", "linux"]
 [[build]]
 command = ["sh", "herdr/build.sh"]
 
+# herdr runs this once when its server has started and restored the session. A server that
+# stops takes every pane's process with it, so Agent Nexus is gone after a restart while its
+# pane is back with an empty shell in it. When Agent Nexus was running as the server stopped,
+# this puts it back in that pane's place; otherwise it does nothing. NEXUS_REOPEN=0 in
+# nexus.env turns it off. What it did is in the plugin log, as an action's output is.
+[[startup]]
+command = ["sh", "herdr/ctl.sh", "startup"]
+
 # The live view. A tab by default, since it wants a whole pane; "plugin pane open" can place
 # it as a split or zoomed too. Not as a popup: herdr passes no terminal graphics through one.
 # pane.sh finds node (herdr starts panes with the PATH of its server, which may hold none),

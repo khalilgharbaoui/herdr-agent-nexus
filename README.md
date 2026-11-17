@@ -70,14 +70,45 @@ In the view, `?` lists the keys and what the mouse does, and `q` quits and close
 There is one Agent Nexus per user, since it is a view of the whole machine: opening it a
 second time goes to the pane it already runs in.
 
+### After a herdr server restart
+
+A herdr server that stops takes every pane's process with it, and the server that starts
+next restores the layout with an empty shell in each pane. So Agent Nexus is gone after a
+restart while its pane is still there. The plugin declares a `[[startup]]` entry for this,
+which herdr runs once when its server has started: when Agent Nexus was running as the
+server stopped, it is put back in the place of that pane, live or demo as it was, and the
+focus stays where herdr restored it.
+
+It is not brought back when you quit it with `q`, stopped it with the action, or closed its
+pane before the server stopped, and `NEXUS_REOPEN=0` (see the settings) turns it off. What
+the entry did at the last server start is in the plugin log:
+
+```sh
+herdr plugin log list --plugin khalilgharbaoui.agent-nexus
+```
+
+How it knows: while the view runs, `herdr/pane.sh` keeps a record of the run (`reopen` in
+the run folder: herdr's socket, the pane, its folder, live or demo). `q`, an error and the
+stop action remove it; a hangup leaves it. herdr keeps a pane's id across a restart, so at
+the next start the entry looks for that pane: still there, in the plugin's folder, with no
+agent in it, means the server stopped under a running Agent Nexus. Gone means the pane was
+closed first. Either way the record is used up at that start.
+
+Measured on herdr 0.9.5 by running the entry by hand, with the variables herdr gives a
+startup command, against panes staged as a stopping server leaves them (the processes
+killed, the pane a plain shell): brought back in place, the same room, sprites held. A real
+server restart has not been watched yet. For a pane that starts before any client is
+attached, v5 asks for its cell's pixel size again until the terminal says
+(`v5/tools/late-cell-check.py`).
+
 It keeps what a run writes (`nexus.pid`, `stats.json`, `input.json`, `shots/`,
-`stderr.log`) in herdr's state folder for the plugin,
+`stderr.log`, `reopen`) in herdr's state folder for the plugin,
 `~/.local/state/herdr/plugins/khalilgharbaoui.agent-nexus/run`, and nothing in the
 installed copy. When it cannot start, the pane says why and waits for enter.
 
 Settings are optional: one `KEY=value` a line in `nexus.env` in the plugin's config folder
 (`herdr plugin config-dir khalilgharbaoui.agent-nexus` prints the folder). The file is read,
-never run, and a line that is not one of these four is skipped.
+never run, and a line that is not one of these five is skipped.
 
 | Setting           | Meaning                                                                    |
 | ----------------- | -------------------------------------------------------------------------- |
@@ -85,6 +116,7 @@ never run, and a line that is not one of these four is skipped.
 | `NEXUS_ARGS`      | More arguments for `v5/nexus.mjs`, such as `--fps 20` or `--db /a/path.db`  |
 | `NEXUS_FOCUS`     | `0` opens the pane without switching to it                                  |
 | `NEXUS_WORKSPACE` | The workspace a new tab opens in, instead of the active one                 |
+| `NEXUS_REOPEN`    | `0` leaves it closed after a herdr server restart                           |
 
 ## Develop
 
@@ -100,7 +132,7 @@ v5/tools/restart.sh <pane id>              # restart it in place in a herdr pane
 
 The plugin is four files: `herdr-plugin.toml` (what herdr reads), `herdr/build.sh` (the
 build step), `herdr/pane.sh` (the pane: finds node, runs v5, says why when it cannot) and
-`herdr/ctl.sh` (the actions), with `herdr/lib.sh` shared between them. To try a change to
+`herdr/ctl.sh` (the actions and the startup entry), with `herdr/lib.sh` shared between them. To try a change to
 them without pushing it, link the checkout: the link takes the installed copy's place.
 
 ```sh

@@ -24,14 +24,15 @@ nexus_config_file() {
 # NEXUS_ARGS       more arguments for v5/nexus.mjs, such as --fps 20 or --db /path/opencode.db
 # NEXUS_FOCUS      0 opens the pane without switching to it
 # NEXUS_WORKSPACE  the workspace a new tab opens in, instead of the active one
-# The file is read, not run: a line that is not one of these four is skipped, so a slip in it
+# NEXUS_REOPEN     0 leaves it closed after a herdr server restart, see "reopen" below
+# The file is read, not run: a line that is not one of these five is skipped, so a slip in it
 # cannot stop the pane from opening, and nothing in it is ever executed.
 nexus_load_config() {
   nexus_config=$(nexus_config_file)
   [ -f "$nexus_config" ] || return 0
   while IFS= read -r nexus_line || [ -n "$nexus_line" ]; do
     case "$nexus_line" in
-    NEXUS_NODE=* | NEXUS_ARGS=* | NEXUS_FOCUS=* | NEXUS_WORKSPACE=*)
+    NEXUS_NODE=* | NEXUS_ARGS=* | NEXUS_FOCUS=* | NEXUS_WORKSPACE=* | NEXUS_REOPEN=*)
       nexus_key=${nexus_line%%=*}
       nexus_value=${nexus_line#*=}
       case "$nexus_value" in
@@ -44,7 +45,7 @@ nexus_load_config() {
         nexus_value=${nexus_value%\'}
         ;;
       esac
-      # the key is one of the four names above, so this assigns and runs nothing
+      # the key is one of the five names above, so this assigns and runs nothing
       eval "$nexus_key=\$nexus_value"
       ;;
     esac
@@ -134,4 +135,28 @@ nexus_running_pid() {
   *) return 1 ;;
   esac
   printf '%s\n' "$nexus_pid"
+}
+
+# What to bring back after a herdr server restart: the file "reopen" in the run directory.
+# A server that stops takes every pane's process with it, and the one that starts restores
+# the layout with a new shell in each pane (herdr's own words: "new shells in their saved
+# directories"), so Agent Nexus is gone while its pane is still there. The pane script writes
+# this file when v5 starts and removes it when v5 ends by its own hand (q, or an error); the
+# stop action removes it too. After a hangup it stays, and the startup entry of ctl.sh reads
+# it: see there. One "key=value" a line, read and never run:
+#   socket  the API socket of the herdr server the pane belongs to (one per herdr session)
+#   pane    the pane v5 runs in
+#   root    the pane's working directory: the folder the plugin ran from, links followed
+#   mode    live or demo
+# Prints the value of key $2 in the reopen file of run directory $1, or nothing.
+nexus_reopen_value() {
+  [ -f "$1/reopen" ] || return 0
+  while IFS= read -r nexus_line || [ -n "$nexus_line" ]; do
+    case "$nexus_line" in
+    "$2="*)
+      printf '%s\n' "${nexus_line#*=}"
+      return 0
+      ;;
+    esac
+  done <"$1/reopen"
 }
