@@ -1,6 +1,6 @@
 id = "khalilgharbaoui.agent-nexus"
 name = "Agent Nexus"
-version = "5.0.0"
+version = "5.1.0"
 # What v5 asks of herdr was measured on 0.9.5 and on nothing older: "pane list", "workspace
 # list", "tab list" and "pane current" as JSON (each pane's agent, status and session),
 # "agent focus" to go to a pane, and Kitty graphics and pixel mouse reports passed through

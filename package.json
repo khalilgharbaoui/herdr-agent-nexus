@@ -1,6 +1,6 @@
 {
   "name": "herdr-agent-nexus",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Every opencode session, subagent and herdr agent on this machine as one living circuit, drawn in the terminal. A herdr plugin.",
   "main": "v5/nexus.mjs",
   "scripts": {
