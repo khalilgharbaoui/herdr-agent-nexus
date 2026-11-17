@@ -34,6 +34,7 @@ const PAGE_BASE = 7200 // image ids of the sprite pages start here
 const PROBE_SLOT = 999 // the placement that asks whether a page is still there
 const PROBE_MS = 2000
 const RESIZE_SETTLE_MS = 160 // a resize is answered when the size has stood still this long
+const CELL_RETRY_MS = 1000 // how often the cell's pixel size is asked for again while the terminal does not say
 // What the terminal's image store holds for one pane. Under herdr 0.9.5 it is 64 MiB (measured
 // with tools/gfx-probe.mjs); past it the oldest image is dropped without a word. Ghostty on its
 // own keeps 320 MB.
@@ -133,25 +134,56 @@ export class Terminal {
           this.reset = true
           this.resizes = (this.resizes ?? 0) + 1
           for (const listener of this.listeners.resize) listener()
+          this.askForCellAgain()
         })
       }, RESIZE_SETTLE_MS)
     })
+    this.askForCellAgain()
     return this.kitty
   }
 
   async measure() {
+    this.measuring = true
     const reply = await this.ask(`${ESC}[16t${ESC}[14t`, 600)
+    this.measuring = false
     const cell = /\x1b\[6;(\d+);(\d+)t/.exec(reply)
     const area = /\x1b\[4;(\d+);(\d+)t/.exec(reply)
     const cols = process.stdout.columns || 100
     const rows = process.stdout.rows || 40
     if (cell) this.cell = { height: Number(cell[1]), width: Number(cell[2]) }
     else if (area) this.cell = { height: Math.round(Number(area[1]) / rows), width: Math.round(Number(area[2]) / cols) }
+    this.cellKnown = Boolean(cell || area)
     this.cols = cols
     this.rows = rows
     this.width = cols * this.cell.width
     this.height = rows * this.cell.height
     this.input.cell = this.cell
+  }
+
+  // A pane can be up before its terminal has pixels. herdr answers neither size query while
+  // no client is attached to its server (read in its source at v0.9.5, src/pane/terminal.rs:
+  // "size queries stay silent without pixel geometry"), which is the case for a pane that the
+  // startup hook opens right after a server restart. The cell is then the one this program
+  // assumes, and the pixels that arrive with the first client change no column and no row, so
+  // no resize is raised for them. So while the cell is not known it is asked for again, once a
+  // second, and an answer that changes it is taken as a resize.
+  askForCellAgain() {
+    clearTimeout(this.cellTimer)
+    if (this.cellKnown || this.closed) return
+    this.cellTimer = setTimeout(() => {
+      if (this.resizing || this.measuring) return this.askForCellAgain()
+      const before = `${this.cell.width}x${this.cell.height} ${this.cols}x${this.rows}`
+      this.measure().then(() => {
+        if (this.closed) return
+        if (`${this.cell.width}x${this.cell.height} ${this.cols}x${this.rows}` !== before) {
+          this.reset = true
+          this.resizes = (this.resizes ?? 0) + 1
+          for (const listener of this.listeners.resize) listener()
+        }
+        this.askForCellAgain()
+      })
+    }, CELL_RETRY_MS)
+    this.cellTimer.unref?.()
   }
 
   receive(text) {
@@ -495,6 +527,8 @@ export class Terminal {
   }
 
   async close() {
+    this.closed = true
+    clearTimeout(this.cellTimer)
     try {
       await this.worker?.terminate()
     } catch {}
