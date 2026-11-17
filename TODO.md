@@ -22,24 +22,38 @@ No pane id is written down any more: herdr hands out new ones, and the server re
 
 ## In progress
 
-- 2026-11-17 01:10: **the startup entry** is in (`dc27d80`, with `03af1c6` for a pane that
-  starts before a client is attached). herdr 0.9.5 runs a plugin's `[[startup]]` command when
-  its server has started; ours brings Agent Nexus back in the place of its pane when it ran as
-  the server stopped (README, "After a herdr server restart"). Proven by running the entry by
-  hand, with herdr's own variables, against panes staged as a stopping server leaves them.
-  **Not seen yet: a real server restart.** The first one is the test: afterwards
-  `herdr plugin log list --plugin khalilgharbaoui.agent-nexus` shows what the entry did.
-- Left from the eighth session: landscape (REACH and THIS TURN have no place there; two
-  checks of `check.mjs` fail there on purpose until they do); a live minute with eight or
-  more threads working, to turn the estimate of the cost class into a reading
-  (`tools/cost-watch.mjs`); the result of the thirteen-minute side-by-side watch for cost
-  bursts; a look at the held moment in the real pane through herdr (`tools/poke.mjs`: down,
-  drag, up on the terrain).
+- 2026-11-17 01:30, ninth session (directed from the AAV session), four tasks. Done, each a
+  signed commit on local `master`:
+  - `03af1c6`, `dc27d80`: **the startup entry.** herdr 0.9.5 runs a plugin's `[[startup]]`
+    command when its server has started; ours brings Agent Nexus back in the place of its
+    pane when it ran as the server stopped (README, "After a herdr server restart"). Proven
+    by running the entry by hand, with herdr's own variables, against panes staged as a
+    stopping server leaves them. **Not seen yet: a real server restart.** The first one is
+    the test: afterwards `herdr plugin log list --plugin khalilgharbaoui.agent-nexus` shows
+    what the entry did.
+  - `0f2ac6b`: **`restart.sh` names no pane.** It finds the dev pane or makes one.
+  - `bee73b7`: **landscape.** REACH and THIS TURN have their column, the charts stack in a
+    narrow head, the terrain is taller, the focused thread's wire has a route, and
+    `check.mjs` (32 checks now) passes at 91, 139, 183 columns and in landscape. Also a fault
+    in the thread list's window (`v5/README.md`, ninth session).
+- **NOT PUSHED.** This session's permission rules refuse `git push`. The directing session
+  has to run `git push origin master`, then
+  `herdr plugin update khalilgharbaoui.agent-nexus --yes`, then the plugin's stop and open
+  actions, for the installed pane to run the new build.
+- Still open from the four tasks: **the measured minute with eight or more threads working**
+  (bytes a second, per cent of a core, memory, at 183 columns; the class to beat is 350 to
+  820 kB/s and 5.3 to 9.9% of a core).
+- Left from the eighth session: the result of the thirteen-minute side-by-side watch for cost
+  bursts; a look at the held moment in the installed pane through herdr (done in the dev pane
+  in landscape, see `v5/README.md`).
 - For the operator to judge, each a decision taken for him that he can overrule: during a
   hold the circuit's rows stay the present under a NOW chip (their wires carry the grey
   motes of then); in a working row the chips stand in one column, clear of the widest timer
   (a short timer leaves a gap); the rows that type share one typist's steps; the scale at
-  139 columns, the allocator setting and the cache ramp still wait for his word.
+  139 columns, the allocator setting and the cache ramp still wait for his word. New in
+  landscape, his to overrule too: the stage in two columns as upright, the charts one above
+  the other in a narrow head, the terrain half as tall again, the wire's route under the
+  equipment.
 
 ## Open from the operator
 
