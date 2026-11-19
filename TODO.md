@@ -28,9 +28,9 @@ No pane id is written down any more: herdr hands out new ones, and the server re
     command when its server has started; ours brings Agent Nexus back in the place of its
     pane when it ran as the server stopped (README, "After a herdr server restart"). Proven
     by running the entry by hand, with herdr's own variables, against panes staged as a
-    stopping server leaves them. **Not seen yet: a real server restart.** The first one is
-    the test: afterwards `herdr plugin log list --plugin khalilgharbaoui.agent-nexus` shows
-    what the entry did.
+    stopping server leaves them. **Seen on a real server restart, 2026-11-17 10:16:** the
+    first log of that server's life, herdr's own startup run, says "brought back in pane
+    wE:p1WQ (pid 51354, live), in the place of wE:p1WP".
   - `0f2ac6b`: **`restart.sh` names no pane.** It finds the dev pane or makes one.
   - `bee73b7`: **landscape.** REACH and THIS TURN have their column, the charts stack in a
     narrow head, the terrain is taller, the focused thread's wire has a route. Also a fault
@@ -49,10 +49,10 @@ No pane id is written down any more: herdr hands out new ones, and the server re
       machine had none, and making them costs the usage window: the operator's call.
   - `tools/check.mjs`: 36 checks, all passing at 91, 139 and 183 columns by 82 rows and in
     landscape (163 by 59, 206 by 59, 120 by 40).
-- **NOT PUSHED.** This agent's permission rules refuse `git push`. The directing session has
-  to run `git push origin master`. The installed copy was brought to the local commits
-  without it (see the report of the ninth session); after the push
-  `herdr plugin update khalilgharbaoui.agent-nexus --yes` says it is up to date.
+- Pushed by the directing session on 2026-11-19 (`57955cb..e5a5532`); the installed copy is
+  at `e5a5532` and `herdr plugin update` says it is up to date. The ninth session's own
+  report never reached the directing session (its last turn was cut off); this file and the
+  commits are the record.
 - Left from the eighth session: the result of the thirteen-minute side-by-side watch for cost
   bursts (the bursts' cause is found now: the read back, see above).
 - For the operator to judge, each a decision taken for him that he can overrule: during a
